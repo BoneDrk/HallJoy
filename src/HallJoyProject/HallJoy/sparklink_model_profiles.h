@@ -38,4 +38,11 @@ constexpr std::uint64_t ExperimentalToken(unsigned vid,unsigned pid,unsigned pag
  default:return 0; // MG75 Max retains its confirmed status.
  }
 }
+// Admission before any SparkLink command, not merely a status classification.
+constexpr bool ProbeIdentity(unsigned vid,unsigned pid) noexcept {
+ return vid==0x1ca6 && (pid==0x0529 || ExperimentalToken(vid,pid,0xffb0)!=0);
+}
+constexpr bool ProbeInterface(unsigned vid,unsigned pid,unsigned page,unsigned usage) noexcept {
+ return ProbeIdentity(vid,pid) && page==0xffb0 && usage==1;
+}
 }

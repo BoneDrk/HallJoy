@@ -6,6 +6,15 @@
 #include <iostream>
 int main(){
  using namespace halljoy;
+ assert(!sparklink::ProbeIdentity(0x1038,0x1610));
+ assert(!sparklink::ProbeInterface(0x1038,0x1610,0xffc0,1));
+ assert(!sparklink::ProbeInterface(0x1038,0x1610,0xffb0,1));
+ assert(!sparklink::ProbeInterface(0x1ca6,0x529,0xffc0,1));
+ assert(!sparklink::ProbeInterface(0x1ca6,0x529,0xffb0,2));
+ assert(!sparklink::ProbeIdentity(0x1ca6,0xffff));
+ assert(sparklink::ProbeInterface(0x1ca6,0x529,0xffb0,1));
+ for(unsigned pid=0;pid<65536;++pid)if(sparklink::ExperimentalToken(0x1ca6,pid,0xffb0))assert(sparklink::ProbeInterface(0x1ca6,pid,0xffb0,1));
+
  for(unsigned pid:{0x528u,0x52au,0x52bu,0x52du,0x52cu,0x531u,0x540u}) {
   auto token=sparklink::ExperimentalToken(0x1ca6,pid,0xffb0);
   assert(token && keyboard_support::NativeNotice(4,token,true,pid)==keyboard_support::SparkLinkV2);

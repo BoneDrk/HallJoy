@@ -283,6 +283,23 @@ static bool ObserveCommunication(const BackendAnalogTelemetry& t,bool running) {
     return warning;
 }
 
+void KeyboardUI_OnAnalogPreview()
+{
+    for (int chunk = 0;
+        chunk < static_cast<int>(halljoy::keycode::kMaskChunkCount); ++chunk)
+    {
+        uint64_t bits = BackendUI_ConsumeDirtyChunk(chunk);
+        if (!bits) continue;
+
+        // The keyboard preview lives above the sub-pages and remains visible on
+        // every tab. Consuming backend dirtiness without invalidating its key
+        // windows loses release transitions until another repaint happens.
+        InvalidateDirtyBits(bits, chunk);
+    }
+
+    TickConfigLiveMarker();
+}
+
 void KeyboardUI_OnTimerTick(HWND)
 {
     HWND root = nullptr;
@@ -346,23 +363,10 @@ void KeyboardUI_OnTimerTick(HWND)
         }
     }
 
-    for (int chunk = 0;
-        chunk < static_cast<int>(halljoy::keycode::kMaskChunkCount); ++chunk)
-    {
-        uint64_t bits = BackendUI_ConsumeDirtyChunk(chunk);
-        if (!bits) continue;
-
-        // The keyboard preview lives above the sub-pages and remains visible on
-        // every tab. Consuming backend dirtiness without invalidating its key
-        // windows loses release transitions until another repaint happens.
-        InvalidateDirtyBits(bits, chunk);
-    }
+    KeyboardUI_OnAnalogPreview();
 
     // NEW: gear anim redraw for keys with override toggle animation
     TickOverrideGearAnim();
-
-    // NEW: live marker (graph only)
-    TickConfigLiveMarker();
 
     static ULONGLONG s_nextLiveSampleAt = 0;
     static uint64_t s_lastAnalogHash = 0;

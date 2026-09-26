@@ -2,6 +2,7 @@
 
 #define NOMINMAX
 #include "support_log.h"
+#include "keyboard_communication_health.h"
 // clang-format off: Windows HID headers require this dependency order.
 #include <windows.h>
 #include <setupapi.h>
@@ -89,15 +90,18 @@ bool Feature(HANDLE h, bool write, mg::Report &data) {
   const auto start = op.StartControl(
       write ? IOCTL_HID_SET_FEATURE : IOCTL_HID_GET_FEATURE, data.data(), 65,
       write ? nullptr : data.data(), write ? 0 : 65, &error);
-  if (start == HidIoOperation::StartResult::Failed)
-    return false;
+  if (start == HidIoOperation::StartResult::Failed) {
+    SetLastError(error); return false;
+  }
   if (start == HidIoOperation::StartResult::Pending &&
       op.Wait(50) != WAIT_OBJECT_0) {
     op.CancelAndDrain(&done, &error);
-    return false;
+    SetLastError(ERROR_TIMEOUT); return false;
   }
-  return op.Finish(&done, &error, false) &&
-         (write || (done == 64 && data[0] == 0));
+  if (!op.Finish(&done, &error, false)) {SetLastError(error);return false;}
+  const bool valid=write || (done == 64 && data[0] == 0);
+  SetLastError(valid ? ERROR_SUCCESS : ERROR_INVALID_DATA);
+  return valid;
 }
 
 std::vector<Candidate> Enumerate(bool log) {
@@ -186,8 +190,14 @@ public:
     handle = Handle(CreateFileW(
         candidate.path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, nullptr));
-    if (!handle)
+    if (!handle) {
+      const DWORD error=GetLastError();
+      SupportLog_Event("rongyuan.exclusive_open_failed",candidate.attributes.ProductID,error);
+      halljoy::keyboard_support::ReportCommunicationAccessFailure(
+          static_cast<unsigned>(NativeAnalogProtocol::RongYuanStream),error);
+      SetLastError(error);
       return false;
+    }
     std::lock_guard<std::mutex> lock(g_activeLock);
     g_active = handle.v;
     return true;
@@ -212,6 +222,7 @@ public:
     } while (!g_stop.load() && GetTickCount64() < deadline);
     if (!optional)
       poisoned = true;
+    SetLastError(g_stop.load() ? ERROR_OPERATION_ABORTED : ERROR_INVALID_DATA);
     return false;
   }
   bool OpenInput() {
@@ -324,13 +335,17 @@ bool Run(const Candidate &c) {
   Clear();
   Session s(c);
   const char *phase = "open";
-  const bool ready = s.Open() && (phase = "identity proof", Proof(s)) &&
-                     (phase = "assignments", Map(s)) &&
-                     (phase = "input open", s.OpenInput());
+  unsigned phaseCode=1;
+  SetLastError(ERROR_SUCCESS);
+  const bool ready = s.Open() && (phase = "identity proof", phaseCode=2, Proof(s)) &&
+                     (phase = "assignments", phaseCode=3, Map(s)) &&
+                     (phase = "input open", phaseCode=4, s.OpenInput());
   if (!ready) {
+    const DWORD error=GetLastError();
     ++g_bad;
+    SupportLog_Event("rongyuan.admission_failed",phaseCode,error);
     DebugLog_Write(L"[rongyuan.stream] admission failed phase=%hs error=%lu",
-                   phase, GetLastError());
+                   phase, error);
     Clear();
     return false;
   }
@@ -343,39 +358,48 @@ bool Run(const Candidate &c) {
   }
   if(!NativeAnalogRouting_Claim(c.attributes.VendorID,c.attributes.ProductID,c.inputPath.c_str(),NativeAnalogProtocol::RongYuanStream) &&
      !NativeAnalogRouting_IsClaimedBy(c.inputPath.c_str(),NativeAnalogProtocol::RongYuanStream)) {Clear();return false;}
-  if(!s.Enable()) {++g_bad;DebugLog_Write(L"[rongyuan.stream] start command failed error=%lu",GetLastError());Clear();return false;}
+  if(!s.Enable()) {++g_bad;SupportLog_Event("rongyuan.start_failed",s.model->board,GetLastError());DebugLog_Write(L"[rongyuan.stream] start command failed error=%lu",GetLastError());Clear();return false;}
   g_present.store(true);
   g_connected.store(true);
+  SupportLog_Event("rongyuan.connected",s.model->board,s.units);
   DebugLog_Write(L"[rongyuan.stream] connected board=%u keys=%u "
                  L"units_per_mm=%u experimental=1",
                  s.model->board, g_mapped.load(), s.units);
   std::array<unsigned char,32> report{};
   HidIoOperation read(s.Input());
+  DWORD endError=ERROR_SUCCESS;
+  unsigned endReason=0; // 0 stop, 1 read start, 2 wait, 3 read finish, 4 invalid packet
   while (!g_stop.load()) {
     DWORD error=0,done=0;
     const auto start=read.StartRead(report.data(),static_cast<DWORD>(report.size()),&error);
-    if(start==HidIoOperation::StartResult::Failed) {++g_bad;break;}
+    if(start==HidIoOperation::StartResult::Failed) {endReason=1;endError=error;++g_bad;break;}
     bool failed=false;
     if(start==HidIoOperation::StartResult::Pending) {
       HANDLE events[]={read.Event(),g_wake};
       while(!g_stop.load()) {
         const auto wait=WaitForMultipleObjects(2,events,FALSE,1000);
         if(wait==WAIT_OBJECT_0)break;
-        if(wait==WAIT_FAILED) {failed=true;break;}
+        if(wait==WAIT_FAILED) {endReason=2;endError=GetLastError();failed=true;break;}
       }
     }
     if(g_stop.load() || failed) {read.CancelAndDrain(&done,&error);break;}
-    if(!read.Finish(&done,&error,false)) {++g_bad;break;}
+    if(!read.Finish(&done,&error,false)) {endReason=3;endError=error;++g_bad;break;}
     // RID5 also carries vendor notifications unrelated to key travel.
     if(done==32 && report[0]==5 && report[1]!=0x1b)continue;
     mg::Sample sample{};
     if(!mg::Parse(report.data(),done,sample) || !Publish(sample,*s.model,GetTickCount64())) {
+      endReason=4;endError=ERROR_INVALID_DATA;
       ++g_bad;DebugLog_Write(L"[rongyuan.stream] invalid input bytes=%lu; session stopped",done);break;
     }
   }
+  if(!g_stop.load() && endReason==4)halljoy::keyboard_support::ReportCommunicationAnomaly(
+      static_cast<unsigned>(NativeAnalogProtocol::RongYuanStream));
+  if(!g_stop.load())halljoy::keyboard_support::ReportCommunicationAccessFailure(
+      static_cast<unsigned>(NativeAnalogProtocol::RongYuanStream),endError);
+  SupportLog_Event("rongyuan.session_end",endReason,endError);
   DebugLog_Write(
       L"[rongyuan.stream] session ended stop=%d error=%lu failures=%llu",
-      g_stop.load() ? 1 : 0, GetLastError(),
+      g_stop.load() ? 1 : 0, endError,
       static_cast<unsigned long long>(g_bad.load()));
   Clear();
   return false;
@@ -522,7 +546,7 @@ void Telemetry(NativeAnalogBackendTelemetry *out) {
                                 0xffffffffull, now - last))
                           : 0;
   _snwprintf_s(out->status, _countof(out->status), _TRUNCATE,
-               L"%s: USB analog stream; hardware/range validation pending",
+               model && model->board==3365 ? L"%s: USB analog stream" : L"%s: USB analog stream; hardware/range validation pending",
                model ? model->name : L"RongYuan");
 }
 } // namespace

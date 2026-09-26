@@ -68,6 +68,7 @@ static const wchar_t* FrozenSupportTitle() {
     case Slice75: return L"Chilkey Slice75 HE: hardware testing incomplete";
     case RongYuan: return L"MonsGeek / EPOMAKER: hardware testing incomplete";
     case TartarusPro: return L"Tartarus Pro: hardware testing incomplete";
+    case SteelSeriesApex: return L"SteelSeries Apex Pro: hardware testing incomplete";
     case Neo65: return L"Neo65 SONIC HE+: hardware testing incomplete";
     case SparkLinkV2: return L"Keyboard: hardware testing incomplete";
     case RongYuanStream: return L"Keyboard: hardware testing incomplete";

@@ -100,6 +100,7 @@ def main() -> int:
     run([sys.executable, str(root / "tools" / "check_jingtai_v1_profiles.py")])
     run([sys.executable, str(root / "tools" / "build_jingtai_layouts.py")])
     run([sys.executable, str(root / "tools" / "build_rongyuan_layouts.py")])
+    run([sys.executable, str(root / "tools" / "build_epomaker_layouts.py")])
     run([sys.executable, str(root / "tools" / "build_neo_k617_layouts.py")])
     run([sys.executable, str(root / "tools" / "prepare_madlions_layouts.py")])
     run([sys.executable, str(root / "tools" / "prepare_atk_hex80_layout.py")])
@@ -245,6 +246,8 @@ def main() -> int:
             ("mg75_pro_protocol", [tests / "mg75_pro_protocol_test.cpp"]),
             ("tartarus_protocol", [tests / "tartarus_protocol_test.cpp", hall / "keyboard_support_status.cpp"]),
             ("neo65_protocol", [tests / "neo65_protocol_test.cpp"]),
+            ("steelseries_apex_protocol", [tests / "steelseries_apex_protocol_test.cpp"]),
+            ("uap_discovery_policy", [tests / "uap_discovery_policy_test.cpp"]),
             ("sparklink_model_profiles", [tests / "sparklink_model_profiles_test.cpp"]),
             ("rongyuan_stream_protocol", [tests / "rongyuan_stream_protocol_test.cpp", hall / "keyboard_support_status.cpp"]),
             ("three_keyboard_protocol", [tests / "three_keyboard_protocol_test.cpp", hall / "keyboard_support_status.cpp"]),

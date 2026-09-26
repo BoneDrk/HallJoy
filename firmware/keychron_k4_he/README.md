@@ -12,7 +12,7 @@ shared C11 headers resolve from `src/HallJoyProject/HallJoy` in this project.
 Build target `keychron/k4_he/ansi:keychron`. Keep pinned QMK submodules and
 ARM GCC recorded in the checkpoint. Never patch the preserved legacy UAP tree.
 
-Protocol A9/70..7D: capabilities, open, staged profile begin/chunk/commit,
+Protocol A9/70..7E: capabilities, open, staged profile begin/chunk/commit,
 start, heartbeat, stop, telemetry, explicit maintenance DFU, actual pad report
 and compact burst telemetry. Status byte17 bit2 advertises A9/7B: one request,
 six 22-byte fragments of a CRC-protected 130-byte coherent snapshot. Exact
@@ -26,7 +26,7 @@ r5 keeps the legacy scanner and digital/rapid-trigger processing, but native
 gamepad output uses fresh pre-gate ADC values and floating calibrated travel.
 The old5-count gate and uint8 travel rounding no longer affect onboard output.
 The polynomial/per-key calibration are preserved; no temporal smoothing added.
-Existing keyboard UI telemetry remains0..240; the actual controller tester
+Legacy keyboard UI telemetry remains0..240; the actual controller tester
 reads the high-precision output independently. Status byte17 bit3 advertises
 the precision/capture capability. A9/7C with RAW1 and slot starts512 consecutive
 raw samples in RAM; A9/7D reads them. Capture only allowed while OFF; its buffer
@@ -53,3 +53,12 @@ preserving settings. Sector 0x08004000..0x08007fff must be copied from the exact
 connected-device dump when constructing a full image. Strip the 16-byte DFU
 suffix before overlaying executable bytes. Record hashes and verify readback
 before boot. Full backup excludes the separate external calibration EEPROM.
+
+r6 adds capability bit4/A9/7E: sparse coherent full-state snapshots, five nonzero
+slot:uint8/depth:uint16LE records per32-byte report. Header: A9,7E,version1,
+flags(calibrated1,last2),session32LE,scan32LE,page8,count8; records at14..28,
+reserved29=0,CRC16-CCITT(initFFFF) of bytes0..29 at30..31. Omitted slots release.
+Up to23 pages, frozen sequence/session, sorted unique slots, atomic host commit.
+Prepared after native gamepad output, using fresh precise calibrated depth;
+old commands remain. No descriptor change. Measured162.667 snapshots/s vs48.1463
+legacy on the installed r6; actual display FPS remains owner-evaluated.

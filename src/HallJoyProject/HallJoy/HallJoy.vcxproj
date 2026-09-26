@@ -629,6 +629,9 @@
     <ClCompile Include="rongyuan_stream_backend.cpp" />
     <ClCompile Include="tartarus_backend.cpp" />
     <ClCompile Include="neo65_backend.cpp" />
+    <ClCompile Include="steelseries_apex_backend.cpp" />
+    <ClInclude Include="steelseries_apex_backend.h" />
+    <ClInclude Include="steelseries_apex_protocol.h" />
     <ClInclude Include="rongyuan_stream_backend.h" />
     <ClInclude Include="tartarus_backend.h" />
     <ClInclude Include="neo65_backend.h" />

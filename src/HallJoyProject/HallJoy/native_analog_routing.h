@@ -28,6 +28,7 @@ enum class NativeAnalogProtocol : std::uint8_t
     RongYuanStream = 22,
     TartarusPro = 23,
     Neo65 = 24,
+    SteelSeriesApex = 25,
     Simulator = 250,
 };
 

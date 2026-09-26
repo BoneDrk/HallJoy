@@ -69,6 +69,7 @@ See the [full keyboard list and support statuses](https://docs.google.com/spread
 **ATTACK SHARK:** R85 HE (USB), X65 Pro  
 **AULA:** WIN 60 HE MAX, WIN 60 HE, WIN 68 HE, KP-TE153, MINI 60 HE (USB), MINI 60 HE Pro, MINI 60 HE MAX (USB)  
 **DrunkDeer:** A75, A75 Pro, G60, G65, G75  
+**EPOMAKER:** HE108 (USB)  
 **GravaStar:** Mercury V75  
 **IPI:** QBZ75, Aurora 75  
 **IROK:** MG75 Max, NA87  
@@ -79,6 +80,7 @@ See the [full keyboard list and support statuses](https://docs.google.com/spread
 **Razer:** Huntsman V2 Analog, Huntsman Mini Analog, Huntsman V3 Pro, Huntsman V3 Pro Mini, Huntsman V3 Pro Tenkeyless  
 **Redragon:** K673RGB-M  
 **SayoDevice:** O3C  
+**SteelSeries:** Apex Pro (original full-size, firmware 4.16.8; analog keys only)  
 **Wooting:** 60HE, 60HE+, 60HE v2 (including Split), 80HE, 80HE+ (including Split), One, Two, Two HE, UwU, UwU RGB
 
 ### Experimental support
@@ -106,7 +108,7 @@ gamepad output are implemented. HallJoy shows a yellow notice for these models.
 **DSPIXEL:** DS KEY, Magic 80  
 **E7:** 68 PRO V2  
 **EDRA:** EK368RT  
-**EPOMAKER:** G84 HE, G84 HE JIS, HE108, HE60 Lite, HE60 Wired, HE60 Wireless, HE65 Mag, HE68 Lite, HE68 Mag, HE75 Mag, HE75 V2  
+**EPOMAKER:** G84 HE, G84 HE JIS, HE60 Lite, HE60 Wired, HE60 Wireless, HE65 Mag, HE68 Lite, HE68 Mag, HE75 Mag, HE75 V2  
 **EvoFox:** Ronin HS65  
 **EWEADN:** DEEP68 HE, DEEP68 Pro HE, DEEP80 HE (magnetic version), DEEP80 Max HE (magnetic version), DEEP80 Pro HE (magnetic version), DK63 HE, DK63 Star HE, DK68 HE, DK68 Pro HE, DK68 Star HE, DK68 V2 HE, DK75 E HE, DK75 HE, DK75 Pro HE, DK80 HE, ES68, ES68 EVO, ES68 Lite, Gamma75 HE (EXX collaboration), SEEK75, SMART 875 HE, V99 (magnetic version), X87HE, ZAP68 HE, ZAP68 SE, ZAP68 Ultra HE, ZAP87 HE  
 **FL ESPORTS:** Blend HE, D75 HE, D98 HE, FL750 (magnetic version), Flame65S, GP75 HE, GP87 HE, MK870 HE, NX108, NX68 Pro, X80 HE  
@@ -163,6 +165,7 @@ gamepad output are implemented. HallJoy shows a yellow notice for these models.
 **SARU:** KX69HE, KX78HE  
 **SAVIO:** ASTRAL  
 **Skyloong:** GK61 HE, GK68 HE, GK75 HE  
+**SteelSeries:** Apex Pro Gen 3 (full-size), Apex Pro TKL (original) — firmware 4.16.8; analog keys only.  
 **Sunsonny:** N-J100  
 **Syntech:** Chronos 68  
 **Titan Nation:** Storm68, TITAN60 PCB, TITAN68HE  

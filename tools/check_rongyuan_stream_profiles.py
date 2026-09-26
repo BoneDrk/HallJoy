@@ -54,6 +54,13 @@ for m in profiles:
     assert expected in header, key
 catalog = json.loads((ROOT/'docs/development/keyboard_support_notices.json').read_bytes())
 group = next(g for g in catalog['groups'] if g['id']=='RongYuanStream')
-assert {(m['brand'].lower(),m['model'].lower()) for m in profiles} == {(m['brand'].lower(),m['model'].lower()) for m in group['models']}
+confirmed=group.get('confirmed_devices',[])
+for device in confirmed:
+    matches=[m for m in profiles if m['board']==device['board'] and m['pid']==device['pid']]
+    assert len(matches)==1 and (matches[0]['brand'],matches[0]['model'])==(device['brand'],device['model'])
+    spec=json.loads((ROOT/'tools/layout_catalog.json').read_bytes())['brands'][device['brand']]
+    layout=next(m for m in spec['models'] if matches[0]['product'] in m['products'])
+    assert int(device['token'],16)==int(hashlib.sha256(layout['id'].encode()).hexdigest()[:16],16)
+assert {(m['brand'].lower(),m['model'].lower()) for m in profiles} == {(m['brand'].lower(),m['model'].lower()) for m in group['models']+confirmed}
 assert group['protocol']==22 and group['flag']==65536
 print(f'RONGYUAN_STREAM_PROFILES=PASS revisions={len(seen)} models={len(group["models"])}')

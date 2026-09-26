@@ -358,3 +358,8 @@ const NativeAnalogBackendDescriptor& BackendNative_GetSayoDescriptor();
 #if defined(HALLJOY_ANALOG_SIMULATOR)
 bool Backend_TestSparkFnPublication();
 #endif
+
+// Coalesced onboard preview hint; carries no input data. UI reads latest cache.
+constexpr UINT WM_APP_ANALOG_PREVIEW_READY = WM_APP + 380;
+void BackendUI_SetPreviewWindow(HWND window) noexcept;
+void BackendUI_AcknowledgePreview() noexcept;

@@ -1,4 +1,10 @@
-> Latest published release: [1.6.3](current/RELEASE_1.6.3_PUBLICATION_2026-09-25.md).
+> EPOMAKER: [HE108 confirmed, startup contention warning and seven layouts](current/EPOMAKER_HE108_2026-09-26.md). Included in 1.6.4.
+
+> SteelSeries: [confirmed Apex Pro and neighboring firmware review](current/STEELSERIES_FAMILY_REVIEW_2026-09-25.md).
+
+> Current local addition: [Apex Pro analog and cross-protocol reset fix](current/STEELSERIES_APEX_PRO_IMPLEMENTATION_2026-09-25.md).
+
+> Release 1.6.4: [publication record](current/RELEASE_1.6.4_PUBLICATION_2026-09-26.md).
 
 > Identity compatibility: [cross-catalog USB audit](current/USB_IDENTITY_AUDIT_2026-09-24.md), exact aliases and held conflicts.
 

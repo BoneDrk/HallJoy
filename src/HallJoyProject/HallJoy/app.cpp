@@ -1370,6 +1370,7 @@ static void AppShutdownNoThrow(HWND hwnd) noexcept
     UpdateMouseCursorLockState(false);
     halljoy::engine_runtime::ui_bridge::CancelPending();
 
+    BackendUI_SetPreviewWindow(nullptr);
     if (hwnd)
     {
         KillTimer(hwnd, UI_TIMER_ID);
@@ -1792,6 +1793,14 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         }
         return 0;
 
+    case WM_APP_ANALOG_PREVIEW_READY:
+        // Acknowledge first: a producer racing this dispatch may queue one more
+        // hint. Read current values, never replay historical frames.
+        BackendUI_AcknowledgePreview();
+        if(g_hPageMain && IsWindowVisible(hwnd) && !IsIconic(hwnd))
+            KeyboardUI_OnAnalogPreview();
+        return 0;
+
     case WM_APP_REQUEST_SAVE:
         RequestSettingsSave(hwnd);
         return 0;
@@ -2094,6 +2103,7 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
 
     if (!hwnd) { DebugLog_Write(L"[app] CreateWindowEx failed err=%lu", GetLastError()); return 2; }
     g_hMainWnd = hwnd;
+    BackendUI_SetPreviewWindow(hwnd);
     Na87Diagnostic_Start();
 #if !defined(HALLJOY_ATTACKSHARK_NATIVE)
     SharkDiagnostic_Start();

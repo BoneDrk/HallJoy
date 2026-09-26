@@ -24,7 +24,7 @@ std::mutex padMutex;
 std::array<uint8_t,20> padReport{};
 std::atomic<bool> reserved{false},present{false},connected{false},admitted{false},stopping{false};
 std::atomic<uint64_t> monitorUntil{0},updates{0},failures{0},lastFrame{0};
-std::atomic<unsigned> state{0};
+std::atomic<unsigned> state{0},telemetryLevels{241};
 halljoy::physical_analog::Publication values;
 void ClearPad() {
     {std::lock_guard<std::mutex> lock(padMutex);padReport={};}
@@ -96,6 +96,7 @@ unsigned Body() {
             // Never hijack an existing session. Its owner/watchdog must release it.
             Clear();state.store(1);WaitForSingleObject(cancel,500);continue;
         }
+        telemetryLevels.store(client.PreciseTelemetry()?65536:241);
         present.store(true);connected.store(true);Bind();state.store(2);
         bool healthy=true;
         auto nextProfile=uint64_t{0};
@@ -183,7 +184,7 @@ void Telemetry(NativeAnalogBackendTelemetry* out) {
     if(!out)return;*out={};out->present=Present();out->connected=Connected();
     out->vendorId=0x3434;out->productId=0x0e40;out->usagePage=0xff60;out->usage=0x61;
     if(out->connected) out->verifiedLayoutToken=kLayoutToken;
-    out->mappedKeys=100;out->nominalRawLevels=241;out->inputReportBytes=33;out->outputReportBytes=33;
+    out->mappedKeys=100;out->nominalRawLevels=telemetryLevels.load();out->inputReportBytes=33;out->outputReportBytes=33;
     out->successfulUpdates=updates.load();out->failedUpdates=failures.load();
     out->activeKeys=values.Active(GetTickCount64());
     const auto last=lastFrame.load();out->lastUpdateAgeMs=last?static_cast<uint32_t>(GetTickCount64()-last):0;

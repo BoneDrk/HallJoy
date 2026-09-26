@@ -1162,6 +1162,97 @@
             "RY1B-3759"
           ],
           "url": ""
+        },
+        {
+          "id": "epomaker_layout_2520",
+          "brand": "EPOMAKER",
+          "model": "HE75 Mag",
+          "variant": "ANSI",
+          "count": 83,
+          "source": "docs/research/epomaker-layouts/epomaker_layout_2520.json",
+          "sha256": "7c2f02957cbc0b1a7fe620e4150248333cb217efb4493937814d4f737aa681e5",
+          "products": [
+            "RY1B-2520"
+          ],
+          "url": "https://gearhub.top/v4/"
+        },
+        {
+          "id": "epomaker_layout_3365",
+          "brand": "EPOMAKER",
+          "model": "HE108",
+          "variant": "ANSI",
+          "count": 104,
+          "source": "docs/research/epomaker-layouts/epomaker_layout_3365.json",
+          "sha256": "b8214027815ace96587de464ede8dbfbcc1d4c8bc7111c7ce9d87dd09cb46742",
+          "products": [
+            "RY1B-3365"
+          ],
+          "url": "https://gearhub.top/v4/"
+        },
+        {
+          "id": "epomaker_layout_3518",
+          "brand": "EPOMAKER",
+          "model": "HE75 V2",
+          "variant": "ANSI",
+          "count": 81,
+          "source": "docs/research/epomaker-layouts/epomaker_layout_3518.json",
+          "sha256": "a6c2078d4d973b3c6e7baefd34497394a8a256f65a1da6c17872b97d292da306",
+          "products": [
+            "RY1B-3518"
+          ],
+          "url": "https://gearhub.top/v4/"
+        },
+        {
+          "id": "epomaker_layout_3664",
+          "brand": "EPOMAKER",
+          "model": "HE68 Lite",
+          "variant": "ISO",
+          "count": 69,
+          "source": "docs/research/epomaker-layouts/epomaker_layout_3664.json",
+          "sha256": "6dc667f471713065746c6341b9a95a16b2d90a219f2b9752736942abdb7efeef",
+          "products": [
+            "RY1B-3664"
+          ],
+          "url": "https://gearhub.top/v4/"
+        },
+        {
+          "id": "epomaker_layout_3691",
+          "brand": "EPOMAKER",
+          "model": "HE60 Wired",
+          "variant": "ANSI",
+          "count": 61,
+          "source": "docs/research/epomaker-layouts/epomaker_layout_3691.json",
+          "sha256": "9eaca241cdc8bce9205017697e9018f656fd9736fd8773874753ab4388421ee0",
+          "products": [
+            "RY1B-3691"
+          ],
+          "url": "https://gearhub.top/v4/"
+        },
+        {
+          "id": "epomaker_layout_3692",
+          "brand": "EPOMAKER",
+          "model": "HE60 Wireless",
+          "variant": "ANSI",
+          "count": 61,
+          "source": "docs/research/epomaker-layouts/epomaker_layout_3692.json",
+          "sha256": "c1da742d7eb2d5b4a772d2910ee65c3e026d17ef6361f715ff1c7a5e705e853e",
+          "products": [
+            "RY1B-3692"
+          ],
+          "url": "https://gearhub.top/v4/"
+        },
+        {
+          "id": "epomaker_layout_3703",
+          "brand": "EPOMAKER",
+          "model": "G84 HE JIS",
+          "variant": "JIS",
+          "count": 88,
+          "source": "docs/research/epomaker-layouts/epomaker_layout_3703.json",
+          "sha256": "07400af55302803064f5f39b52b90dc176faf5c57314dbfd17c437913c98bcec",
+          "products": [
+            "RY1B-3703"
+          ],
+          "url": "https://gearhub.top/v4/"
         }
       ]
     },

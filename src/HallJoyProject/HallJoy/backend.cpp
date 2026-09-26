@@ -18,6 +18,7 @@
 #include <atomic>
 #include <bitset>
 #include <cmath>
+#include <chrono>
 #include <cstring>
 #include <cstdint>
 #include <cwctype>
@@ -159,6 +160,30 @@ static void TraceSimulatorPipelineReport(const XUSB_REPORT& report)
 static std::array<std::atomic<uint16_t>, halljoy::keycode::kCount> g_uiAnalogM{};
 static std::array<std::atomic<uint16_t>, halljoy::keycode::kCount> g_uiRawM{};
 static std::array<std::atomic<uint64_t>, halljoy::keycode::kMaskChunkCount> g_uiDirty{};
+static std::atomic<HWND> g_previewWindow{nullptr};
+static std::atomic<bool> g_previewPending{false};
+void BackendUI_SetPreviewWindow(HWND window) noexcept {
+    g_previewWindow.store(window,std::memory_order_release);
+    if(!window)g_previewPending.store(false,std::memory_order_release);
+}
+void BackendUI_AcknowledgePreview() noexcept {
+    g_previewPending.store(false,std::memory_order_release);
+}
+static void NotifyOnboardPreview() noexcept {
+    // No synchronous UI call, wait or queue of snapshots on the input worker.
+    const HWND window=g_previewWindow.load(std::memory_order_acquire);
+    if(!window)return;
+    // GetTickCount64 has a coarse tick and can cap a 1ms preference near 64Hz.
+    // Use the performance-counter-backed clock; still coalesce queued hints.
+    static std::chrono::steady_clock::time_point next{};
+    const auto now=std::chrono::steady_clock::now();
+    if(now<next)return; // The ordinary timer remains a fallback for the final value.
+    next=now+std::chrono::milliseconds(std::clamp(Settings_GetUIRefreshMs(),1u,200u));
+    if(!g_previewPending.exchange(true,std::memory_order_acq_rel) &&
+       !PostMessageW(window,WM_APP_ANALOG_PREVIEW_READY,0,0))
+        g_previewPending.store(false,std::memory_order_release);
+}
+
 
 // list of HID codes to track (provided by UI)
 struct TrackedKeys {
@@ -3032,6 +3057,7 @@ void Backend_Tick()
         const auto& source=KeychronOnboard_GetNativeBackendDescriptor();
         const auto tracked=g_trackingSnapshot.load(std::memory_order_acquire);
         uint16_t maxRaw=0,maxOut=0;
+        bool previewChanged=false;
         if(tracked) for(int i=0;i<tracked->count;++i) {
             const auto hid=tracked->keys[i];
             if(!halljoy::keycode::IsSupported(hid)) continue;
@@ -3039,7 +3065,9 @@ void Backend_Tick()
             const auto filtered=static_cast<uint16_t>(std::clamp(
                 std::lround(BackendCurve_ApplyByHid(hid,raw/1000.f)*1000.f),0l,1000l));
             g_uiRawM[hid].store(raw);maxRaw=std::max(maxRaw,raw);maxOut=std::max(maxOut,filtered);
-            if(g_uiAnalogM[hid].exchange(filtered)!=filtered) g_uiDirty[hid/64].fetch_or(1ULL<<(hid%64));
+            if(g_uiAnalogM[hid].exchange(filtered)!=filtered) {
+                g_uiDirty[hid/64].fetch_or(1ULL<<(hid%64));previewChanged=true;
+            }
         }
         g_tmTrackedMaxRawMilli.store(maxRaw);g_tmTrackedMaxOutMilli.store(maxOut);
         if(g_bindCaptureEnabled.load()) {
@@ -3051,6 +3079,7 @@ void Backend_Tick()
             if(down && !g_bindHadDown.exchange(down)) g_bindCapturedPacked.store(best|(uint32_t(depth)<<16));
             else g_bindHadDown.store(down);
         } else g_bindHadDown.store(false);
+        if(previewChanged)NotifyOnboardPreview();
         return;
     }
 
@@ -4159,7 +4188,7 @@ void Backend_NotifyDeviceChange()
     if (!g_runtimeAdmission.load(std::memory_order_acquire))
         return;
     // The UAP child deliberately has no periodic discovery thread.  Forward
-    // genuine Windows topology changes to its supervisor; this only queues a
+    // topology notifications to its supervisor, which filters UAP source changes before a
     // bounded replacement and never enumerates HID from the UI thread.
     (void)AnalogHostClient_RequestDeviceRefresh();
 

@@ -1,3 +1,5 @@
+> 2026-09-26: startup sharing/lock conflicts now explicitly trigger the common warning before the first successful stream. RongYuan/snapshot worker paths covered; removed devices expire even without an earlier connection. See EPOMAKER_HE108_2026-09-26.md.
+
 # General keyboard communication warning — 2026-09-24
 
 Owner confirms the R68 tester had the web configurator open and reports that

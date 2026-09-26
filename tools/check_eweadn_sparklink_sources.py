@@ -34,6 +34,12 @@ def main():
     for anchor in ['{ 0x01, 0x02 }', '{ 0x03, 0x01, 0x00, row }', '{ 0x04, 0x03, 0x01, row }',
                    'routeProbe[2] != 0x01', 'kSparkColsPerRow = 21']:
         assert anchor in backend, anchor
+    # Shape-only admission formerly sent 01 02 (reset on Apex Pro) to strangers.
+    assert '(usagePage & 0xFF00u)' not in backend
+    enum_start=backend.index('    uint32_t dedicated6x21Skipped = 0;')
+    discovery=backend[enum_start:backend.index('    if (dedicated6x21Skipped != 0)',enum_start)]
+    assert discovery.index('ProbeIdentity(identity.VendorID,identity.ProductID)') < discovery.index('GENERIC_READ | GENERIC_WRITE')
+    assert 'ProbeInterface(attr.VendorID,attr.ProductID,usagePage,usage)' in discovery
     pairs = {(m['brand'],m['model']) for m in group['models']}
     pids = set()
     for model in evidence['models']:

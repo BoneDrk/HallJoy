@@ -30,6 +30,19 @@ int main()
     ReportCommunicationAnomaly(17);
     assert(CommunicationAnomalySequence(17)==sequence+1);
     ReportCommunicationAnomaly(256);assert(CommunicationAnomalySequence(256)==0);
+    const auto initial=CommunicationAnomalySequence(22);
+    assert(!ReportCommunicationAccessFailure(22,5));
+    assert(!ReportCommunicationAccessFailure(22,1167));
+    assert(CommunicationAnomalySequence(22)==initial);
+    assert(ReportCommunicationAccessFailure(22,32));
+    assert(CommunicationAnomalySequence(22)==initial+1);
+    health={};assert(health.Observe(100,true,false,true)); // busy before first sample
+    assert(health.Observe(20000,true,false));
+    assert(health.Observe(20001,true,true));
+    assert(!health.Observe(35001,true,true));
+    health={};assert(health.Observe(100,true,false,true));
+    assert(health.Observe(101,false,false));
+    assert(!health.Observe(30102,false,false)); // no forever-latched startup fault
     SetSearchObservation(true,true,AttackShark,true);
     assert(GetStatusSnapshot().communicationWarning && GetStatusSnapshot().frozenModels==AttackShark);
     SetSearchObservation(false,true,AttackShark,true);
@@ -80,6 +93,9 @@ int main()
         SetSearchObservation(true,true,mask);assert(GetStatusSnapshot().frozenModels==mask);
         SetSearchObservation(false,true,mask);assert(GetStatusSnapshot().frozenModels==0);
     }
+    assert(NativeNotice(22,0x5F95BAB8BCAB36D1ull,true,0x5030)==0);
+    assert(NativeNotice(22,0x5F95BAB8BCAB36D1ull,true,0x5029)!=0);
+    assert(NativeNotice(22,0,true,0x5030)!=0);
     assert(NativeNotice(17,0x5348583635414E53ull,true)==0);
     assert(NativeNotice(17,0x5348583638414E53ull,true)==AttackShark);
     assert(NativeNotice(17,0x683D58FC5C0C5E90ull,true,0x5029)==0);

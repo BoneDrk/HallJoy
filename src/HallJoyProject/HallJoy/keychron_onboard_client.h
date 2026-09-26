@@ -1,6 +1,7 @@
 #pragma once
 #include "keychron_onboard_profile.h"
 #include "keychron_onboard_compact.h"
+#include "keychron_onboard_sparse.h"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -21,7 +22,7 @@ class Client {
     Channel& channel_;
     std::uint32_t token_=0, sequence_=0, crc_=0;
     std::uint64_t heartbeatAt_=0;
-    bool active_=false, burst_=false;
+    bool active_=false, burst_=false, sparse_=false;
     hjk4_receiver receiver_{};
     bool Query(Packet request, Packet& reply, bool tokenRequired=true) {
         if (channel_.Cancelled()) return false;
@@ -55,11 +56,12 @@ class Client {
 public:
     explicit Client(Channel& channel):channel_(channel) {}
     bool Active() const noexcept { return active_; }
+    bool PreciseTelemetry() const noexcept { return sparse_; }
     std::uint32_t Token() const noexcept { return token_; }
     bool Status(Packet& reply) {
         Packet request{}; request[1]=0x70;
         if(!Query(request,reply,false) || hjk4_u16(reply.data()+18)!=HJO_PROFILE_BYTES) return false;
-        burst_=(reply[17]&4)!=0;return true;
+        burst_=(reply[17]&4)!=0;sparse_=(reply[17]&16)!=0;return true;
     }
     bool Open(const hjo_profile& profile) {
         if (token_) return false;
@@ -95,6 +97,29 @@ public:
         return hjk4_u32(wire.data()+HJO_PROFILE_BYTES-4)==crc_ ? KeepAlive() : Upload(wire.data());
     }
     bool Depth(std::array<std::uint16_t,HJO_SLOTS>& values) {
+        if(sparse_) {
+            if(!KeepAlive())return false;
+            hjk4_sparse_assembly frame{};
+            Packet request{},reply{};request[0]=0xa9;request[1]=0x7e;
+            hjk4_put32(request.data()+4,token_);
+            const auto started=channel_.NowMs();
+            if(!channel_.Exchange(request,reply))return false;
+            for(unsigned page=0;page<HJK4_SPARSE_PAGES;++page) {
+                if(page && !channel_.Read(reply))return false;
+                if(channel_.Cancelled() || channel_.NowMs()-started>200)return false;
+                const int result=hjk4_sparse_append(&frame,reply.data());
+                if(result<0 || (active_ && frame.session!=token_))return false;
+                if(!result)continue;
+                auto next=receiver_;
+                if(!active_ && next.session!=frame.session)next={frame.session,0,0,0};
+                const uint32_t delta=frame.sequence-next.sequence;
+                if(next.have_sequence && (!delta || delta>=0x80000000u))return false;
+                std::memcpy(values.data(),frame.depth,sizeof(frame.depth));
+                next.sequence=frame.sequence;next.have_sequence=1;receiver_=next;
+                return true;
+            }
+            return false;
+        }
         if(burst_) {
             if(!KeepAlive())return false;
             std::array<uint8_t,HJK4_COMPACT_BYTES> frame{};

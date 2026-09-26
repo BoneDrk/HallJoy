@@ -6,8 +6,8 @@
 #include "jingtai_v1_profiles.h"
 namespace halljoy::keyboard_support
 {
-enum FrozenModel : unsigned { NA87 = 1, NA87Pro = 2, ND75 = 4, Hero84 = 8, Azoth96 = 16, X68 = 32, FamilyCandidate = 64, Mg75Pro = 128, AttackShark = 256, GravaStar = 512, Ipi = 1024, Redragon = 2048, NuPhy = 4096, AulaRm = 8192, Slice75 = 16384, RongYuan = 32768, RongYuanStream = 65536, TartarusPro = 131072, Neo65 = 262144, SparkLinkV2 = 524288 };
-inline constexpr unsigned ImplementedModels = NA87 | Hero84 | Mg75Pro | AttackShark | GravaStar | Ipi | Redragon | AulaRm | Slice75 | RongYuan | RongYuanStream | TartarusPro | Neo65 | SparkLinkV2;
+enum FrozenModel : unsigned { NA87 = 1, NA87Pro = 2, ND75 = 4, Hero84 = 8, Azoth96 = 16, X68 = 32, FamilyCandidate = 64, Mg75Pro = 128, AttackShark = 256, GravaStar = 512, Ipi = 1024, Redragon = 2048, NuPhy = 4096, AulaRm = 8192, Slice75 = 16384, RongYuan = 32768, RongYuanStream = 65536, TartarusPro = 131072, Neo65 = 262144, SparkLinkV2 = 524288, SteelSeriesApex = 1048576 };
+inline constexpr unsigned ImplementedModels = NA87 | Hero84 | Mg75Pro | AttackShark | GravaStar | Ipi | Redragon | AulaRm | Slice75 | RongYuan | RongYuanStream | TartarusPro | Neo65 | SparkLinkV2 | SteelSeriesApex;
 // Metadata-only classification. Shared USB IDs never prove the model alone.
 inline unsigned ClassifyFrozen(unsigned vid, unsigned pid, std::wstring_view name) noexcept {
     if (halljoy::jingtai_v1::Find(vid,pid,name)) return Mg75Pro;

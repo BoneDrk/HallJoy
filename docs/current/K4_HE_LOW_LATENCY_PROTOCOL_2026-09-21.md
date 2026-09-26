@@ -1,3 +1,99 @@
+## Precise sparse preview telemetry r6 installed (2026-09-26)
+
+Owner rejected the earlier UI-only fix as insufficient FPS. Implemented A9/7E,
+negotiated by status capability bit4, with unchanged 32-byte vendor HID reports.
+A frozen full-state snapshot contains only nonzero slots, five 16-bit values per
+packet; omitted slots mean zero/released. Typical 0..5 active keys take one packet,
+maximum114 slots take23. Sorted unique slots, page order, calibration, version,
+CRC16-CCITT, session and fresh scan sequence are checked before atomic publication.
+Incomplete/corrupt/stale snapshots never partly overwrite the last accepted one.
+Host retains A9/7B and A9/78 fallbacks; invalid new packets do not fall back silently.
+
+Firmware uses the same pre-gate calibrated float source as the onboard pad,
+rounded only to16-bit telemetry, removing legacy UI0..240 rounding and5-count gate.
+No smoothing/interpolation or calibration/scanner/gamepad-mapper change. Snapshot
+computation and nonblocking vendor sends occur after native gamepad send opportunity.
+No subscription/FIFO, EEPROM writes or hidden-window polling introduced. UI hint
+throttling now uses steady_clock rather than coarse GetTickCount64; queued hints
+remain coalesced. Wire resolution65536 is not a claim of65536 physical ADC levels;
+the ordinary UI cache still uses0..1000, native gamepad precision is unchanged.
+
+Hardware evidence (neutral profiles, no visual runs):
+- Before flash, old production client:48.0003 snapshots/s, median19.9989ms,
+  p95 25.9947ms; phase0/native0 restored.
+- r6 new client,1200 complete snapshots:162.667/s, median5.998ms,p95 10.9974ms.
+- Same r6 firmware with sparse capability masked (old transport):48.1463/s,
+  median19.9995ms,p95 25.0124ms. Old protocol remains functional.
+- Scan sequence throughput during these runs:347.024/s new vs356.604/s legacy;
+  sampled scan_us2356 vs2372. These are separate runs, not proof of zero overhead
+  or measured gameplay latency; snapshot work remains bounded but consumes CPU.
+- Both runs passed profile upload/update, lease heartbeat, complete telemetry,
+  neutral output and STOP/re-enumeration. Separate watchdog probe removed XInput
+  after heartbeats stopped. Legacy WinMM enumeration still listed cached indices
+  [0,2], as previously; do not claim all Windows APIs report disappearance instantly.
+- Actual displayed FPS and visual smoothness require owner evaluation. No1000Hz claim.
+
+Backups: .local/backups/k4-preview-r6-20260926-211328.zip and companion host/docs
+archives. Fresh preflash image read twice identically:
+.local/backups/k4-r6-before-flash.bin, SHA256
+bc084b5785568d0ebd69e1ac6b7e847ddeb7152139d69a6e5c991bec2f9909dc.
+Application outside EEPROM matched preserved r5 exactly. New full image preserves
+fresh0x4000..0x7fff settings, strips QMK16-byte suffix, writes256KiB, then full
+readback matched before boot. External calibration EEPROM untouched.
+Full image/readback SHA256:0f9e5a7845e11a95910715075b30c116472f5f378e802b9962b779b25a916ced.
+QMK binary SHA256:2f04d07ea0e81fcb32e21c61c46084e0020dd5e56cfcf69bb0153c4f65bd09b7.
+
+ARM GCC13.4.0/QMK1.2.0, pinned base unchanged. Build uses existing Windows CPython
+and MSYS2 tools through local k4-qmk-cli.py adapter (only CLI environment guard
+adapted; installed packages untouched). Maintained overlay copied to existing
+k4-lowlatency tree with prior-content check. make restored missing pinned unrelated
+submodules automatically. Log:.local/k4-r6-firmware-build.log.
+Portable client tests cover all115 chord sizes, every single-bit packet mutation,
+malformed records, release, precise endpoints, wrong sessions, mixed/reordered/
+duplicate frames, timeout, heartbeat and both fallback formats. Precision/compact/
+session/profile tests PASS. Whole native static suite PASS; final UI clock guard PASS.
+Ordinary Release+6 executable gates PASS. Installed build/bin/Release/x64/HallJoy.exe
+SHA256 b9e3ee02b4f6dbf3f4a786a9160533037ba8c2e1696d7cd0965ed9773557977c.
+Logs:.local/k4-r6-{fast-result,legacy-result,host-final-build,static}.log and
+.local/k4-r6-watchdog.json. No forced logging, support-status changes or publication.
+HallJoy closed for hardware probes; K4 returned to ordinary phase0/native0.
+
+Closure correction: existing owner authorization covers closing HallJoy and verified
+children. Do not ask the owner to close it merely because Process.Path is blank.
+In this session main window/title, process name and CIM parent-child chain identified
+HallJoy24664 and its children; normal close did not exit, forced main-process close
+succeeded and released HID. An earlier request to close manually was unnecessary.
+
+## Onboard preview event delivery (2026-09-25)
+
+Owner reports visibly laggy keyboard visualization while gamepad input is ideal.
+Added a nonblocking, coalesced PostMessage hint after the onboard Backend_Tick
+publishes changed UI values. Main UI acknowledges before reading latest caches,
+then invalidates only dirty key windows and the configuration marker. It skips
+hidden/minimized windows. One pending hint maximum; no frame queue or new thread.
+The configured UI interval limits hints; existing timer remains the final-value
+fallback and handles all general housekeeping/animations. Shutdown detaches sink.
+No firmware, HID polling, gamepad mapping, smoothing or interpolation change.
+This removes timer-phase waiting but does NOT raise the measured historical
+~48.6Hz complete-matrix telemetry rate. No current FPS/latency measurement or
+visual acceptance claimed. Owner evaluates the resulting appearance.
+Existing pre_release_ui_static_audit updated for shared dirty-consumer helper,
+PASS. Ordinary Release and6 executable gates PASS; log
+.local/preview-events-final-build.log. Delivered EXE SHA256 e95009d55bc2eb3c06791afa1eb4358a5579c103ab0626883b914eb50623098d.
+No forced logging, Sheet/status changes or publication.
+
+## Preview cadence source review (2026-09-25)
+
+Owner asks what limits current keyboard analog preview. Current host Client::Depth
+uses one7B request plus6 fragments of130-byte compact matrix; publication waits
+for the complete validated snapshot. Visible backend has no extra sleep after it.
+Prior direct-client measurement48.6232Hz /median19.9907ms is historical evidence,
+not a new measurement today. UI setting in LocalAppData/HallJoy/settings.ini is1ms,
+but app.cpp uses SetTimer (documented USER_TIMER_MINIMUM10ms), so this does not
+mean1000fps. Main bottleneck indicated by prior measurement is matrix telemetry,
+then UI timer/message/paint scheduling. Native firmware gamepad output precedes
+nonblocking telemetry and does not wait for preview. No runtime/firmware changes.
+
 ## Owner confirmation, 2026-09-24
 
 Owner reports Keychron now works perfectly after the host-build correction.

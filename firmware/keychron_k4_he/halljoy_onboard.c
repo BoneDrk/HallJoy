@@ -9,6 +9,7 @@
 #include "keychron_onboard_session.h"
 #include "keychron_onboard_profile.h"
 #include "keychron_onboard_compact.h"
+#include "keychron_onboard_sparse.h"
 
 extern usb_endpoint_in_t usb_endpoints_in[USB_ENDPOINT_IN_COUNT];
 extern const matrix_row_t analog_matrix_mask[];
@@ -33,6 +34,11 @@ static uint32_t reconnect_at;
 static float values[HJO_SLOTS];
 static uint8_t telemetry[HJK4_FRAME_BYTES];
 static uint8_t compact[HJK4_COMPACT_BYTES], burst_next_page;
+static uint16_t sparse_depth[HJO_SLOTS];
+static unsigned sparse_cursor;
+static uint8_t sparse_page;
+static uint32_t sparse_generation,sparse_sequence;
+static bool sparse_requested,sparse_sending,sparse_calibrated;
 static uint32_t scan_sequence, last_scan_us, maximum_scan_us, acquisition_end_us;
 static volatile bool usb_reset_seen;
 void halljoy_onboard_usb_reset(void) { usb_reset_seen = true; }
@@ -115,10 +121,10 @@ static void burst_page(uint8_t page) {
 // Commands A9/70..78 are reserved for HJO1 and always return tagged state.
 // Profiles are RAM-only: HallJoy owns persistence. No EEPROM writes here.
 bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
-    if (length != 32 || data[0] != 0xA9 || data[1] < 0x70 || data[1] > 0x7D) return false;
+    if (length != 32 || data[0] != 0xA9 || data[1] < 0x70 || data[1] > 0x7E) return false;
     // Host sends one request at a time. Busy responses are dropped so the host
     // retries with its bounded timeout; never block scanning to queue replies.
-    if (response_pending) return true;
+    if (response_pending || sparse_requested) return true;
     hjo_tick(&session, timer_read32());
     const uint8_t command = data[1];
     const uint32_t token = hjk4_u32(data + 4);
@@ -126,6 +132,8 @@ bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
     uint8_t page = data[2];
     switch (command) {
         case 0x70: break; // capabilities/status
+        case 0x7E: // Build only after the gamepad has had its send opportunity.
+            sparse_requested=true;return true;
         case 0x7C: // RAM-only raw capture, requires exact explicit marker
             if(session.phase!=HJO_OFF || memcmp(data+8,"RAW1",4) || !physical(data[2])) {status=7;break;}
             capture_slot=data[2];capture_count=0;capture_first_scan=0;capture_running=true;
@@ -208,7 +216,7 @@ bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
         response[9]=(uint8_t)count; memcpy(response+10,telemetry+offset,count);
     } else {
         memcpy(response+8,"HJO1",4); hjk4_put32(response+12,profile_crc);
-        response[16]=native_descriptor; response[17]=(profile_ready ? 1u : 0u) | 2u | 4u | 8u;
+        response[16]=native_descriptor; response[17]=(profile_ready ? 1u : 0u) | 2u | 4u | 8u | 16u;
         hjk4_put16(response+18,HJO_PROFILE_BYTES);
         hjk4_put32(response+20,scan_sequence); hjk4_put32(response+24,last_scan_us);
         hjk4_put32(response+28,maximum_scan_us);
@@ -265,7 +273,7 @@ void halljoy_onboard_task(uint32_t scan_us) {
     // USB restart is intentionally allowed only at mode boundaries. Normal
     // scans, telemetry and gamepad reports never call the blocking restart.
     if (reconnect_pending && timer_elapsed32(reconnect_at)>=50) {
-        response_pending=false;burst_next_page=0;
+        response_pending=false;burst_next_page=0;sparse_requested=false;sparse_sending=false;
         restart_usb_driver(&USB_DRIVER);
         reconnect_pending=false;
         if (!native_descriptor) hjo_disconnect(&session);
@@ -289,8 +297,27 @@ void halljoy_onboard_task(uint32_t scan_us) {
             last_report=report; have_last_report=true;
         }
     }
+    if(sparse_requested) {
+        // Same fresh pre-gate calibrated input as the native pad. No temporal
+        // filter or legacy 0..240 rounding. Freeze once, send bounded pages.
+        for(unsigned i=0;i<HJO_SLOTS;++i)
+            sparse_depth[i]=physical(i)?(uint16_t)lroundf(halljoy_analog_precise(i/MATRIX_COLS,i%MATRIX_COLS)*65535.0f):0;
+        sparse_generation=session.generation?session.generation:1;
+        sparse_sequence=scan_sequence;sparse_calibrated=calibrated!=0;
+        sparse_cursor=0;sparse_page=0;sparse_requested=false;sparse_sending=true;
+        hjk4_sparse_encode(response,sparse_depth,&sparse_cursor,sparse_page++,
+            sparse_generation,sparse_sequence,sparse_calibrated);
+        response_pending=true;
+    }
     if (response_pending && try_packet(USB_ENDPOINT_IN_RAW,response,sizeof(response))) {
         response_pending=false;
+        if(sparse_sending) {
+            if(sparse_cursor<HJO_SLOTS) {
+                hjk4_sparse_encode(response,sparse_depth,&sparse_cursor,sparse_page++,
+                    sparse_generation,sparse_sequence,sparse_calibrated);
+                response_pending=true;
+            }else sparse_sending=false;
+        }
         if(burst_next_page) {
             if(burst_next_page<HJK4_COMPACT_PAGES) burst_page(burst_next_page++);
             else burst_next_page=0;

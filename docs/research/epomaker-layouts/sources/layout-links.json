@@ -1,0 +1,38 @@
+{
+  "Common68_KF109De": {
+    "ui": "keyboard_68_kf109de_keymappings_ui_info",
+    "chunk": "77005379.js"
+  },
+  "Common68_K80X68": {
+    "ui": "keyboard_68_royalaxe_k80x68_keymappings_ui_info",
+    "chunk": "8940ad5e.js"
+  },
+  "Common87_EPOMAKER_X87A_HE75Mag": {
+    "ui": "keyboard_87_epomaker_x87a_he75mag_keymappings_ui_info",
+    "chunk": "96f5edd7.js"
+  },
+  "Common82_GK8642_v2": {
+    "ui": "keyboard_82_gk8642_v2_keymappings_ui_info",
+    "chunk": "d20d5b8d.js"
+  },
+  "Common67_beat65": {
+    "ui": "keyboard_67_beat65_keymappings_ui_info",
+    "chunk": "828164aa.js"
+  },
+  "Common108_X113C": {
+    "ui": "keyboard_108_x113c_keymappings_ui_info",
+    "chunk": "2c47cc73.js"
+  },
+  "Common85_fq_x122_jp": {
+    "ui": "keyboard_85_fq_x122_jp_keymappings_ui_info",
+    "chunk": "87923cfb.js"
+  },
+  "Common61_sg9040": {
+    "ui": "keyboard_61_sg9040_keymappings_ui_info",
+    "chunk": "c8e558b7.js"
+  },
+  "Common61_gk06": {
+    "ui": "keyboard_61_gk06_keymappings_ui_info",
+    "chunk": "035c53d7.js"
+  }
+}

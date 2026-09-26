@@ -17,3 +17,6 @@ bool KeyboardUI_SaveBindingsAfterUserChange(HWND sourceWindow);
 
 // NEW: Remap panel tells keyboard UI which key is currently hovered as drop target
 void KeyboardUI_SetDragHoverHid(uint16_t hid); // 0 = none
+
+// UI thread only: consume latest changed keys without general timer housekeeping.
+void KeyboardUI_OnAnalogPreview();

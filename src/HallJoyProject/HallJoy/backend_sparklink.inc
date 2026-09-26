@@ -445,15 +445,7 @@ static void SparkLogActiveKeys(const std::array<uint16_t, kSparkKeyCount>& nextM
 
 static int SparkUsageSupportScore(uint16_t usagePage, uint16_t usage)
 {
-    if (usage == kSparkKnownUsage && usagePage == kSparkUsagePageV2)
-        return 4;
-    if (usage == kSparkKnownUsage && usagePage == kSparkUsagePageLegacy)
-        return 3;
-    if (usage == kSparkKnownUsage && (usagePage & 0xFF00u) == 0xFF00u)
-        return 2;
-    if ((usagePage == kSparkUsagePageV2 || usagePage == kSparkUsagePageLegacy) && usage != 0)
-        return 1;
-    return 0;
+    return usage==kSparkKnownUsage && usagePage==kSparkUsagePageV2 ? 4 : 0;
 }
 
 // The legacy Spark row protocol and the SparkPlayJoy 6x21 family both use
@@ -1021,6 +1013,17 @@ static HANDLE SparkTryOpenDevice(
             continue;
         }
 
+        // A vendor HID usage page is not protocol identity. In particular,
+        // Spark device-info 01 02 is a reset command on SteelSeries Apex Pro.
+        HANDLE metadata=CreateFileW(detail->DevicePath,0,FILE_SHARE_READ|FILE_SHARE_WRITE,
+            nullptr,OPEN_EXISTING,0,nullptr);
+        if(metadata==INVALID_HANDLE_VALUE)continue;
+        HIDD_ATTRIBUTES identity{};identity.Size=sizeof(identity);
+        const bool known=HidD_GetAttributes(metadata,&identity) &&
+            halljoy::sparklink::ProbeIdentity(identity.VendorID,identity.ProductID);
+        CloseHandle(metadata);
+        if(!known)continue;
+
         bool writeCapable = true;
         HANDLE h = CreateFileW(
             detail->DevicePath,
@@ -1059,6 +1062,8 @@ static HANDLE SparkTryOpenDevice(
             continue;
         }
 
+        if(!halljoy::sparklink::ProbeInterface(attr.VendorID,attr.ProductID,usagePage,usage))
+        { CloseHandle(h);continue; }
         int score = SparkUsageSupportScore(usagePage, usage);
         if (inR < kSparkPayloadSize || outR < kSparkPayloadSize || score <= 0)
         {

@@ -5,6 +5,11 @@
 #include <shellapi.h>
 #include <tlhelp32.h>
 #include <dbghelp.h>
+#include <cfgmgr32.h>
+#include <hidsdi.h>
+#include "halljoy_uap_discovery_policy.h"
+#include "halljoy_native_hid_claim.h"
+#pragma comment(lib, "cfgmgr32.lib")
 
 #include <algorithm>
 #include <array>
@@ -60,6 +65,25 @@ namespace
     // complicates shutdown, and is a common heuristic signal for AV products.
     constexpr bool kUseChildDebugger = false;
 #endif
+
+    // Metadata-only topology: do not open HID or query USB descriptors here.
+    bool ReadUapTopology(std::vector<std::string>& paths) {
+        GUID guid{};HidD_GetHidGuid(&guid);
+        for(unsigned attempt=0;attempt<3;++attempt) {
+            ULONG count=0;
+            if(CM_Get_Device_Interface_List_SizeW(&count,&guid,nullptr,CM_GET_DEVICE_INTERFACE_LIST_PRESENT)!=CR_SUCCESS)return false;
+            if(!count || count>1024*1024)return false;
+            std::vector<wchar_t> buffer(count,0);
+            const auto result=CM_Get_Device_Interface_ListW(&guid,nullptr,buffer.data(),count,CM_GET_DEVICE_INTERFACE_LIST_PRESENT);
+            if(result==CR_BUFFER_SMALL)continue;
+            if(result!=CR_SUCCESS)return false;
+            paths.clear();
+            for(const wchar_t* p=buffer.data();*p;p+=wcslen(p)+1)
+                if(halljoy::uap_discovery::MayUsePath(p))paths.push_back(halljoy::native_hid::MakeInterfaceClaimToken(p));
+            std::sort(paths.begin(),paths.end());return true;
+        }
+        return false;
+    }
 
     struct ClientState
     {
@@ -1903,6 +1927,11 @@ namespace
                 continue;
             }
 
+            std::vector<std::string> uapTopology;
+            bool topologyKnown = ReadUapTopology(uapTopology);
+            std::uint64_t deviceRefreshGenerationAtLaunch =
+                g_client.deviceRefreshGeneration.load(std::memory_order_acquire);
+
             PROCESS_INFORMATION pi{};
             g_client.expectedHostPid.store(0, std::memory_order_release);
             const bool created = CreateHostProcess(pi);
@@ -1941,9 +1970,6 @@ namespace
                 continue;
             }
             g_client.expectedHostPid.store(pi.dwProcessId, std::memory_order_release);
-            const std::uint64_t deviceRefreshGenerationAtLaunch =
-                g_client.deviceRefreshGeneration.load(std::memory_order_acquire);
-
             bool restartAllowed = true;
             if (!AssignProcessToJobObject(g_client.job, pi.hProcess))
             {
@@ -1977,25 +2003,24 @@ namespace
                     stopDeadline = GetTickCount64() + 2500;
                 }
 
-                // UAP's historical hotplug implementation performed broad
-                // periodic discovery. It remains disabled. A real
-                // WM_DEVICECHANGE instead asks this sole process owner to
-                // replace the child, which gives the plugin a clean startup
-                // enumeration without concurrent discovery/poll/unload I/O.
+                // A broadcast can describe our own virtual controller or an
+                // unrelated HID. Restart UAP only when its possible sources change.
+                const auto refreshGeneration=g_client.deviceRefreshGeneration.load(std::memory_order_acquire);
                 if (!g_client.stopping.load(std::memory_order_acquire) &&
-                    g_client.deviceRefreshGeneration.load(
-                        std::memory_order_acquire) !=
-                        deviceRefreshGenerationAtLaunch)
-                {
-                    InvalidateSnapshot(g_client.shared, Status_Restarting,
-                        0, g_client.snapshotEvent);
-                    StabilityTrace_Write(L"INFO", L"analog-host",
-                        L"child.device_refresh",
-                        L"pid=%lu action=terminate_for_fresh_enumeration",
-                        pi.dwProcessId);
-                    DebugLog_Write(L"[analog.host] device-change refresh; terminating child pid=%lu",
-                        pi.dwProcessId);
-                    TerminateProcess(pi.hProcess, kHostExitDeviceRefresh);
+                    refreshGeneration != deviceRefreshGenerationAtLaunch) {
+                    std::vector<std::string> observed;
+                    if(ReadUapTopology(observed)) {
+                        deviceRefreshGenerationAtLaunch=refreshGeneration;
+                        const bool changed=!topologyKnown || observed!=uapTopology;
+                        topologyKnown=true;uapTopology=std::move(observed);
+                        if(changed) {
+                            InvalidateSnapshot(g_client.shared, Status_Restarting,0,g_client.snapshotEvent);
+                            StabilityTrace_Write(L"INFO",L"analog-host",L"child.device_refresh",
+                                L"pid=%lu reason=uap_source_topology_changed",pi.dwProcessId);
+                            DebugLog_Write(L"[analog.host] UAP source topology changed; replacing child pid=%lu",pi.dwProcessId);
+                            TerminateProcess(pi.hProcess,kHostExitDeviceRefresh);
+                        }
+                    }
                 }
 
                 if constexpr (kUseChildDebugger)

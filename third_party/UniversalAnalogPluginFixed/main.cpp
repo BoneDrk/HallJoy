@@ -190,12 +190,15 @@ static bool halljoy_native_claim_token_excluded(const std::string& token)
 #endif
 }
 
+#include "halljoy_uap_discovery_policy.h"
+
 extern "C" bool halljoy_should_exclude_hid_interface(const wchar_t* interface_path) noexcept
 {
     try
     {
         if (interface_path == nullptr || *interface_path == L'\0')
             return false;
+        if (!halljoy::uap_discovery::MayUsePath(interface_path)) return true;
         return halljoy_native_claim_token_excluded(
             halljoy::native_hid::MakeInterfaceClaimToken(interface_path));
     }

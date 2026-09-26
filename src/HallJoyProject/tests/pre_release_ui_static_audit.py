@@ -33,8 +33,15 @@ def require(condition: bool, message: str) -> None:
 
 config_mouse = section(PAGES, "static bool Config_HandleCustomControlsMouse", "static void Config_OffsetAllChildren")
 reset_button = section(PAGES, "static void Global_DrawActionButton", "static void Global_RequestSave")
+BACKEND = (ROOT / "HallJoy" / "backend.cpp").read_text(encoding="utf-8")
+preview_hint = section(BACKEND, "static void NotifyOnboardPreview()", "// list of HID codes")
+require("std::chrono::steady_clock::now()" in preview_hint and "const auto now=GetTickCount64()" not in preview_hint,
+        "preview hint cadence must use a high-resolution monotonic clock")
+require("g_previewPending.exchange(true" in preview_hint and "PostMessageW" in preview_hint,
+        "preview hint must stay nonblocking and coalesced")
 timer = UI[UI.index("void KeyboardUI_OnTimerTick"):]
-dirty_keys = section(timer, "for (int chunk", "// NEW: gear anim")
+dirty_keys = section(UI, "void KeyboardUI_OnAnalogPreview", "void KeyboardUI_OnTimerTick")
+require("KeyboardUI_OnAnalogPreview();" in timer, "timer must retain preview fallback")
 
 require("g_activeSubTab == 1 || g_activeSubTab == 2" in timer,
         "live telemetry must be gated to the two visible consumer tabs")

@@ -1,11 +1,13 @@
+> 2026-09-26 (1.6.4): EPOMAKER HE108 (USB) is Supported following tester confirmation relayed by the owner. This supersedes its historical experimental entries below. Seven additional EPOMAKER layout presets; HE68 Mag geometry remains unresolved. [Details](current/EPOMAKER_HE108_2026-09-26.md).
+
 > 2026-09-24 visual layout update: [41 existing experimental models](current/ALL_YELLOW_LAYOUTS_2026-09-24.md) gain exact ANSI presets and automatic selection. Some revisions/regions remain manual; protocol support statuses below are unchanged.
 
 # HallJoy hardware compatibility
 
-Current release: **1.6.3**. The additions previously marked local or unreleased
+Current release: **1.6.4**. The additions previously marked local or unreleased
 in the historical sections below are included in this release; experimental
 statuses and model-specific requirements still apply.
-See [release notes](releases/RELEASE_NOTES_v1.6.3.md).
+See [release notes](releases/RELEASE_NOTES_v1.6.4.md).
 
 ## How to read this list
 
@@ -586,3 +588,35 @@ Valkyrie VK Mag75 Max also admits an exact alternate USB identity, supported by
 the matching official factory matrix and archived v306 analog-stream firmware.
 Packet-writer component replay passed; physical validation remains outstanding.
 Its experimental status and existing identity are retained.
+
+
+## SteelSeries Apex Pro (local, 2026-09-25)
+
+Supported input for original full-size Apex Pro, USB1038:1610, firmware4.16.8.
+The native vendor collection reads actual filtered ADC samples and firmware
+calibration extrema; HallJoy supplies curves, bindings and virtual gamepad output.
+Only the OmniPoint sensor section exposes analog: ordinary switches outside it
+are not converted into synthetic depth. Other Apex generations/PIDs/firmwares
+are not admitted by this integration. Close GG/other HID configurators for the
+exclusive vendor connection. Firmware settings and calibration are never written.
+
+Wire format, factory HID map and sensor provenance were recovered from the
+hash-pinned official firmware. Real ARM read handlers passed offline emulation;
+the remote owner subsequently confirmed working input after the reset fix.
+This is user confirmation, not an agent hardware test or a precision measurement.
+Exact visual layout/autoselect
+is not added; manual layout selection remains available. Details and verification:
+[current/STEELSERIES_APEX_PRO_IMPLEMENTATION_2026-09-25.md](current/STEELSERIES_APEX_PRO_IMPLEMENTATION_2026-09-25.md).
+
+
+## SteelSeries neighboring models (local, 2026-09-25)
+
+Experimental native analog: original Apex Pro TKL (1038:1614) and full-size
+Apex Pro Gen 3 (1038:1640), firmware 4.16.8 only. Same canonical OmniPoint sensor
+map and read-only ADC/calibration path as the confirmed original Apex Pro.
+Ordinary switches outside the analog section do not gain analog capability.
+Both models are enabled through bindings and virtual gamepad output, with yellow
+notices for remaining physical range/noise validation. Original1610 remains
+Supported with no yellow notice. No automatic visual layout added.
+Mini, TKL2023, TKL Gen3 and Wireless are not aliases and remain unadmitted.
+See current/STEELSERIES_FAMILY_REVIEW_2026-09-25.md for firmware evidence.

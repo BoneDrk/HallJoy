@@ -547,11 +547,6 @@
           "status": "Implemented; awaiting hardware testing"
         },
         {
-          "brand": "EPOMAKER",
-          "model": "HE108",
-          "status": "Implemented; awaiting hardware testing"
-        },
-        {
           "brand": "FL ESPORTS",
           "model": "Blend HE",
           "status": "Implemented; awaiting hardware testing"
@@ -1216,6 +1211,15 @@
           "model": "GKX68 MAGNUM",
           "status": "Implemented; awaiting hardware testing"
         }
+      ],
+      "confirmed_devices": [
+        {
+          "token": "0x5f95bab8bcab36d1",
+          "pid": 20528,
+          "brand": "EPOMAKER",
+          "model": "HE108",
+          "board": 3365
+        }
       ]
     },
     {
@@ -1400,6 +1404,29 @@
         {
           "brand": "EWEADN",
           "model": "DEEP80 Max HE (magnetic version)",
+          "status": "Implemented; awaiting hardware testing"
+        }
+      ]
+    },
+    {
+      "id": "SteelSeriesApex",
+      "flag": 1048576,
+      "protocol": 25,
+      "confirmed_devices": [
+        {
+          "token": "0000000000000000",
+          "pid": 5648
+        }
+      ],
+      "models": [
+        {
+          "brand": "SteelSeries",
+          "model": "Apex Pro Gen 3",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "SteelSeries",
+          "model": "Apex Pro TKL",
           "status": "Implemented; awaiting hardware testing"
         }
       ]

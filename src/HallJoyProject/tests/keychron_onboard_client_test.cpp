@@ -7,7 +7,10 @@ struct Fake : Channel {
     uint64_t now=10; bool cancel=false,wrongToken=false,corruptPage=false;
     uint8_t failCommand=0;
     unsigned nextPage=0;
-    bool burstSupported=true;
+    bool burstSupported=true,sparseSupported=false,repeatScan=false;
+    bool reorder=false,mixScan=false;
+    unsigned sparseCursor=0,readDelay=3;
+    std::array<uint16_t,HJO_SLOTS> precise{};
     std::array<uint8_t,HJK4_COMPACT_BYTES> compact{};
     hjo_session session{};
     unsigned heartbeats=0,commits=0,maxHeartbeatGap=0,lastHeartbeat=0;
@@ -22,6 +25,7 @@ struct Fake : Channel {
         uint8_t status=0;
         switch(q[1]) {
         case 0x70: case 0x7A: break;
+        case 0x7E: if(!repeatScan)++scan;sparseCursor=0;nextPage=0;FillSparse(r);return true;
         case 0x71: if(!hjo_open(&session,static_cast<uint32_t>(now))) status=1; else native=true; break;
         case 0x72: upload.fill(0); break;
         case 0x73: {
@@ -61,7 +65,7 @@ struct Fake : Channel {
             if(corruptPage) r[10]^=1;
         } else {
             std::memcpy(r.data()+8,"HJO1",4); hjk4_put32(r.data()+12,crc);
-            r[16]=native; r[17]=static_cast<uint8_t>(ready)|(burstSupported?4:0); hjk4_put16(r.data()+18,HJO_PROFILE_BYTES);
+            r[16]=native; r[17]=static_cast<uint8_t>(ready)|(burstSupported?4:0)|(sparseSupported?16:0); hjk4_put16(r.data()+18,HJO_PROFILE_BYTES);
         }
         return true;
     }
@@ -73,7 +77,19 @@ struct Fake : Channel {
         std::memcpy(r.data()+10,compact.data()+offset,count);
         if(corruptPage)r[10]^=1;
     }
-    bool Read(Packet& r) override {now+=3;if(nextPage>=6)return false;FillBurst(r);return true;}
+    void FillSparse(Packet& r) {
+        hjk4_sparse_encode(r.data(),precise.data(),&sparseCursor,static_cast<uint8_t>(nextPage++),
+            (session.generation?session.generation:1)+(wrongToken?1:0),scan,1);
+        if(reorder)r[12]++;
+        if(mixScan && nextPage>1)hjk4_put32(r.data()+8,scan+1);
+        hjk4_put16(r.data()+30,hjk4_sparse_crc(r.data()));
+        if(corruptPage)r[14]^=1;
+    }
+    bool Read(Packet& r) override {
+        now+=readDelay;
+        if(sparseSupported){if(sparseCursor>=HJO_SLOTS)return false;FillSparse(r);return true;}
+        if(nextPage>=6)return false;FillBurst(r);return true;
+    }
     bool Reconnect(uint16_t revision) override {now+=1000; hjo_tick(&session,static_cast<uint32_t>(now)); return native==(revision==0x1213);}
     uint64_t NowMs() const override {return now;}
     bool Cancelled() const override {return cancel;}
@@ -108,6 +124,56 @@ int main() {
         assert(broken.session.phase==HJO_OFF);
     }
     Fake legacy;legacy.burstSupported=false;Client old(legacy);Packet info{};assert(old.Status(info) && old.Depth(depth));
+    Fake fast;fast.sparseSupported=true;Client fresh(fast);
+    assert(fresh.Status(info));
+    fast.precise[0]=1;fast.precise[40]=12345;fast.precise[113]=65535;
+    assert(fresh.Depth(depth) && depth==fast.precise && fast.nextPage==1);
+    fast.precise.fill(0);assert(fresh.Depth(depth) && depth==fast.precise && fast.nextPage==1);
+    for(unsigned i=0;i<HJO_SLOTS;++i)fast.precise[i]=static_cast<uint16_t>(i+1);
+    assert(fresh.Depth(depth) && depth==fast.precise && fast.nextPage==23);
+    const auto intact=depth;
+    fast.corruptPage=true;assert(!fresh.Depth(depth) && depth==intact);fast.corruptPage=false;
+    fast.reorder=true;assert(!fresh.Depth(depth) && depth==intact);fast.reorder=false;
+    fast.mixScan=true;assert(!fresh.Depth(depth) && depth==intact);fast.mixScan=false;
+    fast.readDelay=20;assert(!fresh.Depth(depth) && depth==intact);fast.readDelay=3;
+    assert(fresh.Depth(depth));fast.repeatScan=true;assert(!fresh.Depth(depth));fast.repeatScan=false;
+    assert(fresh.Open(Profile()));fast.wrongToken=true;
+    assert(!fresh.Depth(depth) && depth==intact);fast.wrongToken=false;
+    assert(fresh.Depth(depth));assert(fresh.Close());
+    // Reject malformed records even when packet CRC is recomputed correctly.
+    for(unsigned mutation=0;mutation<7;++mutation) {
+        Packet packet{};unsigned cursor=0;hjk4_sparse_assembly assembly{};
+        hjk4_sparse_encode(packet.data(),fast.precise.data(),&cursor,0,1,1,1);
+        switch(mutation) {
+        case 0:packet[17]=packet[14];break; // duplicate slot
+        case 1:packet[14]=114;break;
+        case 2:hjk4_put16(packet.data()+15,0);break;
+        case 3:packet[3]=0;break; // uncalibrated
+        case 4:packet[29]=1;break;
+        case 5:packet[13]=4;break; // short nonfinal page
+        case 6:packet[2]=2;break;
+        }
+        hjk4_put16(packet.data()+30,hjk4_sparse_crc(packet.data()));
+        assert(hjk4_sparse_append(&assembly,packet.data())==-1);
+    }
+    // Every chord size, page boundary and wire bit; no partial publication.
+    for(unsigned keys=0;keys<=HJO_SLOTS;++keys) {
+        std::array<uint16_t,HJO_SLOTS> input{};
+        for(unsigned i=0;i<keys;++i)input[i]=static_cast<uint16_t>(65535-i*17);
+        unsigned cursor=0;hjk4_sparse_assembly assembly{};
+        for(unsigned page=0;page<HJK4_SPARSE_PAGES;++page) {
+            Packet packet{};hjk4_sparse_encode(packet.data(),input.data(),&cursor,
+                static_cast<uint8_t>(page),9,123,1);
+            const auto before=assembly;
+            for(unsigned bit=0;bit<256;++bit) {
+                auto bad=packet;bad[bit/8]^=static_cast<uint8_t>(1u<<(bit%8));auto trial=before;
+                assert(hjk4_sparse_append(&trial,bad.data())==-1);
+            }
+            const int result=hjk4_sparse_append(&assembly,packet.data());assert(result>=0);
+            if(result) {assert(std::equal(input.begin(),input.end(),assembly.depth));break;}
+        }
+        assert(assembly.complete);
+    }
     Fake stopped; stopped.cancel=true; Client other(stopped); assert(!other.Open(Profile()));
     std::cout<<"Client lifecycle, upload heartbeat priority, integrity and failure paths PASS\n";
 }

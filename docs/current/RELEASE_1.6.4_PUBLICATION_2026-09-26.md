@@ -30,4 +30,10 @@ Source publication excludes local data/build outputs, credentials and private
 Pwnage correspondence. Prior mirror files backed up in
 .local/backups/release164-mirror; candidate publisher preserves replaced EXEs.
 
-Publication/download verification pending at preparation time.
+Published stable/latest at2026-09-26T19:07:04Z:
+https://github.com/PashOK7/HallJoy/releases/tag/v1.6.4
+Source/tag target:3af768e949f6aef4fd8ddad58694fe3368f74da3.
+Downloaded public EXE matches local SHA256 and size10,001,408 bytes.
+Public release body verified: no K4 mention. All four assets uploaded.
+GitHub run36264899801 Windows job SKIPPED; portable job still running at
+verification, independent of successful local validation.

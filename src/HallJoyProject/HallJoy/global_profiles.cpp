@@ -284,7 +284,7 @@ bool GlobalProfiles_Switch(const std::wstring& name) {
     bool committed = false;
     {
         halljoy::profile_runtime::CommitLease commit;
-        if (commit) { apply(); committed = true; }
+        if (commit) { apply(); halljoy::profile_runtime::Changed(); committed = true; }
     }
     if (!committed) {
         GlobalProfiles_SetActiveName(previous);

@@ -3041,12 +3041,43 @@ void Backend_ResetPublishedStateAfterRealtimeFault() noexcept
     g_vigemOk.store(false, std::memory_order_release);
 }
 
+static void Backend_ProfileTransition() noexcept
+{
+    ResetPersistentFilteredCache();
+    g_qualifiedReportBuilderState = {};
+    g_providerV2ShadowReportBuilderState = {};
+    g_mouseHasLastPos=false;
+    g_mouseFilteredX=g_mouseFilteredY=0.0f;
+    g_mouseTargetX=g_mouseTargetY=g_mouseFollowerX=g_mouseFollowerY=0.0;
+    g_mouseLastTickMs=0;
+    g_mouseRawAccumDx.store(0, std::memory_order_release);
+    g_mouseRawAccumDy.store(0, std::memory_order_release);
+    g_mouseWheelPulseUpUntilMs.store(0, std::memory_order_release);
+    g_mouseWheelPulseDownUntilMs.store(0, std::memory_order_release);
+    const XUSB_REPORT neutral{};
+    for (int i=0; i<kMaxVirtualPads; ++i) {
+        g_reports[i]=neutral; g_lastSentValid[i]=0;
+        g_outputSchedulers[i].Reset(); PublishLastReport(i,neutral);
+    }
+    std::array<halljoy::vigem_output::XusbReportV1,kMaxVirtualPads> output{};
+    const auto count=static_cast<std::uint32_t>(std::clamp(g_virtualPadCount.load(),1,kMaxVirtualPads));
+    if (!KeychronOnboard_OwnsOutput())
+        (void)g_vigemOutputRuntime.TryPublish(output.data(),count,(1u<<count)-1u,GetTickCount64()*1000u,nullptr);
+}
+
 void Backend_Tick()
 {
     if (!g_runtimeAdmission.load(std::memory_order_acquire))
         return;
     halljoy::profile_runtime::ReadLease profileLease;
     if (!profileLease) return; // No partial profile is allowed into an output report.
+    static std::uint64_t appliedProfileRevision=0;
+    const auto profileRevision=halljoy::profile_runtime::revision.load(std::memory_order_acquire);
+    if(appliedProfileRevision!=profileRevision) {
+        appliedProfileRevision=profileRevision;
+        Backend_ProfileTransition();
+        return; // Publish release of the old mapping before evaluating the new one.
+    }
     if (KeychronOnboard_OwnsOutput())
     {
         // Monitor only: firmware owns mapping and gamepad output.
@@ -3838,47 +3869,16 @@ BackendStatus Backend_GetStatus()
     return s;
 }
 
-void Backend_GetAnalogTelemetry(BackendAnalogTelemetry* out)
+#include "native_analog_telemetry_collect.h"
+
+static void CollectAnalogTelemetry(BackendAnalogTelemetry* out, bool diagnostic)
 {
     if (!out) return;
     BackendAnalogTelemetry t{};
-    int nativeConnectedCount = 0;
-    const std::size_t nativeCount = std::min<std::size_t>(
-        NativeAnalogBackends_Count(), kBackendMaxNativeProtocols);
-    for (std::size_t i = 0; i < nativeCount; ++i)
-    {
-        const NativeAnalogBackendDescriptor* descriptor = NativeAnalogBackends_Descriptor(i);
-        NativeAnalogBackendTelemetry native{};
-        if (!descriptor || !NativeAnalogBackends_GetTelemetry(i, &native))
-            continue;
-        if (!native.present && !native.connected)
-            continue;
-        auto& dst = t.nativeProtocols[t.nativeProtocolCount++];
-        dst.verifiedLayoutToken = native.verifiedLayoutToken;
-        dst.present = native.present;
-        dst.connected = native.connected;
-        dst.protocol = static_cast<std::uint16_t>(descriptor->protocol);
-        dst.vendorId = native.vendorId;
-        dst.productId = native.productId;
-        dst.usagePage = native.usagePage;
-        dst.usage = native.usage;
-        dst.flags = descriptor->flags;
-        dst.mappedKeys = native.mappedKeys;
-        dst.activeKeys = native.activeKeys;
-        dst.nominalRawLevels = native.nominalRawLevels;
-        dst.inputReportBytes = native.inputReportBytes;
-        dst.outputReportBytes = native.outputReportBytes;
-        dst.updateHz10 = native.updateHz10;
-        dst.averageIntervalUs = native.averageIntervalUs;
-        dst.maximumIntervalUs = native.maximumIntervalUs;
-        dst.lastUpdateAgeMs = native.lastUpdateAgeMs;
-        dst.successfulUpdates = native.successfulUpdates;
-        dst.failedUpdates = native.failedUpdates;
-        strncpy_s(dst.id, descriptor->id, _TRUNCATE);
-        wcsncpy_s(dst.name, native.deviceName[0] ? native.deviceName : descriptor->displayName, _TRUNCATE);
-        wcsncpy_s(dst.status, native.status, _TRUNCATE);
-        if (native.connected) ++nativeConnectedCount;
-    }
+    CollectNativeAnalogTelemetry(t, diagnostic, NativeAnalogBackends_Count(),
+        NativeAnalogBackends_Descriptor, NativeAnalogBackends_GetTelemetry,
+        NativeAnalogBackends_GetLifecycle);
+    const int nativeConnectedCount=static_cast<int>(t.nativeConnectedCount);
     const ULONGLONG nowMs = GetTickCount64();
     const bool sparkConnected = g_sparkConnected.load(std::memory_order_acquire);
     const bool sayoConnected = g_sayoConnected.load(std::memory_order_acquire);
@@ -3893,6 +3893,7 @@ void Backend_GetAnalogTelemetry(BackendAnalogTelemetry* out)
     const bool sdkInited = g_wootingReady.load(std::memory_order_acquire);
     t.sdkInitialised = sdkInited || nativeConnectedCount != 0;
     int sdkDevCount = std::clamp(g_knownDeviceCount.load(std::memory_order_relaxed), 0, (int)g_knownDeviceIds.size());
+    t.sdkDeviceCount = sdkDevCount;
     t.deviceCount = sdkDevCount + nativeConnectedCount;
     t.mad68Present = mad68Present;
     t.mad68Connected = mad68Connected;
@@ -4658,3 +4659,6 @@ bool Backend_TestSparkFnPublication() {
     return BackendNative_SparkGetMilli(fn)==0 && BackendNative_SparkGetMilli(1)==0;
 }
 #endif
+
+void Backend_GetAnalogTelemetry(BackendAnalogTelemetry* out) { CollectAnalogTelemetry(out, false); }
+void Backend_GetAnalogDiagnosticTelemetry(BackendAnalogTelemetry* out) { CollectAnalogTelemetry(out, true); }

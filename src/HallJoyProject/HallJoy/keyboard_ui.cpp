@@ -285,6 +285,9 @@ static bool ObserveCommunication(const BackendAnalogTelemetry& t,bool running) {
 
 void KeyboardUI_OnAnalogPreview()
 {
+    if (!g_hPageRemap) return;
+    const HWND root=GetAncestor(g_hPageRemap,GA_ROOT);
+    if (!root || !IsWindowVisible(root) || IsIconic(root)) return;
     for (int chunk = 0;
         chunk < static_cast<int>(halljoy::keycode::kMaskChunkCount); ++chunk)
     {
@@ -311,12 +314,21 @@ void KeyboardUI_OnTimerTick(HWND)
     // have all reached a coherent state. Before that point an empty telemetry
     // snapshot means "still starting", not "no supported keyboard".
     const bool searchCompleted = Backend_IsRuntimeAdmissionOpen();
+    const bool visible=root && IsWindowVisible(root) && !IsIconic(root);
+    static bool pendingLayoutRefresh=false;
+    static bool pendingGeometryRefresh=false;
     const auto previousLayout=KeyboardLayout_GetSnapshot();
     if (KeyboardLayout_UpdateAutomatic(searchCompleted, telemetry))
     {
-        if (g_hSubTab)
+        pendingLayoutRefresh=true;
+        pendingGeometryRefresh=pendingGeometryRefresh || previousLayout!=KeyboardLayout_GetSnapshot();
+    }
+    if (visible && pendingLayoutRefresh) {
+        if (g_hSubTab) {
             PostMessageW(GetParent(g_hSubTab), WM_APP_KEYBOARD_LAYOUT_CHANGED,
-                previousLayout==KeyboardLayout_GetSnapshot() ? KeyboardLayoutChange_StatusOnly : 0, 0);
+                pendingGeometryRefresh ? 0 : KeyboardLayoutChange_StatusOnly, 0);
+            pendingLayoutRefresh=pendingGeometryRefresh=false;
+        }
         // Automatic selection never replaces the saved manual preset.
     }
     const bool communicationWarning=ObserveCommunication(telemetry,searchCompleted);

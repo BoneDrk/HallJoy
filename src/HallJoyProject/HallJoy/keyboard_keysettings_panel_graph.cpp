@@ -64,7 +64,7 @@ KeySettingsPanel_DragHint KeySettingsPanel_GetDragHint(float* outWeight01)
 static RectF GraphRectF(HWND hParent)
 {
     int x = S(hParent, 12);
-    int y = S(hParent, 86);
+    int y = S(hParent, 86) - KeySettingsPanel_HeaderOffsetPx(hParent);
     int w = S(hParent, 520);
     int h = S(hParent, 160);
     return RectF((float)x, (float)y, (float)w, (float)h);
@@ -106,7 +106,7 @@ bool KeySettingsPanel_GetCpWeightHintRect(HWND parent, RECT* outRc)
     GetClientRect(parent, &rcClient);
 
     int x = S(parent, 12);
-    int y = S(parent, 286);
+    int y = S(parent, 286) - KeySettingsPanel_HeaderOffsetPx(parent);
     y -= ParentScrollY(parent);
 
     int h = S(parent, 20);
@@ -1151,6 +1151,8 @@ bool KeySettingsPanel_TestHiddenControls()
     for (int i = 0; page && i < 6; ++i) {
         KeyboardLayout_SetPresetIndex(i % 2);
         KeySettingsPanel_SetSelectedHid(i % 2 ? 26 : 0);
+        ok &= KeySettingsPanel_HeaderOffsetPx(page) == (i % 2 ? 0 : S(page, 28));
+        ok &= GraphRectF(page).Y == static_cast<float>(S(page, 86) - (i % 2 ? 0 : S(page, 28)));
         KeySettingsPanel_HandleCommand(page, 9999, 0);
         UpdateInfoLabelIfNeeded(true);
         SendMessageW(page, WM_SIZE, 0, MAKELPARAM(800, 700 - i * 10));

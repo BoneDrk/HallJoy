@@ -14,6 +14,9 @@
 #include "../HallJoy/profile_runtime_gate.h"
 #include "../HallJoy/backend.h"
 #include "../HallJoy/keyboard_profiles.h"
+#include "tray_window_test.h"
+#include "game_profiles_test.h"
+extern bool ProfilesPage_Test();
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -87,29 +90,41 @@ bool HallJoy_RunProfileTransactionTests() {
             Check(Bindings_ButtonHasHid(GameButton::A, static_cast<uint16_t>(i)), "CSV truncated");
         result << "malformed_no_mutation=PASS csv_full_domain=PASS\n";
 
-        Write(AppPaths_SettingsIni(), "[Main]\nPollingMs=3\nActiveGlobalProfile=Default\n");
+        Write(AppPaths_SettingsIni(), "[Main]\nPollingMs=20\nUIRefreshMs=200\nSparkRowLimit=3\nActiveGlobalProfile=Default\n");
         Write(AppPaths_BindingsIni(), "[Pad1_Axes]\nLX_Plus=7\n");
         const auto legacyBindings = Bytes(AppPaths_BindingsIni());
         Check(GlobalProfiles_Load(L"Default"), "legacy pair did not load");
-        Check(Settings_GetPollingMs()==3 && Bindings_GetAxis(Axis::LX).plusHid==7, "legacy pair wrong");
+        Check(Settings_GetSparkRowLimit()==3 && Bindings_GetAxis(Axis::LX).plusHid==7, "legacy pair wrong");
+        Check(Settings_GetPollingMs()==1 && Settings_GetUIRefreshMs()==1, "legacy timing still controls runtime");
+        Settings_SetPollingMs(20); Settings_SetUIRefreshMs(200);
+        Check(Settings_GetPollingMs()==1 && Settings_GetUIRefreshMs()==1, "timing setters still change cadence");
         Check(GlobalProfiles_Save(L"Default"), "bundle save failed");
+        Check(Bytes(AppPaths_SettingsIni()).find("PollingMs=")==std::string::npos &&
+            Bytes(AppPaths_SettingsIni()).find("UIRefreshMs=")==std::string::npos, "obsolete timing persisted");
+        // Obsolete malformed values must not trigger recovery or reject a profile.
+        Check(WritePrivateProfileStringW(L"Main",L"PollingMs",L"garbage",AppPaths_SettingsIni().c_str())!=FALSE,"obsolete fixture");
+        Check(WritePrivateProfileStringW(L"Main",L"UIRefreshMs",L"-900",AppPaths_SettingsIni().c_str())!=FALSE,"obsolete fixture");
+        Check(GlobalProfiles_Load(L"Default") && Settings_GetPollingMs()==1 && Settings_GetUIRefreshMs()==1,
+            "obsolete malformed timing affected loading");
+        result << "obsolete_timing_ignored=PASS legacy_and_bundle_and_setters\n";
+
         Check(halljoy::ini::HasBundle(AppPaths_SettingsIni().c_str()), "bundle marker missing");
         Check(Bytes(AppPaths_BindingsIni())==legacyBindings, "legacy bindings changed");
         Check(fs::exists(AppPaths_SettingsIni()+L".pre-bundle.bak"), "legacy settings backup missing");
         Check(GlobalProfiles_Save(L"A"), "A save failed");
-        Settings_SetPollingMs(9); Bindings_SetAxisPlus(Axis::LX, 26);
+        Settings_SetSparkRowLimit(7); Bindings_SetAxisPlus(Axis::LX, 26);
         KeyDeadzone unique{}; unique.useUnique=true; unique.low=0.2f;
         KeySettings_Set(halljoy::keycode::kFn, unique);
         Check(GlobalProfiles_Save(L"B"), "B save failed");
         Check(GlobalProfiles_Load(L"Default"), "bundle reload failed");
-        Check(Settings_GetPollingMs()==3 && Bindings_GetAxis(Axis::LX).plusHid==7, "bundle reload mixed");
+        Check(Settings_GetSparkRowLimit()==3 && Bindings_GetAxis(Axis::LX).plusHid==7, "bundle reload mixed");
         Check(GlobalProfiles_Switch(L"A"), "switch A failed");
         Write(GlobalProfiles_GetSettingsPath(L"Missing"), "[Main]\nPollingMs=5\n");
         Check(!GlobalProfiles_Switch(L"Missing"), "incomplete profile switched");
-        Write(GlobalProfiles_GetSettingsPath(L"InvalidSettings"), "[Main]\nPollingMs=garbage\n");
+        Write(GlobalProfiles_GetSettingsPath(L"InvalidSettings"), "[Main]\nPollingMs=3\nVirtualGamepads=garbage\n");
         Write(GlobalProfiles_GetBindingsPath(L"InvalidSettings"), "[Pad1_Axes]\nLX_Plus=7\n");
         Check(!GlobalProfiles_Switch(L"InvalidSettings"), "malformed numeric settings switched");
-        Check(GlobalProfiles_GetActiveName()==L"A" && Settings_GetPollingMs()==3, "failed switch changed active state");
+        Check(GlobalProfiles_GetActiveName()==L"A" && Settings_GetSparkRowLimit()==3, "failed switch changed active state");
         Check(!GlobalProfiles_Delete(L"A"), "active profile deleted");
         HANDLE locked = CreateFileW(AppPaths_SettingsIni().c_str(), GENERIC_READ, FILE_SHARE_READ,
             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -119,7 +134,7 @@ bool HallJoy_RunProfileTransactionTests() {
         Check(!switchedWhileLocked && GlobalProfiles_GetActiveName()==L"A", "marker failure switched profile");
         Check(!GlobalProfiles_Delete(L"A"), "active profile deleted after failed switch");
         Check(GlobalProfiles_Switch(L"B"), "switch B failed");
-        Check(Settings_GetPollingMs()==9 && Bindings_GetAxis(Axis::LX).plusHid==26 &&
+        Check(Settings_GetSparkRowLimit()==7 && Bindings_GetAxis(Axis::LX).plusHid==26 &&
             KeySettings_Get(halljoy::keycode::kFn).useUnique, "B not applied completely");
         result << "legacy_migration=PASS switch_failure=PASS delete_guard=PASS\n";
 
@@ -129,9 +144,9 @@ bool HallJoy_RunProfileTransactionTests() {
             while (!stop.load()) {
                 halljoy::profile_runtime::ReadLease lease;
                 if (!lease) continue;
-                const auto poll = Settings_GetPollingMs();
+                const auto poll = Settings_GetSparkRowLimit();
                 const auto key = Bindings_GetAxis(Axis::LX).plusHid;
-                if (!((poll==3 && key==7) || (poll==9 && key==26))) mixed = true;
+                if (!((poll==3 && key==7) || (poll==7 && key==26))) mixed = true;
                 ++reads;
             }
         });
@@ -143,13 +158,13 @@ bool HallJoy_RunProfileTransactionTests() {
         const auto committed = Bytes(GlobalProfiles_GetSettingsPath(L"B"));
         for (const auto stage : {HallJoyPersistence::SaveStage::Prepare, HallJoyPersistence::SaveStage::Write,
              HallJoyPersistence::SaveStage::Flush, HallJoyPersistence::SaveStage::Validate, HallJoyPersistence::SaveStage::Replace}) {
-            Settings_SetPollingMs(2); Bindings_SetAxisPlus(Axis::LX, 4);
+            Settings_SetSparkRowLimit(2); Bindings_SetAxisPlus(Axis::LX, 4);
             IniUtil_TestSetFailureStage(stage);
             const bool saved = GlobalProfiles_Save(L"B");
             IniUtil_TestSetFailureStage(HallJoyPersistence::SaveStage::None);
             Check(!saved && Bytes(GlobalProfiles_GetSettingsPath(L"B"))==committed, "failed save changed bundle");
             Check(GlobalProfiles_Load(L"B"), "reload after fault failed");
-            Check(Settings_GetPollingMs()==9 && Bindings_GetAxis(Axis::LX).plusHid==26, "pair mixed after fault");
+            Check(Settings_GetSparkRowLimit()==7 && Bindings_GetAxis(Axis::LX).plusHid==26, "pair mixed after fault");
         }
         for (const auto& entry : fs::recursive_directory_iterator(root))
             Check(entry.path().filename().wstring().find(L".halljoy-new-")==std::wstring::npos, "temporary file survived");
@@ -274,21 +289,26 @@ bool HallJoy_RunProfileTransactionTests() {
             return contents;
         };
         const auto unrelated = nonWindow();
-        Settings_SetPollingMs(19); // Different active profile values must not leak.
+        Settings_SetSparkRowLimit(6); // Different active profile values must not leak.
         Settings_SetMainWindowWidthPx(920); Settings_SetMainWindowHeightPx(710);
         Settings_SetMainWindowPosXPx(-1400); Settings_SetMainWindowPosYPx(-750);
         Settings_SetMainWindowPlacementMeta(2, 144, true);
+        Settings_SetMinimizeToTray(true); Settings_SetCloseToTray(true);
         Check(SettingsIni_SaveWindow(windowFile.c_str()), "window-only save failed");
         Check(nonWindow() == unrelated, "window-only update changed profile/layout/logging sections");
         Settings_SetMainWindowPlacementMeta(0, 0, false);
+        Settings_SetMinimizeToTray(false); Settings_SetCloseToTray(false);
         Settings_SetMainWindowPosXPx(0);
         Check(SettingsIni_Load(windowFile.c_str()), "window roundtrip load failed");
+        Check(Settings_GetMinimizeToTray() && Settings_GetCloseToTray(), "tray preferences did not roundtrip");
+        Settings_SetMinimizeToTray(false); Settings_SetCloseToTray(false);
         Check(Settings_GetMainWindowWidthPx() == 920 && Settings_GetMainWindowHeightPx() == 710 &&
             Settings_GetMainWindowPosXPx() == -1400 && Settings_GetMainWindowPosYPx() == -750 &&
             Settings_GetMainWindowPlacementVersion() == 2 && Settings_GetMainWindowDpi() == 144 &&
             Settings_GetMainWindowMaximized(), "window fields did not roundtrip");
         Check(SettingsIni_LoadProfile(windowFile.c_str()) && Settings_GetMainWindowPosXPx() == -1400 &&
             Settings_GetMainWindowMaximized(), "profile load changed global window geometry");
+        Check(!Settings_GetMinimizeToTray() && !Settings_GetCloseToTray(), "input profile changed application tray preferences");
         const auto windowBeforeFault = Bytes(windowFile);
         Settings_SetMainWindowPosXPx(-1300);
         IniUtil_TestSetFailureStage(HallJoyPersistence::SaveStage::Replace);
@@ -298,6 +318,8 @@ bool HallJoy_RunProfileTransactionTests() {
         const auto missingWindow = root / "missing-window.ini";
         Check(!SettingsIni_SaveWindow(missingWindow.c_str()) && !fs::exists(missingWindow), "window-only save created an incomplete base");
         result << "window_roundtrip_and_profile_isolation=PASS window_atomic_failure=PASS\n";
+        Check(halljoy::tray::test::Run(), "tray lifecycle failed");
+        result << "tray_lifecycle=PASS shell_failure_restart_restore_maximized private_desktop=PASS\n";
         Check(KeyboardSubpages_TestOverlayTextEditing(), "overlay edit production event test failed");
         result << "overlay_edit_production_events=PASS private_desktop=PASS\n";
         KeyboardLayout_SetPresetIndex(0);
@@ -391,6 +413,9 @@ bool HallJoy_RunProfileTransactionTests() {
         result << "overlay_layout_selection_and_persistence=PASS layout_editor_production_events=PASS\n";
         Check(KeySettingsPanel_TestHiddenControls(), "configuration sync exposed hidden backing controls");
         result << "configuration_hidden_controls_layout_selection_resize=PASS\n";
+        Check(halljoy::profiles::test::Run(), "game profile catalog/activation/recovery tests failed");
+        Check(ProfilesPage_Test(), "profiles page browse/scroll/selection tests failed");
+        result << "game_profiles_management_foreground_policy_atomic_failure_undo=PASS\n";
         result << "bundle_failure_stages=5 PASS backend_init_attempts=0\nPROFILE_TRANSACTION_WINDOWS_TEST=PASS\n";
         return true;
     } catch (const std::exception& e) {

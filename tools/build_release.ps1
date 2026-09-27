@@ -3,11 +3,20 @@ param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
+$vigem = (Get-Content -LiteralPath (Join-Path $root 'tools/dependency-lock.json') -Raw | ConvertFrom-Json).binaryInputs.vigemClient
+$vigemPath = Join-Path $root $vigem.path
+if ((Get-Item -LiteralPath $vigemPath).Length -ne $vigem.size -or (Get-FileHash -LiteralPath $vigemPath -Algorithm SHA256).Hash -ne $vigem.sha256) {
+    throw 'ViGEmClient binary differs from the reviewed dependency lock.'
+}
+& python (Join-Path $root 'tools/verify_uap_link_closure.py') --dll (Join-Path $root 'build/runtime/universal_analog_abiv1.dll') --map (Join-Path $root 'build/runtime/universal_analog_abiv1.map') --record (Join-Path $root 'build/runtime/universal_analog_abiv1.json')
+if ($LASTEXITCODE -ne 0) { throw 'Embedded UAP provenance verification failed; run tools/build.ps1 to rebuild dependencies.' }
 & python (Join-Path $root 'tools\audit_keyboard_identities.py')
 if ($LASTEXITCODE -ne 0) { throw 'Keyboard identity evidence audit failed.' }
 $noticeCheck = Join-Path $root 'tools\support_notice_catalog.py'
 & python $noticeCheck
 if ($LASTEXITCODE -ne 0) { throw 'Support notice catalog is stale.' }
+& python (Join-Path $root 'tools/check_support_diagnostics.py')
+if ($LASTEXITCODE -ne 0) { throw 'Support diagnostics contract gate failed; running HallJoy was not touched.' }
 $project = Join-Path $root 'src\HallJoyProject\HallJoy\HallJoy.vcxproj'
 $candidateDir = Join-Path $root 'build\obj\ReleaseCandidate\x64'
 $target = Join-Path $root 'build\bin\Release\x64\HallJoy.exe'

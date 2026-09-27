@@ -32,6 +32,12 @@ def main() -> int:
     app = text(SRC / "app.cpp")
     backend = text(SRC / "backend.cpp")
     ui = text(SRC / "keyboard_subpages.cpp")
+    header = text(SRC / "backend.h")
+    capacity = text(SRC / "native_analog_catalog_size.h")
+    require('kNativeAnalogCatalogSize' in header and
+            '#include "native_analog_backends.def"' in capacity and
+            'kNativeAnalogBackendMaxCount = kNativeAnalogCatalogSize' in text(SRC / "native_analog_backend_registry.h"),
+            "telemetry and lifecycle capacity must share the compiled catalog")
     registry = text(SRC / "native_analog_backend_registry.cpp")
     project = text(SRC / "HallJoy.vcxproj")
 

@@ -70,9 +70,10 @@ def main() -> int:
             links += 1
             if not (doc.parent / target).resolve().exists():
                 errors.append(f"Broken local link: {doc.relative_to(ROOT)} -> {target}")
-    for library in ("wooting_analog_common.lib", "wooting_analog_common.a"):
-        if not (ROOT / "third_party/UniversalAnalogPluginFixed" / library).is_file():
-            errors.append(f"Required plugin linker input missing: {library}")
+    # Legacy ABI0 archives may exist locally for rollback; never require them.
+    plugin_builder = (ROOT / "third_party/UniversalAnalogPluginFixed/tools/build_fixed_plugin.ps1").read_text(encoding="utf8")
+    if "Output = 'abiv0'" in plugin_builder:
+        errors.append("Production builder must not generate retired ABI0")
     for error in errors:
         print("FAIL:", error)
     if errors:

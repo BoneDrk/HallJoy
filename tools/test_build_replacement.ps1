@@ -51,7 +51,11 @@ try {
     foreach ($process in @(Find-Fixture $target)) { Stop-Process -InputObject $process -Force; $null = $process.WaitForExit(5000) }
     & $publisher -CandidatePath $other -TargetPath $target
     Check (@(Find-Fixture $target).Count -eq 0) 'Inactive app was launched without a previous instance.'
-    Write-Output 'BUILD_REPLACEMENT=PASS unchanged missing_candidate exact_path success_restart failure_restore inactive_no_launch'
+    $worker = Start-Process -FilePath $target -ArgumentList '--worker' -WindowStyle Hidden -PassThru
+    & $publisher -CandidatePath $candidate -TargetPath $target
+    Check ($worker.WaitForExit(5000)) 'Orphan worker survived replacement.'
+    Check (@(Find-Fixture $target).Count -eq 0) 'Orphan worker incorrectly triggered interactive launch.'
+    Write-Output 'BUILD_REPLACEMENT=PASS unchanged missing_candidate exact_path success_restart failure_restore inactive_no_launch orphan_no_launch'
 } finally {
     foreach ($path in @($target,$other)) {
         foreach ($process in @(Find-Fixture $path)) { Stop-Process -InputObject $process -Force; $null = $process.WaitForExit(5000) }

@@ -21,7 +21,6 @@ $diagnosticLabel = if ($PackageName -eq 'gravastar-v75-diagnostic') {
 
 foreach ($required in @(
     $project,
-    (Join-Path $projectRoot '..\..\build\runtime\universal_analog_abiv0.dll'),
     (Join-Path $projectRoot '..\..\build\runtime\universal_analog_abiv1.dll')
 )) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {

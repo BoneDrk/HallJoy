@@ -12,23 +12,42 @@ if (-not $target.StartsWith($checkoutPrefix, [StringComparison]::OrdinalIgnoreCa
     throw 'Replacement target must be inside this checkout.'
 }
 $session = (Get-Process -Id $PID).SessionId
+. (Join-Path $PSScriptRoot 'halljoy_process_identity.ps1')
 function Get-TargetProcesses {
-    @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($target)) -ErrorAction SilentlyContinue | Where-Object {
-        $_.Id -ne $PID -and $_.SessionId -eq $session -and $_.Path -and
-        $_.Path.Equals($target, [StringComparison]::OrdinalIgnoreCase)
-    })
+    # CIM preserves the original name even if a mapped EXE was renamed by replacement.
+    foreach ($info in @(Get-CimInstance Win32_Process -Filter "SessionId = $session" | Where-Object {
+        $_.Name -eq [IO.Path]::GetFileName($target) -and $_.ProcessId -ne $PID
+    })) {
+        try { $image = [HallJoyBuild.ProcessIdentity]::ImagePath($info.ProcessId) }
+        catch {
+            if (Get-Process -Id $info.ProcessId -ErrorAction SilentlyContinue) {
+                throw "Cannot verify executable identity for PID $($info.ProcessId); replacement stopped. $_"
+            }
+            continue
+        }
+        if ($image.Equals($target, [StringComparison]::OrdinalIgnoreCase)) {
+            Get-Process -Id $info.ProcessId -ErrorAction SilentlyContinue
+        }
+    }
 }
 $running = @(Get-TargetProcesses)
 $interactive = @($running | Where-Object {
-    if ($_.MainWindowHandle -ne [IntPtr]::Zero) { return $true }
+    if ([HallJoyBuild.ProcessIdentity]::MainWindow($_.Id) -ne [IntPtr]::Zero) { return $true }
     $info = Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue
     # Normal app invocation has no internal child-role arguments, even in tray.
+    if ($info -and -not $info.CommandLine -and $info.ParentProcessId -notin $running.Id) {
+        throw "Cannot identify role of PID $($_.Id); replacement stopped."
+    }
     $info -and $info.CommandLine -and $info.CommandLine -notmatch '--'
 })
-$state = [pscustomobject]@{ WasRunning = ($interactive.Count -gt 0); Count = $running.Count; Target = $target }
+$windowStyle = 'Normal'
+if ($interactive.Count -eq 1 -and [HallJoyBuild.ProcessIdentity]::IsIconic([HallJoyBuild.ProcessIdentity]::MainWindow($interactive[0].Id))) {
+    $windowStyle = 'Minimized'
+}
+$state = [pscustomobject]@{ WasRunning = ($interactive.Count -gt 0); Count = $running.Count; Target = $target; WindowStyle = $windowStyle }
 if ($InspectOnly -or $running.Count -eq 0) { return $state }
 foreach ($process in $interactive) {
-    if (-not $process.HasExited) { $null = $process.CloseMainWindow() }
+    if (-not $process.HasExited) { $null = [HallJoyBuild.ProcessIdentity]::RequestClose($process.Id) }
 }
 $deadline = [DateTime]::UtcNow.AddMilliseconds($GraceMs)
 foreach ($process in $running) {
@@ -39,7 +58,8 @@ foreach ($process in @(Get-TargetProcesses)) {
     if ($process.HasExited) { continue }
     $verifiedStart = $process.StartTime
     $fresh = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
-    if ($fresh -and $fresh.Path -eq $target -and $fresh.StartTime -eq $verifiedStart) {
+    if ($fresh -and $fresh.StartTime -eq $verifiedStart -and
+        [HallJoyBuild.ProcessIdentity]::ImagePath($fresh.Id).Equals($target, [StringComparison]::OrdinalIgnoreCase)) {
         Stop-Process -InputObject $fresh -Force -ErrorAction Stop
         if (-not $fresh.WaitForExit(5000)) { throw "Target process $($fresh.Id) did not exit." }
     }

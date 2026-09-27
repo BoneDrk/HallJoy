@@ -192,7 +192,7 @@ public:
         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, nullptr));
     if (!handle) {
       const DWORD error=GetLastError();
-      SupportLog_Event("rongyuan.exclusive_open_failed",candidate.attributes.ProductID,error);
+      SupportLog_Event("rongyuan.exclusive_open_failed",candidate.attributes.ProductID,SupportLog_Win32(error));
       halljoy::keyboard_support::ReportCommunicationAccessFailure(
           static_cast<unsigned>(NativeAnalogProtocol::RongYuanStream),error);
       SetLastError(error);
@@ -241,7 +241,7 @@ public:
     const auto board=mg::Board(r);
     const bool match=mg::Find(board,candidate.attributes.VendorID,candidate.attributes.ProductID)!=nullptr;
     if(board && !match && board!=lastRejectedBoard){lastRejectedBoard=board;
-      SupportLog_Event("rongyuan.identity_pair_rejected",board,(unsigned(candidate.attributes.VendorID)<<16)|candidate.attributes.ProductID);
+      SupportLog_Event("rongyuan.identity_pair_rejected",board,SupportLog_Data((unsigned(candidate.attributes.VendorID)<<16)|candidate.attributes.ProductID));
     }
     return match;
   }
@@ -343,7 +343,7 @@ bool Run(const Candidate &c) {
   if (!ready) {
     const DWORD error=GetLastError();
     ++g_bad;
-    SupportLog_Event("rongyuan.admission_failed",phaseCode,error);
+    SupportLog_Event("rongyuan.admission_failed",phaseCode,SupportLog_Win32(error));
     DebugLog_Write(L"[rongyuan.stream] admission failed phase=%hs error=%lu",
                    phase, error);
     Clear();
@@ -358,10 +358,10 @@ bool Run(const Candidate &c) {
   }
   if(!NativeAnalogRouting_Claim(c.attributes.VendorID,c.attributes.ProductID,c.inputPath.c_str(),NativeAnalogProtocol::RongYuanStream) &&
      !NativeAnalogRouting_IsClaimedBy(c.inputPath.c_str(),NativeAnalogProtocol::RongYuanStream)) {Clear();return false;}
-  if(!s.Enable()) {++g_bad;SupportLog_Event("rongyuan.start_failed",s.model->board,GetLastError());DebugLog_Write(L"[rongyuan.stream] start command failed error=%lu",GetLastError());Clear();return false;}
+  if(!s.Enable()) {++g_bad;SupportLog_Event("rongyuan.start_failed",s.model->board,SupportLog_Win32(GetLastError()));DebugLog_Write(L"[rongyuan.stream] start command failed error=%lu",GetLastError());Clear();return false;}
   g_present.store(true);
   g_connected.store(true);
-  SupportLog_Event("rongyuan.connected",s.model->board,s.units);
+  SupportLog_Event("rongyuan.connected",s.model->board,SupportLog_Data(s.units));
   DebugLog_Write(L"[rongyuan.stream] connected board=%u keys=%u "
                  L"units_per_mm=%u experimental=1",
                  s.model->board, g_mapped.load(), s.units);
@@ -396,7 +396,7 @@ bool Run(const Candidate &c) {
       static_cast<unsigned>(NativeAnalogProtocol::RongYuanStream));
   if(!g_stop.load())halljoy::keyboard_support::ReportCommunicationAccessFailure(
       static_cast<unsigned>(NativeAnalogProtocol::RongYuanStream),endError);
-  SupportLog_Event("rongyuan.session_end",endReason,endError);
+  SupportLog_Event("rongyuan.session_end",endReason,SupportLog_Win32(endError));
   DebugLog_Write(
       L"[rongyuan.stream] session ended stop=%d error=%lu failures=%llu",
       g_stop.load() ? 1 : 0, endError,

@@ -156,9 +156,10 @@ require("Profile_SaveIni(AppPaths_ActiveBindingsIni().c_str())" not in PAGE_MAIN
         PAGE_MAIN.count("KeyboardUI_SaveBindingsAfterUserChange(") >= 8 and
         REMAP.count("KeyboardUI_SaveBindingsAfterUserChange(") >= 2,
         "Remap mutation paths must use the shared binding/profile dirty transaction")
-require('GlobalProfiles_IsDirty() ? L"Global profile - unsaved"' in PAGES and
-        "PremiumCombo::ExtraIconKind::Save" in PAGES,
-        "dirty global profiles must expose both an unsaved status and the canonical save action")
+PROFILES = (ROOT / "HallJoy" / "profiles_page.h").read_text(encoding="utf-8")
+require("saved automatically" in PROFILES and 'L"Undo edits"' in PROFILES and
+        'L"Global profile - unsaved"' not in PAGES,
+        "Profiles must explain autosave and expose edit recovery instead of the obsolete manual save UI")
 
 overlay_activate = section(PAGES, "static void OverlayCustom_Activate", "static LRESULT OverlayCustom_PageProc")
 require(PAGES.count("OverlayCustomKind::Combo") >= 6 and

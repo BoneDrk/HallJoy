@@ -22,7 +22,8 @@ def verify(exe, root):
     if not module:
         raise ctypes.WinError(ctypes.get_last_error())
     try:
-        for resource_id, name in [(133, 'LICENSE'), (134, 'THIRD_PARTY_NOTICES.md')]:
+        for resource_id, name in [(133, 'LICENSE'), (134, 'THIRD_PARTY_NOTICES.md'),
+                                  (131, 'build/runtime/universal_analog_abiv1.dll')]:
             resource = api.FindResourceW(module, resource_id, 10)
             if not resource:
                 raise RuntimeError('Missing embedded ' + name)
@@ -31,14 +32,15 @@ def verify(exe, root):
             if not pointer or not size:
                 raise RuntimeError('Unreadable embedded ' + name)
             data = ctypes.string_at(pointer, size)
-            data.decode('utf-8')
+            if resource_id != 131:
+                data.decode('utf-8')
             if data != (root / name).read_bytes():
                 raise RuntimeError('Stale or different embedded ' + name)
         if not api.FindResourceW(module, 135, 5):
             raise RuntimeError('Missing license viewer dialog')
     finally:
         api.FreeLibrary(module)
-    print('Embedded LICENSE, notices and viewer: PASS (exact source bytes)')
+    print('Embedded ABI1, LICENSE, notices and viewer: PASS (exact source bytes)')
 
 
 if __name__ == '__main__':

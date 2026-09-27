@@ -64,3 +64,10 @@ Packet builders/parsers should live in `<slug>_protocol.h/.cpp` and compile with
 Windows or HID dependencies. This allows malformed fixtures and normalization to be
 tested on Linux CI before hardware or MSVC is available. Transport code may only
 publish values after the pure parser has accepted the complete response semantics.
+
+## Mandatory diagnostic contract
+
+Follow [SUPPORT_DIAGNOSTICS_CONTRACT.md](SUPPORT_DIAGNOSTICS_CONTRACT.md).
+The manifest determines all capacities. New backends automatically enter full
+schema2 snapshots; unavailable telemetry must not be confused with absence.
+Event metadata, Win32 and protocol errors have explicit distinct types.

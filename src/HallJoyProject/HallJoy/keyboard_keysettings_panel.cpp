@@ -920,38 +920,43 @@ static RECT Ksp_UniqueToggleRect(HWND parent)
     return Ksp_Rect(S(parent, 12), S(parent, 12), S(parent, 520), S(parent, 26));
 }
 
+int KeySettingsPanel_HeaderOffsetPx(HWND parent)
+{
+    return g_kspCustomControls && !Ksp_IsKeySelected() ? S(parent, 28) : 0;
+}
+
 static RECT Ksp_InvertToggleRect(HWND parent)
 {
-    return Ksp_Rect(S(parent, 12), S(parent, 40), S(parent, 520), S(parent, 26));
+    return Ksp_Rect(S(parent, 12), (S(parent, 40) - KeySettingsPanel_HeaderOffsetPx(parent)), S(parent, 520), S(parent, 26));
 }
 
 static RECT Ksp_InfoRect(HWND parent)
 {
-    return Ksp_Rect(S(parent, 12), S(parent, 70), S(parent, 520), S(parent, 20));
+    return Ksp_Rect(S(parent, 12), (S(parent, 70) - KeySettingsPanel_HeaderOffsetPx(parent)), S(parent, 520), S(parent, 20));
 }
 
 static RECT Ksp_ModeLabelRect(HWND parent)
 {
-    return Ksp_Rect(S(parent, 12), S(parent, 252) + S(parent, 6), S(parent, 45), S(parent, 20));
+    return Ksp_Rect(S(parent, 12), (S(parent, 252) - KeySettingsPanel_HeaderOffsetPx(parent)) + S(parent, 6), S(parent, 45), S(parent, 20));
 }
 
 static RECT Ksp_ProfileLabelRect(HWND parent)
 {
     int x = S(parent, 12) + S(parent, 45) + S(parent, 8) - S(parent, 8) + S(parent, 160) + S(parent, 20);
-    return Ksp_Rect(x, S(parent, 252) + S(parent, 6), S(parent, 64), S(parent, 20));
+    return Ksp_Rect(x, (S(parent, 252) - KeySettingsPanel_HeaderOffsetPx(parent)) + S(parent, 6), S(parent, 64), S(parent, 20));
 }
 
 static RECT Ksp_ModeComboRect(HWND parent)
 {
     int x = S(parent, 12) + S(parent, 45);
-    return Ksp_Rect(x, S(parent, 252), S(parent, 160), S(parent, 28));
+    return Ksp_Rect(x, (S(parent, 252) - KeySettingsPanel_HeaderOffsetPx(parent)), S(parent, 160), S(parent, 28));
 }
 
 static RECT Ksp_ProfileComboRect(HWND parent)
 {
     RECT label = Ksp_ProfileLabelRect(parent);
     int x = label.right;
-    return Ksp_Rect(x, S(parent, 252), S(parent, 200), S(parent, 28));
+    return Ksp_Rect(x, (S(parent, 252) - KeySettingsPanel_HeaderOffsetPx(parent)), S(parent, 200), S(parent, 28));
 }
 
 static float KspToggleAnimT(HWND hBtn, bool checkedFallback)

@@ -12,18 +12,28 @@
 #include <stdexcept>
 
 static std::atomic<bool> enabled{false}, missing{false};
+static std::atomic<bool> experimental{false}, unstable{false}, limited{false};
 const std::wstring& AppPaths_DataRoot() { static const std::wstring empty; return empty; }
 const std::wstring& AppPaths_LegacyDataRoot() { static const std::wstring empty; return empty; }
 bool Settings_GetDiagnosticLogging() { return enabled; }
-void Backend_GetAnalogTelemetry(BackendAnalogTelemetry* out) {
+void Backend_GetAnalogDiagnosticTelemetry(BackendAnalogTelemetry* out) {
     *out={}; out->pluginHostLastError=123;
     out->pluginDeviceCount=1;
     strcpy_s(out->pluginDevices[0].name, "PRIVATE_DEVICE_NAME_SENTINEL");
     strcpy_s(out->pluginDevices[0].manufacturer, "PRIVATE_MANUFACTURER_SENTINEL");
-    out->nativeProtocolCount=1; out->nativeProtocols[0].failedUpdates=7;
+    out->nativeProtocolCount=kBackendMaxNativeProtocols;
+    out->nativeCatalogCount=out->nativeVisitedCount=kBackendMaxNativeProtocols;
+    out->nativeTelemetryComplete=true; out->nativeConnectedCount=1; out->deviceCount=1;
+    for(int i=0;i<kBackendMaxNativeProtocols;++i) {
+        auto& n=out->nativeProtocols[i]; n.catalogIndex=i; n.telemetryAvailable=true;
+        n.lifecycleAvailable=true; n.lifecycleState=2;
+        sprintf_s(n.id,"provider_%d",i);
+    }
+    auto& last=out->nativeProtocols[kBackendMaxNativeProtocols-1];
+    last.present=last.connected=true; last.failedUpdates=7; last.successfulUpdates=42;
 }
 namespace halljoy::keyboard_support {
-StatusSnapshot GetStatusSnapshot() noexcept { return {true,!missing.load()}; }
+StatusSnapshot GetStatusSnapshot() noexcept { StatusSnapshot s{true,!missing.load()}; s.frozenModels=experimental ? ImplementedModels : 0; if(limited) s.frozenModels |= Mad68DualLimited; s.communicationWarning=unstable; return s; }
 }
 namespace halljoy::engine_runtime {
 runtime_command::SnapshotV1 EngineRuntimeOwner_Snapshot() noexcept { return {}; }
@@ -53,7 +63,8 @@ int main() {
     const auto mirrorDir = directory+L"\\mirror", mirrorPath=mirrorDir+L"\\HallJoy.log";
     try {
         Check(SupportLog_Start(directory.c_str(), mirrorDir.c_str()));
-        SupportLog_Event("before.failure",42,5);
+        SupportLog_Event("before.failure",42,SupportLog_Win32(5));
+        SupportLog_Event("metadata.profile",1,SupportLog_Data(2));
         Sleep(1300);
 #if defined(HALLJOY_INPUT_PATH_DIAGNOSTIC)
         Await(path,"automatic_logging=1");
@@ -66,13 +77,44 @@ int main() {
 #else
         Check(GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES);
 #endif
+#if !defined(HALLJOY_INPUT_PATH_DIAGNOSTIC)
+        // A known low-quality firmware banner must not create a log, connected or not.
+        limited=true;
+        Sleep(1300); Check(GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES);
+        missing=true;
+        Sleep(1300); Check(GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES);
+        limited=false; missing=false;
+        // Communication warning alone must not force a file, even without input.
+        unstable=true; missing=true;
+        Sleep(1300);
+        Check(GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES);
+        SupportLog_Event("manual.snapshot",17);
+        const auto request=SupportLog_RequestSnapshot();
+        const auto deadline=GetTickCount64()+7000;
+        while(SupportLog_CompletedSnapshot()<request && GetTickCount64()<deadline) Sleep(50);
+        Check(SupportLog_CompletedSnapshot()>=request);
+        Check(Read(path).find("manual.snapshot value=17")!=std::string::npos);
+        Check(GetFileAttributesW(mirrorPath.c_str())==INVALID_FILE_ATTRIBUTES);
+        missing=false; unstable=false; experimental=true;
+        SupportLog_Event("experimental.snapshot",18);
+        Await(path,"experimental.snapshot value=18");
+        Await(path,"support.banner value=1");
+        experimental=false;
+        Await(path,"support.banner value=0");
+#endif
         // Even a banner that disappears before the writer tick must be captured.
         SupportLog_ReportMissingSource();
         Await(path,"support.banner_shown incident_latched=1");
         missing=true;
         Await(path,"support.banner value=1");
         Await(path,"before.failure value=42 error=5");
+        Await(path,"metadata.profile value=1 error=0 detail=2 detail_kind=data");
         Await(path,"failures=7");
+        Await(path,"source=connected");
+        Await(path,"age_valid=1 lifecycle=running");
+        Await(path,"snapshot.end seq=");
+        Check(Read(path).find("observation=not_present")!=std::string::npos);
+        Check(Read(path).find("observation=connected")!=std::string::npos);
         Await(path,"error=123");
         missing=false;
         Await(path,"support.banner value=0");
@@ -112,7 +154,7 @@ int main() {
         Sleep(1300); Check(SupportLog_LastError()!=0);
         Check(CreateDirectoryW((directory+L"\\absent").c_str(),nullptr));
         const auto recovered = directory+L"\\absent\\child\\HallJoy.log";
-        Await(recovered,"support report schema=1");
+        Await(recovered,"support report schema=2");
         Check(SupportLog_LastError()==0);
         Check(SupportLog_Stop());
         DeleteFileW(recovered.c_str());

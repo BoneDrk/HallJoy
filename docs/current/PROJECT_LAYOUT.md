@@ -58,7 +58,9 @@ Interactive/device tests still require their explicit environment contract.
 | build/runtime/ | Pinned DLL inputs embedded into the EXE |
 
 All paths are checkout-relative. Packaging does not remove user profiles or
-unknown files. Runtime DLLs and SDK import libraries remain required inputs.
+unknown files. ABI1 runtime DLL remains required, with matching link-map/hash
+provenance for incremental builds. Legacy ABI0 common archives and the unused
+Wooting SDK import library are no longer production inputs (2026-09-27).
 See [replacement lifecycle evidence](BUILD_REPLACEMENT_LIFECYCLE_2026-09-19.md).
 
 ## Документация

@@ -11,6 +11,7 @@ void KeySettingsPanel_SetSelectedHid(uint16_t hid);
 void KeySettingsPanel_EnableCustomControls(bool enabled);
 void KeySettingsPanel_UpdateCustomControlsLayout(HWND parent);
 void KeySettingsPanel_CloseCustomPopups();
+int KeySettingsPanel_HeaderOffsetPx(HWND parent);
 void KeySettingsPanel_DrawControls(HWND parent, HDC hdc);
 bool KeySettingsPanel_HandleCustomControlsMouse(HWND parent, UINT msg, WPARAM wParam, LPARAM lParam);
 

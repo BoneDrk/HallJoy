@@ -6,7 +6,8 @@
 #include "native_analog_backend.h"
 #include "native_backend_lifecycle_registry.h"
 
-static constexpr std::size_t kNativeAnalogBackendMaxCount = 32;
+#include "native_analog_catalog_size.h"
+static constexpr std::size_t kNativeAnalogBackendMaxCount = kNativeAnalogCatalogSize;
 
 struct NativeAnalogReadResult
 {

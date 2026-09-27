@@ -554,10 +554,9 @@ if ($preOpenIndex -lt 0 -or $createFileIndex -lt 0 -or $preOpenIndex -gt $create
 Write-Host 'Verified: the isolated UAP skips only exact HID interface paths validated by a HallJoy native protocol before opening HID.' -ForegroundColor DarkGray
 
 $pluginOut = Join-Path $root 'build\bin\UAP\native\universal-analog-plugin'
-$abi0 = Join-Path $pluginOut 'abiv0.dll'
 $abi1 = Join-Path $pluginOut 'abiv1.dll'
-if (-not (Test-Path -LiteralPath $abi0) -or -not (Test-Path -LiteralPath $abi1)) {
-    throw 'Universal Analog Plugin build did not produce abiv0.dll and abiv1.dll.'
+if (-not (Test-Path -LiteralPath $abi1)) {
+    throw 'Universal Analog Plugin build did not produce abiv1.dll.'
 }
 $uapAbiCheck = Join-Path $root 'tools\check_private_uap_abi.py'
 try {
@@ -578,8 +577,9 @@ if ($activeHallJoy.Count -ne 0) {
 & python $uapAbiCheck $abi1
 if ($LASTEXITCODE -ne 0) { throw "Private UAP ABI runtime gate failed: $LASTEXITCODE" }
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-Copy-Item -LiteralPath $abi0 -Destination (Join-Path $runtime 'universal_analog_abiv0.dll') -Force
 Copy-Item -LiteralPath $abi1 -Destination (Join-Path $runtime 'universal_analog_abiv1.dll') -Force
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $pluginOut) 'abiv1-link.map') -Destination (Join-Path $runtime 'universal_analog_abiv1.map') -Force
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $pluginOut) 'abiv1-link-closure.json') -Destination (Join-Path $runtime 'universal_analog_abiv1.json') -Force
 
 # A static audit cannot detect a loader which silently substitutes defaults.
 # The simulator embeds the same runtime resources: materialize them FIRST on a

@@ -78,14 +78,14 @@ def main():
     run(broken)
     backup(broken, 'settings.ini', settings)
     backup(broken, 'bindings.ini', bad)
-    assert values(broken)['Main']['PollingMs'] == '3'
+    assert 'PollingMs' not in values(broken)['Main']
     assert values(broken)['Pad1_Axes']['LX_Plus'] == '0'
     assert not (broken / 'settings.ini.pre-bundle.bak').exists()
     stable(broken)
 
     missing = fixture('missing-bindings', settings)
     run(missing)
-    assert values(missing)['Main']['PollingMs'] == '3'
+    assert 'PollingMs' not in values(missing)['Main']
     stable(missing)
 
     corrupt = fixture('invalid-settings', b'broken', bindings)

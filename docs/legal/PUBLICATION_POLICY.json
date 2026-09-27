@@ -554,6 +554,9 @@
     "docs/research/sayo-config-sources/sayo_viewer.py",
     "docs/research/three-keyboard-sources/epomaker-hub.js",
     "docs/research/three-keyboard-sources/m1v5-geometry.js",
-    "docs/research/three-keyboard-sources/slice-console.js"
+    "docs/research/three-keyboard-sources/slice-console.js",
+    "src/HallJoyProject/third_party/WootingAnalogSDK091/lib/wooting_analog_sdk.dll.lib",
+    "third_party/UniversalAnalogPluginFixed/wooting_analog_common.a",
+    "third_party/UniversalAnalogPluginFixed/wooting_analog_common.lib"
   ]
 }

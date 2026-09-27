@@ -23,6 +23,7 @@ enum OverlayEffectFlags : uint32_t
 };
 
 bool OverlayServer_Start(uint16_t port = 8765);
+inline constexpr UINT WM_APP_OVERLAY_STATE_CHANGED = WM_APP + 471;
 halljoy::lifecycle::StopResult OverlayServer_Stop();
 bool OverlayServer_IsRunning();
 uint16_t OverlayServer_GetPort();

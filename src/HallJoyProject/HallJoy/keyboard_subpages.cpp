@@ -1,3 +1,4 @@
+#include "ui_activity.h"
 // keyboard_subpages.cpp
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -24,6 +25,7 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <memory>
 #include <cwctype>
 
 #ifdef min
@@ -35,6 +37,8 @@
 
 #include <objidl.h>
 #include <gdiplus.h>
+#include "editor_render_buffer.h"
+#include "editor_grid.h"
 #include <shellapi.h>
 
 #include "Resource.h"
@@ -227,7 +231,7 @@ LRESULT CALLBACK KeyboardSubpages_TesterPageProc(HWND hWnd, UINT msg, WPARAM wPa
         int rows = (padCount + cols - 1) / cols;
 
         const int margin = S(hWnd, 12);
-        const int toolbar = S(hWnd, 36);
+        const int toolbar = HALLJOY_CAMERA_LATENCY_TEST_ENABLED ? S(hWnd, 36) : 0;
         const int cardGap = S(hWnd, 12);
         int clientW = (int)(rcClient.right - rcClient.left);
         int clientH = (int)(rcClient.bottom - rcClient.top);
@@ -2847,6 +2851,11 @@ static void OverlayCustom_DrawEditFeedback(HWND hWnd, HDC dc, OverlayCustomState
 static LRESULT OverlayCustom_PageProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     auto* st = (OverlayCustomState*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+    if (msg == WM_APP_OVERLAY_STATE_CHANGED && st) {
+        OverlayCustom_RebuildLayout(hWnd, st);
+        OverlayCustom_MarkCacheDirty(hWnd, st);
+        return 0;
+    }
     if (msg == halljoy::main_input::QueryExplicitInput())
         return st && GetFocus() == hWnd && OverlayCustom_IsEdit(st->focusId) ? 1 : 0;
 
@@ -2979,6 +2988,7 @@ static LRESULT OverlayCustom_PageProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
     }
 
     case WM_TIMER:
+        if (!HallJoyUiVisible(hWnd)) return 0;
         if (st && wParam == OVERLAY_ID_COPY)
         {
             KillTimer(hWnd, OVERLAY_ID_COPY);
@@ -3899,6 +3909,13 @@ static LRESULT CALLBACK Layout_ButtonMouseProc(HWND button, UINT msg, WPARAM wPa
     return DefSubclassProc(button, msg, wParam, lParam);
 }
 
+struct LayoutLabelCache {
+    std::wstring text;
+    float width = 0, height = 0, em = 0;
+    COLORREF color = 0;
+    std::unique_ptr<Bitmap> bitmap;
+};
+
 struct LayoutPageState
 {
     HWND btnUndo = nullptr, btnRedo = nullptr, btnFit = nullptr, btnDuplicate = nullptr;
@@ -3906,7 +3923,10 @@ struct LayoutPageState
     HWND btnPrecision = nullptr, btnSnap = nullptr, btnActual = nullptr;
     halljoy::layout_editor::History history;
     halljoy::layout_editor::View view;
-    bool restoringHistory = false, preciseY = false, snap = false, panning = false;
+    std::vector<LayoutLabelCache> labelCache;
+    EditorRenderBuffer renderBuffer;
+    EditorGrid grid;
+    bool restoringHistory = false, preciseY = false, snap = false, panning = false, panMoved = false;
     POINT panPoint{};
     bool resizing = false;
     POINT resizeStart{};
@@ -4044,12 +4064,12 @@ static void Layout_UpdateHintText(LayoutPageState* st)
     if (st->uniformSpacingEnabled)
     {
         Layout_SetWindowTextIfChanged(st->lblHint,
-            L"Wheel: zoom  |  Middle-drag: pan\nExact values use layout pixels.");
+            L"Wheel: zoom  |  Right-drag: pan\nExact values use layout pixels.");
     }
     else
     {
         Layout_SetWindowTextIfChanged(st->lblHint,
-            L"Drag rulers: guides  |  Alt: no snapping\nWheel: zoom  |  Middle-drag: pan");
+            L"Drag rulers: guides  |  Alt: no snapping\nWheel: zoom  |  Right-drag: pan");
     }
 }
 
@@ -4898,9 +4918,16 @@ static void Layout_DrawFlatButton(const DRAWITEMSTRUCT* dis)
     }
 }
 
-static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st)
+#if defined(HALLJOY_ANALOG_SIMULATOR)
+static LONGLONG g_editorGridTicks = 0;
+#endif
+static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st, Bitmap* surface = nullptr, std::uint32_t* targetPixels = nullptr)
 {
     if (!st) return;
+#if defined(HALLJOY_ANALOG_SIMULATOR)
+    LARGE_INTEGER profileStart{}, profileGridEnd{};
+    QueryPerformanceCounter(&profileStart);
+#endif
     Layout_ComputeCanvasRect(hWnd, st);
     std::vector<int> displayX;
     Layout_BuildDisplayXMap(st, displayX);
@@ -4908,7 +4935,9 @@ static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st)
     float scale = 1.0f, ox = 0.0f, oy = 0.0f;
     Layout_ComputeTransform(st, st->canvasRc, pDisplayX, scale, ox, oy);
 
-    Graphics g(hdc);
+    GdiFlush();
+    auto graphics = surface ? std::make_unique<Graphics>(surface) : std::make_unique<Graphics>(hdc);
+    Graphics& g = *graphics;
     g.SetSmoothingMode(SmoothingModeAntiAlias);
     g.SetPixelOffsetMode(PixelOffsetModeHighQuality);
     g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
@@ -4917,42 +4946,30 @@ static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st)
         (REAL)(st->canvasRc.right - st->canvasRc.left), (REAL)(st->canvasRc.bottom - st->canvasRc.top));
     g.SetClip(canvas);
 
-    SolidBrush bg(Gp(RGB(28, 28, 30)));
-    g.FillRectangle(&bg, canvas);
-
-    // World-anchored pixel grid. Line widths remain in screen pixels at every zoom.
-    {
-        const auto grid = halljoy::layout_editor::GridForScale(scale);
-        Pen minorPen(Gp(RGB(100, 100, 110), (BYTE)std::lround(36 * grid.minorOpacity)), 0.7f);
-        Pen majorPen(Gp(RGB(100, 100, 110), 85), 1.1f);
-        const float gridX = ox + KEYBOARD_MARGIN_X * scale;
-        const float gridY = oy + KEYBOARD_MARGIN_Y * scale;
-        auto drawAxis = [&](bool vertical, int stride, Pen& pen, bool minor) {
-            const float origin = vertical ? gridX : gridY;
-            const float lo = vertical ? canvas.X : canvas.Y;
-            const float hi = vertical ? canvas.GetRight() : canvas.GetBottom();
-            const int first = (int)std::ceil((lo - origin) / (stride * scale));
-            const int last = (int)std::floor((hi - origin) / (stride * scale));
-            for (int index = first; index <= last; ++index) {
-                const int coordinate = index * stride;
-                if (minor && coordinate % grid.majorStep == 0) continue;
-                const float position = origin + coordinate * scale;
-                if (vertical) g.DrawLine(&pen, position, canvas.Y, position, canvas.GetBottom());
-                else g.DrawLine(&pen, canvas.X, position, canvas.GetRight(), position);
-            }
-        };
-        if (grid.minorOpacity > 0) {
-            drawAxis(true, 1, minorPen, true);
-            drawAxis(false, 1, minorPen, true);
-        }
-        drawAxis(true, grid.majorStep, majorPen, false);
-        drawAxis(false, grid.majorStep, majorPen, false);
+    // One raster transfer, with exact world-space phase and antialiased coverage.
+    const auto grid = halljoy::layout_editor::GridForScale(scale);
+    if (auto* image = st->grid.Get((int)canvas.Width, (int)canvas.Height, scale,
+        ox + KEYBOARD_MARGIN_X * scale - canvas.X, oy + KEYBOARD_MARGIN_Y * scale - canvas.Y,
+        grid.majorStep, grid.minorOpacity)) {
+        if (surface && targetPixels) {
+            const int stride = (int)surface->GetWidth(), height = (int)surface->GetHeight();
+            const int left = std::max(0L, st->canvasRc.left), right = std::min((LONG)stride, st->canvasRc.right);
+            for (int y = std::max(0L, st->canvasRc.top); y < std::min((LONG)height, st->canvasRc.bottom); ++y)
+                if (right > left) std::memcpy(targetPixels + (size_t)y * stride + left,
+                    st->grid.pixels.data() + (size_t)(y - st->canvasRc.top) * st->grid.width + left - st->canvasRc.left,
+                    (right - left) * sizeof(std::uint32_t));
+        } else g.DrawImage(image, (int)canvas.X, (int)canvas.Y);
     }
 
     Pen border(Gp(UiTheme::Color_Border()), 1.0f);
     g.DrawRectangle(&border, canvas);
+#if defined(HALLJOY_ANALOG_SIMULATOR)
+    QueryPerformanceCounter(&profileGridEnd);
+    g_editorGridTicks += profileGridEnd.QuadPart - profileStart.QuadPart;
+#endif
 
     int n = Layout_DraftCount(st);
+    st->labelCache.resize(n);
     for (int i = 0; i < n; ++i)
     {
         KeyDef k{};
@@ -4972,6 +4989,8 @@ static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st)
             g.DrawLine(&guide, r.GetRight(), canvas.Y, r.GetRight(), canvas.GetBottom());
             g.DrawLine(&guide, canvas.X, r.GetBottom(), canvas.GetRight(), r.GetBottom());
         }
+        if (r.GetRight() + 4 < canvas.X || r.X - 4 > canvas.GetRight() ||
+            r.GetBottom() + 4 < canvas.Y || r.Y - 4 > canvas.GetBottom()) continue;
         SolidBrush fill(sel ? Gp(UiTheme::Color_Accent(), 210) : Gp(RGB(48, 48, 52), 230));
         GraphicsPath shape;
         if (k.notchW) {
@@ -4981,8 +5000,6 @@ static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st)
             shape.AddPolygon(points, 6);
         } else shape.AddRectangle(r);
         g.FillPath(&fill, &shape);
-        const auto shapeClip = g.Save();
-        g.SetClip(&shape, CombineModeIntersect);
 
         // Live analog preview for bound HID keys (helps verify bind immediately).
         if (halljoy::keycode::IsSupported(k.hid))
@@ -4991,15 +5008,17 @@ static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st)
             v = std::clamp(v, 0.0f, 1.0f);
             if (v > 0.001f)
             {
+                const auto shapeClip = g.Save();
+                g.SetClip(&shape, CombineModeIntersect);
                 RectF rf = r;
                 rf.Height = r.Height * v;
                 SolidBrush fb(Gp(UiTheme::Color_Accent(), 140));
                 g.FillRectangle(&fb, rf);
+                g.Restore(shapeClip);
             }
         }
 
         Pen keyBorder(sel ? Gp(RGB(245, 245, 245)) : Gp(UiTheme::Color_Border()), sel ? 2.0f : 1.0f);
-        g.Restore(shapeClip);
         g.DrawPath(&keyBorder, &shape);
         if (sel && r.Width >= 16 && r.Height >= 16)
         {
@@ -5015,25 +5034,48 @@ static void Layout_DrawCanvas(HWND hWnd, HDC hdc, LayoutPageState* st)
 
         if (k.label && k.label[0])
         {
-            FontFamily ff(L"Segoe UI");
             float em = std::clamp(r.Height * 0.30f, 10.0f, 24.0f);
-            Font font(&ff, em, FontStyleRegular, UnitPixel);
-            StringFormat fmt;
-            fmt.SetAlignment(StringAlignmentCenter);
-            fmt.SetLineAlignment(StringAlignmentCenter);
-            fmt.SetFormatFlags(StringFormatFlagsNoWrap);
-            SolidBrush txt(sel ? Gp(RGB(12, 12, 12)) : Gp(UiTheme::Color_Text()));
             RectF labelRect = r;
             if (k.notchW) { const float offset = r.Width*k.notchW/k.w; labelRect.X += offset; labelRect.Width -= offset; }
-            g.DrawString(k.label, -1, &font, labelRect, &fmt, &txt);
+            const COLORREF color = sel ? RGB(12, 12, 12) : UiTheme::Color_Text();
+            auto drawText = [&](Graphics& target, const RectF& area) {
+                FontFamily family(L"Segoe UI");
+                Font font(&family, em, FontStyleRegular, UnitPixel);
+                StringFormat format;
+                format.SetAlignment(StringAlignmentCenter);
+                format.SetLineAlignment(StringAlignmentCenter);
+                format.SetFormatFlags(StringFormatFlagsNoWrap);
+                SolidBrush brush(Gp(color));
+                target.DrawString(k.label, -1, &font, area, &format, &brush);
+            };
+            auto& cached = st->labelCache[i];
+            if (labelRect.Width <= 1024 && labelRect.Height <= 1024 && labelRect.Width > 0 && labelRect.Height > 0) {
+                if (!cached.bitmap || cached.text != k.label || cached.width != labelRect.Width ||
+                    cached.height != labelRect.Height || cached.em != em || cached.color != color) {
+                    cached.bitmap = std::make_unique<Bitmap>((int)std::ceil(labelRect.Width),
+                        (int)std::ceil(labelRect.Height), PixelFormat32bppPARGB);
+                    cached.text = k.label; cached.width = labelRect.Width; cached.height = labelRect.Height;
+                    cached.em = em; cached.color = color;
+                    Graphics text(cached.bitmap.get());
+                    text.Clear(Color(0, 0, 0, 0));
+                    text.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+                    drawText(text, RectF(0, 0, labelRect.Width, labelRect.Height));
+                }
+                if (cached.bitmap->GetLastStatus() == Ok)
+                    g.DrawImage(cached.bitmap.get(), labelRect.X, labelRect.Y);
+                else drawText(g, labelRect);
+            } else { cached.bitmap.reset(); drawText(g, labelRect); }
         }
     }
 }
 
+#if defined(HALLJOY_ANALOG_SIMULATOR)
+// Aggregate canvas time is recorded by the benchmark; subtract the grid interval.
+#endif
 static void Layout_DrawRulersAndGuides(HWND hWnd, HDC hdc, LayoutPageState* st)
 {
     float scale, ox, oy; Layout_ComputeTransform(st, st->canvasRc, nullptr, scale, ox, oy);
-    Graphics g(hdc); g.SetSmoothingMode(SmoothingModeAntiAlias);
+    { Graphics g(hdc); g.SetSmoothingMode(SmoothingModeAntiAlias);
     g.SetClip(Rect(st->canvasRc.left, st->canvasRc.top,
         st->canvasRc.right - st->canvasRc.left, st->canvasRc.bottom - st->canvasRc.top));
     Pen guidePen(Gp(RGB(85, 190, 215), 170), 1.0f);
@@ -5046,11 +5088,15 @@ static void Layout_DrawRulersAndGuides(HWND hWnd, HDC hdc, LayoutPageState* st)
             g.DrawLine(&guidePen, (float)st->canvasRc.left, y, (float)st->canvasRc.right, y);
         }
     }
-    g.ResetClip();
+    }
     HGDIOBJ oldFont = SelectObject(hdc, GetStockObject(SYSTEM_FONT));
     int tickStep = 1;
     while (tickStep * scale < S(hWnd, 8)) tickStep *= 5;
-    Pen tickPen(Gp(UiTheme::Color_TextMuted(), 140), 1.0f);
+    const COLORREF foreground = UiTheme::Color_TextMuted(), background = UiTheme::Color_ControlBg();
+    auto blend = [](int front, int back) { return (front * 140 + back * 115 + 127) / 255; };
+    HPEN tickPen = CreatePen(PS_SOLID, 1, RGB(blend(GetRValue(foreground), GetRValue(background)),
+        blend(GetGValue(foreground), GetGValue(background)), blend(GetBValue(foreground), GetBValue(background))));
+    const auto oldPen = SelectObject(hdc, tickPen);
     for (bool vertical : {false, true}) {
         const RECT ruler = vertical ? st->leftRuler : st->topRuler;
         FillRect(hdc, &ruler, UiTheme::Brush_ControlBg());
@@ -5064,8 +5110,8 @@ static void Layout_DrawRulersAndGuides(HWND hWnd, HDC hdc, LayoutPageState* st)
             const int position = (int)std::lround(origin + coordinate * scale);
             const bool major = i % 5 == 0;
             const int length = S(hWnd, major ? 9 : 4);
-            if (vertical) g.DrawLine(&tickPen, ruler.right - length, position, ruler.right, position);
-            else g.DrawLine(&tickPen, position, ruler.bottom - length, position, ruler.bottom);
+            if (vertical) { MoveToEx(hdc, ruler.right - length, position, nullptr); LineTo(hdc, ruler.right, position); }
+            else { MoveToEx(hdc, position, ruler.bottom - length, nullptr); LineTo(hdc, position, ruler.bottom); }
             if (major) {
                 const std::wstring label = std::to_wstring(coordinate);
                 RECT text = vertical ? RECT{ruler.left, position - S(hWnd, 18), ruler.right - S(hWnd, 3), position}
@@ -5075,6 +5121,7 @@ static void Layout_DrawRulersAndGuides(HWND hWnd, HDC hdc, LayoutPageState* st)
         }
         RestoreDC(hdc, saved);
     }
+    SelectObject(hdc, oldPen); DeleteObject(tickPen);
     SelectObject(hdc, oldFont);
 }
 
@@ -5311,12 +5358,18 @@ LRESULT CALLBACK KeyboardSubpages_LayoutPageProc(HWND hWnd, UINT msg, WPARAM wPa
         HDC memDC = nullptr;
         HBITMAP bmp = nullptr;
         HGDIOBJ oldBmp = nullptr;
-        BeginDoubleBufferPaint(hWnd, ps, memDC, bmp, oldBmp);
-
-        Layout_DrawCanvas(hWnd, memDC, st);
+        HDC target = BeginPaint(hWnd, &ps);
+        RECT client{}; GetClientRect(hWnd, &client);
+        const bool buffered = st && st->renderBuffer.Ensure(client.right, client.bottom);
+        memDC = buffered ? st->renderBuffer.dc : target;
+        FillRect(memDC, &ps.rcPaint, UiTheme::Brush_PanelBg());
+        Layout_DrawCanvas(hWnd, memDC, st, buffered ? st->renderBuffer.surface.get() : nullptr,
+            buffered ? st->renderBuffer.pixels : nullptr);
         if (st) Layout_DrawRulersAndGuides(hWnd, memDC, st);
-
-        EndDoubleBufferPaint(hWnd, ps, memDC, bmp, oldBmp);
+        if (buffered) BitBlt(target, ps.rcPaint.left, ps.rcPaint.top,
+            ps.rcPaint.right - ps.rcPaint.left, ps.rcPaint.bottom - ps.rcPaint.top,
+            memDC, ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
+        EndPaint(hWnd, &ps);
         return 0;
     }
 
@@ -5865,9 +5918,14 @@ LRESULT CALLBACK KeyboardSubpages_LayoutPageProc(HWND hWnd, UINT msg, WPARAM wPa
         if (st && st->panning)
         {
             POINT point{ (short)LOWORD(lParam), (short)HIWORD(lParam) };
+            st->panMoved |= point.x != st->panPoint.x || point.y != st->panPoint.y;
             st->view.x += point.x - st->panPoint.x; st->view.y += point.y - st->panPoint.y;
             st->panPoint = point;
-            InvalidateRect(hWnd, nullptr, FALSE); return 0;
+            RECT dirty{}; UnionRect(&dirty, &st->canvasRc, &st->topRuler);
+            UnionRect(&dirty, &dirty, &st->leftRuler);
+            InvalidateRect(hWnd, &dirty, FALSE);
+            UpdateWindow(hWnd); // Mouse-driven camera updates do not wait for the telemetry timer.
+            return 0;
         }
         if (st && st->dragging)
         {
@@ -5897,17 +5955,14 @@ LRESULT CALLBACK KeyboardSubpages_LayoutPageProc(HWND hWnd, UINT msg, WPARAM wPa
         }
         return 0;
 
-    case WM_MBUTTONDOWN:
+    case WM_RBUTTONDOWN:
         if (st && !st->dragging && st->draggingGuide < 0) {
             POINT p{ (short)LOWORD(lParam), (short)HIWORD(lParam) };
             if (PtInRect(&st->canvasRc, p)) {
                 float scale, ox, oy; Layout_ComputeTransform(st, st->canvasRc, nullptr, scale, ox, oy);
-                st->panning = true; st->panPoint = p; SetCapture(hWnd); SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
+                st->panning = true; st->panMoved = false; st->panPoint = p; SetCapture(hWnd); SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
             }
         }
-        return 0;
-    case WM_MBUTTONUP:
-        if (st && st->panning) { st->panning = false; ReleaseCapture(); }
         return 0;
     case WM_MOUSEWHEEL:
         if (st && !st->panning) {
@@ -5933,6 +5988,11 @@ LRESULT CALLBACK KeyboardSubpages_LayoutPageProc(HWND hWnd, UINT msg, WPARAM wPa
         return 0;
 
     case WM_RBUTTONUP:
+        if (st && st->panning) {
+            const bool moved = st->panMoved;
+            st->panning = false; ReleaseCapture();
+            if (moved) return 0; // A pan must not delete the guide under its endpoint.
+        }
         if (st && !st->dragging && !st->panning && st->draggingGuide < 0) {
             const int guide = Layout_HitGuide(st, POINT{(short)LOWORD(lParam), (short)HIWORD(lParam)});
             if (guide >= 0) { st->guides.erase(st->guides.begin() + guide); InvalidateRect(hWnd, nullptr, FALSE); }
@@ -5964,6 +6024,7 @@ LRESULT CALLBACK KeyboardSubpages_LayoutPageProc(HWND hWnd, UINT msg, WPARAM wPa
         return DLGC_WANTALLKEYS;
 
     case WM_TIMER:
+        if (!HallJoyUiVisible(hWnd)) return 0;
         if (!st) return 0;
         if (wParam == ID_LAYOUT_UI_TIMER)
         {
@@ -6312,6 +6373,63 @@ bool KeyboardSubpages_TestLayoutEditor()
         {
             const HWND page = host->hPage;
             const size_t count = st->draftKeys.size();
+            // Grid phase follows camera movement, including negative coordinates.
+            {
+                EditorGrid grid;
+                ok &= grid.Get(64, 48, 2.0f, -3, -7, 5, 0.4f) != nullptr;
+                const auto before = grid.pixels;
+                auto* cached = grid.Get(64, 48, 2.0f, -3, -7, 5, 0.4f);
+                ok &= cached && grid.pixels == before;
+                grid.Get(64, 48, 2.0f, -2, -7, 5, 0.4f);
+                for (int row = 0; row < 48; ++row) for (int col = 1; col < 64; ++col)
+                    ok &= grid.pixels[row*64+col] == before[row*64+col-1];
+                grid.Get(64, 48, 3.0f, -2, -7, 5, 0.5f);
+                ok &= grid.pixels != before;
+                ok &= grid.Get(70, 60, 3.0f, -2, -7, 5, 0.5f) && grid.pixels.size() == 4200;
+            }
+            // Offscreen production-render benchmark; never switches the user's desktop.
+            {
+                RECT bounds{}; GetClientRect(page, &bounds);
+                HDC screen = GetDC(page), dc = CreateCompatibleDC(screen);
+                BITMAPINFO bitmapInfo{}; bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                bitmapInfo.bmiHeader.biWidth = bounds.right; bitmapInfo.bmiHeader.biHeight = -bounds.bottom;
+                bitmapInfo.bmiHeader.biPlanes = 1; bitmapInfo.bmiHeader.biBitCount = 32;
+                void* pixels = nullptr;
+                HBITMAP bitmap = CreateDIBSection(screen, &bitmapInfo, DIB_RGB_COLORS, &pixels, nullptr, 0);
+                const auto old = SelectObject(dc, bitmap);
+                Bitmap surface(bounds.right, bounds.bottom, bounds.right * 4, PixelFormat32bppRGB, static_cast<BYTE*>(pixels));
+                const auto view = st->view;
+                LARGE_INTEGER frequency{}, begin{}, end{};
+                QueryPerformanceFrequency(&frequency);
+                LONGLONG canvasTicks = 0, rulersTicks = 0;
+                g_editorGridTicks = 0;
+                QueryPerformanceCounter(&begin);
+                for (int frame = 0; frame < 60; ++frame) {
+                    st->view.x = view.x + frame % 20; st->view.y = view.y + frame % 10;
+                    LARGE_INTEGER a{}, b{}, c{}; QueryPerformanceCounter(&a);
+                    Layout_DrawCanvas(page, dc, st, &surface, static_cast<std::uint32_t*>(pixels)); QueryPerformanceCounter(&b);
+                    Layout_DrawRulersAndGuides(page, dc, st);
+                    GdiFlush();
+                    QueryPerformanceCounter(&c);
+                    canvasTicks += b.QuadPart-a.QuadPart; rulersTicks += c.QuadPart-b.QuadPart;
+                }
+                QueryPerformanceCounter(&end);
+                FILE* report = nullptr;
+                const auto path = AppPaths_DataRoot() + L"\\editor-render-benchmark.txt";
+                if (_wfopen_s(&report, path.c_str(), L"w") == 0 && report) {
+                    fprintf(report, "keys=%zu size=%ldx%ld frames=60 mean_ms=%.3f\n", count,
+                        bounds.right, bounds.bottom, 1000.0*(end.QuadPart-begin.QuadPart)/frequency.QuadPart/60);
+                    fclose(report);
+                    if (_wfopen_s(&report, path.c_str(), L"a") == 0 && report) {
+                        const double ms = 1000.0 / frequency.QuadPart / 60;
+                        fprintf(report, "grid_ms=%.3f keys_ms=%.3f rulers_ms=%.3f\n", g_editorGridTicks*ms,
+                            (canvasTicks-g_editorGridTicks)*ms, rulersTicks*ms);
+                        fclose(report);
+                    }
+                }
+                st->view = view;
+                SelectObject(dc, old); DeleteObject(bitmap); DeleteDC(dc); ReleaseDC(page, screen);
+            }
             // Use the production message admission policy on real controls.
             // hostWindow stands in for the main root; its owner is a separate
             // root, proving independent editor windows are not globally muted.
@@ -6513,14 +6631,17 @@ bool KeyboardSubpages_TestLayoutEditor()
             SendMessageW(page, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(guideEnd.x, guideEnd.y + 10));
             SendMessageW(page, WM_KEYDOWN, VK_ESCAPE, 0);
             ok &= st->draggingGuide == -1 && st->guides[0].coordinate == 200;
+            SendMessageW(page, WM_RBUTTONDOWN, MK_RBUTTON, MAKELPARAM(guideEnd.x, guideEnd.y));
             SendMessageW(page, WM_RBUTTONUP, 0, MAKELPARAM(guideEnd.x, guideEnd.y));
             ok &= st->guides.empty();
             SendMessageW(page, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(rulerStart.x, rulerStart.y));
             SendMessageW(page, WM_KEYDOWN, VK_ESCAPE, 0);
             ok &= st->guides.empty() && dimensions.Same(Layout_CaptureDraft(st));
             SendMessageW(page, WM_MBUTTONDOWN, MK_MBUTTON, MAKELPARAM(st->canvasRc.left + 20, st->canvasRc.top + 20));
-            SendMessageW(page, WM_MOUSEMOVE, MK_MBUTTON, MAKELPARAM(st->canvasRc.left + 37, st->canvasRc.top + 29));
-            SendMessageW(page, WM_MBUTTONUP, 0, 0);
+            ok &= !st->panning;
+            SendMessageW(page, WM_RBUTTONDOWN, MK_RBUTTON, MAKELPARAM(st->canvasRc.left + 20, st->canvasRc.top + 20));
+            SendMessageW(page, WM_MOUSEMOVE, MK_RBUTTON, MAKELPARAM(st->canvasRc.left + 37, st->canvasRc.top + 29));
+            SendMessageW(page, WM_RBUTTONUP, 0, 0);
             ok &= st->view.x == 17 && st->view.y == 9 && dimensions.Same(Layout_CaptureDraft(st));
             // Wheel during a captured resize/move must change only the camera,
             if (!ok) throw std::runtime_error("editor pre-wheel checks failed");
@@ -7194,13 +7315,7 @@ struct GlobalSettingsPageState
     LayoutPicker layoutPicker;
     HWND btnLayoutEditor = nullptr;
 
-    HWND lblPoll = nullptr;
-    HWND sldPoll = nullptr;
-    HWND chipPoll = nullptr;
 
-    HWND lblUiRefresh = nullptr;
-    HWND sldUiRefresh = nullptr;
-    HWND chipUiRefresh = nullptr;
 
     HWND lblFactoryReset = nullptr;
     HWND btnFactoryReset = nullptr;
@@ -7215,12 +7330,9 @@ struct GlobalSettingsPageState
     RECT rcLayoutBrand{}, rcLayoutTitle{}, rcLayoutVariant{};
     RECT rcAutomaticLayout{}, rcAutomaticLayoutStatus{};
     RECT rcLayoutEditor{};
-    RECT rcPollSlider{};
-    RECT rcPollChip{};
-    RECT rcUiRefreshSlider{};
-    RECT rcUiRefreshChip{};
     RECT rcEngineRuntime{};
     RECT rcDiagnosticLogging{}, rcHallJoyFolder{}, rcLicenses{}, rcLoggingError{};
+    RECT rcMinimizeToTray{}, rcCloseToTray{};
     RECT rcCommunity{}, rcDiscord{};
     DWORD loggingError = ERROR_SUCCESS;
     bool pausePulseTimer = false;
@@ -7238,8 +7350,6 @@ struct GlobalSettingsPageState
     ULONGLONG toastHideAt = 0;
 };
 
-static constexpr int GLOB_ID_POLL_SLIDER = 7601;
-static constexpr int GLOB_ID_UIREFRESH_SLIDER = 7602;
 static constexpr int GLOB_ID_LAYOUT_COMBO = 7603;
 static constexpr int GLOB_ID_LAYOUT_EDITOR = 7604;
 static constexpr int GLOB_ID_LAYOUT_BRAND = 7690;
@@ -7252,6 +7362,8 @@ static constexpr int GLOB_ID_DIAGNOSTIC_LOGGING = 7612;
 static constexpr int GLOB_ID_HALLJOY_FOLDER = 7613;
 static constexpr int GLOB_ID_LICENSES = 7617;
 static constexpr int GLOB_ID_DISCORD = 7614;
+static constexpr int GLOB_ID_MINIMIZE_TRAY = 7615;
+static constexpr int GLOB_ID_CLOSE_TRAY = 7616;
 static constexpr int GLOB_ID_FACTORY_RESET = 7607;
 
 static const wchar_t* Global_EngineRuntimeButtonText(halljoy::runtime_command::State state)
@@ -7621,10 +7733,6 @@ static bool Global_ApplyActiveGlobalProfile(GlobalSettingsPageState* st, HWND hW
     Backend_SetVirtualGamepadCount(Settings_GetVirtualGamepadCount());
     Backend_SetVirtualGamepadsEnabled(Settings_GetVirtualGamepadsEnabled());
 
-    if (st->sldPoll)
-        SendMessageW(st->sldPoll, TBM_SETPOS, TRUE, (LPARAM)std::clamp(Settings_GetPollingMs(), 1u, 20u));
-    if (st->sldUiRefresh)
-        SendMessageW(st->sldUiRefresh, TBM_SETPOS, TRUE, (LPARAM)std::clamp(Settings_GetUIRefreshMs(), 1u, 200u));
 
     GlobalProfiles_SetDirty(false);
     Global_UpdateProfileSaveIcon(st);
@@ -7672,19 +7780,7 @@ static void Global_UpdateUi(GlobalSettingsPageState* st)
         Global_RefreshLayoutCombo(st);
     }
 
-    if (st->chipPoll)
-    {
-        wchar_t b[32]{};
-        swprintf_s(b, L"%u ms", (unsigned)Settings_GetPollingMs());
-        SetWindowTextW(st->chipPoll, b);
-    }
 
-    if (st->chipUiRefresh)
-    {
-        wchar_t b[32]{};
-        swprintf_s(b, L"%u ms", (unsigned)Settings_GetUIRefreshMs());
-        SetWindowTextW(st->chipUiRefresh, b);
-    }
 
     Global_UpdateProfileSaveIcon(st);
 
@@ -7752,8 +7848,6 @@ static void Global_Layout(HWND hWnd, GlobalSettingsPageState* st)
     int chipW = S(hWnd, 86);
     int gap = S(hWnd, 10);
     int comboVisibleH = S(hWnd, 26);
-    int sliderH = S(hWnd, 34);
-    int chipH = sliderH;
     int labelH = S(hWnd, 18);
     int rowGap = S(hWnd, 18);
 
@@ -7769,9 +7863,7 @@ static void Global_Layout(HWND hWnd, GlobalSettingsPageState* st)
     const int discordY = y + S(hWnd, compactCommunity ? 68 : 24);
     st->rcDiscord = RECT{ discordX, discordY, discordX + S(hWnd, 132), discordY + S(hWnd, 32) };
     y = st->rcCommunity.bottom + S(hWnd, 24);
-    y += labelH + S(hWnd, 6);
-    st->rcGlobalProfile = RECT{ x, y, x + sliderW + gap + chipW, y + comboVisibleH };
-    y += comboVisibleH + rowGap;
+    st->rcGlobalProfile = RECT{ x, 0, x + sliderW + gap + chipW, 0 };
     y += labelH + S(hWnd, 6);
     st->rcLayoutTitle = RECT{ x, y, x + sliderW + gap + chipW, y + labelH };
     y += labelH + S(hWnd, 10);
@@ -7789,20 +7881,16 @@ static void Global_Layout(HWND hWnd, GlobalSettingsPageState* st)
     st->rcHallJoyFolder = RECT{ x, y, x + S(hWnd, 210), y + S(hWnd, 28) };
     st->rcLicenses = RECT{ x + S(hWnd, 220), y, x + S(hWnd, 320), y + S(hWnd, 28) };
     y += S(hWnd, 28) + S(hWnd, 14);
-    y += labelH + S(hWnd, 6);
-    st->rcPollSlider = RECT{ x, y, x + sliderW, y + sliderH };
-    st->rcPollChip = RECT{ x + sliderW + gap, y, x + sliderW + gap + chipW, y + chipH };
-    y += sliderH + rowGap;
-    y += labelH + S(hWnd, 6);
-    st->rcUiRefreshSlider = RECT{ x, y, x + sliderW, y + sliderH };
-    st->rcUiRefreshChip = RECT{ x + sliderW + gap, y, x + sliderW + gap + chipW, y + chipH };
-    y += sliderH + S(hWnd, 18);
     st->rcEngineRuntime = RECT{ x, y, x + S(hWnd, 210), y + S(hWnd, 32) };
     y += S(hWnd, 32) + S(hWnd, 58);
+    st->rcMinimizeToTray = RECT{ x, y, st->rcGlobalProfile.right, y + S(hWnd, 28) };
+    y += S(hWnd, 34);
+    st->rcCloseToTray = RECT{ x, y, st->rcGlobalProfile.right, y + S(hWnd, 28) };
+    y += S(hWnd, 34);
     st->rcDiagnosticLogging = RECT{ x, y, x + S(hWnd, 280), y + S(hWnd, 28) };
     y += S(hWnd, 34);
     st->loggingError = SupportLog_LastError();
-    st->rcLoggingError = RECT{ x, y, st->rcUiRefreshChip.right, y + S(hWnd, 44) };
+    st->rcLoggingError = RECT{ x, y, st->rcGlobalProfile.right, y + S(hWnd, 44) };
     if (st->loggingError != ERROR_SUCCESS) y += S(hWnd, 52);
     y += S(hWnd, 10);
     y += labelH + S(hWnd, 7);
@@ -7896,10 +7984,7 @@ static void Global_RenderContent(HWND hWnd, HDC hdc, const RECT&, void* user)
             st->pressedId == id, id!=GLOB_ID_LAYOUT_EDITOR || !KeyboardLayout_IsAutomaticLocked());
     };
 
-    labelAbove(st->rcGlobalProfile,
-        GlobalProfiles_IsDirty() ? L"Global profile - unsaved" : L"Global profile");
-    PremiumCombo::PaintRetainedFace(st->cmbGlobalProfile, hdc, st->rcGlobalProfile,
-        st->hotId == GLOB_ID_GLOBAL_PROFILE_COMBO || st->hotId == GLOB_ID_GLOBAL_PROFILE_SAVE);
+    // Profile management lives in the Profiles tab.
     labelAbove(st->rcLayoutTitle, L"Layout");
     CustomPage_DrawCheckbox(g,hdc,hWnd,st->rcAutomaticLayout,L"Automatic layout",KeyboardLayout_GetAutomatic(),true);
     CustomPage_DrawText(hdc,KeyboardLayout_GetAutomaticStatus(),st->rcAutomaticLayoutStatus,
@@ -7916,19 +8001,6 @@ static void Global_RenderContent(HWND hWnd, HDC hdc, const RECT&, void* user)
             st->hotId == GLOB_ID_LAYOUT_VARIANT);
     }
     button(GLOB_ID_LAYOUT_EDITOR, st->rcLayoutEditor, L"Layout editor");
-
-    labelAbove(st->rcPollSlider, L"Polling rate");
-    CustomPage_DrawSlider(g, hWnd, st->rcPollSlider, 1, 20,
-        (int)std::clamp(Settings_GetPollingMs(), 1u, 20u));
-    wchar_t value[32]{};
-    swprintf_s(value, L"%u ms", (unsigned)Settings_GetPollingMs());
-    CustomPage_DrawChip(g, hdc, st->rcPollChip, value);
-
-    labelAbove(st->rcUiRefreshSlider, L"UI refresh interval");
-    CustomPage_DrawSlider(g, hWnd, st->rcUiRefreshSlider, 1, 200,
-        (int)std::clamp(Settings_GetUIRefreshMs(), 1u, 200u));
-    swprintf_s(value, L"%u ms", (unsigned)Settings_GetUIRefreshMs());
-    CustomPage_DrawChip(g, hdc, st->rcUiRefreshChip, value);
 
     // One snapshot for text, colour and enablement. The complete image lives
     // in the retained page cache; the glow has no animation or timer.
@@ -7967,9 +8039,14 @@ static void Global_RenderContent(HWND hWnd, HDC hdc, const RECT&, void* user)
             hot, pressed, enabled);
 
     RECT pauseHint{ st->rcEngineRuntime.left, st->rcEngineRuntime.bottom + S(hWnd, 8),
-        st->rcUiRefreshChip.right, st->rcEngineRuntime.bottom + S(hWnd, 48) };
+        st->rcGlobalProfile.right, st->rcEngineRuntime.bottom + S(hWnd, 48) };
     CustomPage_DrawText(hdc, L"Pause releases your keyboard so you can use its web configurator without a device-access conflict.",
         pauseHint, UiTheme::Color_TextMuted(), DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+
+    CustomPage_DrawCheckbox(g, hdc, hWnd, st->rcMinimizeToTray, L"Minimize button: hide to system tray",
+        Settings_GetMinimizeToTray(), true);
+    CustomPage_DrawCheckbox(g, hdc, hWnd, st->rcCloseToTray, L"Close button: hide to system tray",
+        Settings_GetCloseToTray(), true);
 
 #if defined(HALLJOY_INPUT_PATH_DIAGNOSTIC)
     CustomPage_DrawCheckbox(g, hdc, hWnd, st->rcDiagnosticLogging, L"Automatic diagnostic logging",
@@ -8036,7 +8113,7 @@ static void Global_RenderContent(HWND hWnd, HDC hdc, const RECT&, void* user)
     CustomPage_DrawText(hdc, L"Reset All Settings", st->rcFactoryReset, RGB(255, 238, 240),
         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     RECT factoryHint{ st->rcFactoryReset.left, st->rcFactoryReset.bottom + S(hWnd, 7),
-        st->rcUiRefreshChip.right, st->rcFactoryReset.bottom + S(hWnd, 41) };
+        st->rcGlobalProfile.right, st->rcFactoryReset.bottom + S(hWnd, 41) };
     CustomPage_DrawText(hdc,
         L"Backs up and resets settings, bindings, profiles, layouts and curve presets.",
         factoryHint, UiTheme::Color_TextMuted(), DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
@@ -8047,20 +8124,15 @@ static int Global_HitTest(GlobalSettingsPageState* st, POINT clientPoint)
 {
     if (!st) return 0;
     POINT pt = CustomPageSurface_ClientToContent(&st->surface, clientPoint);
-    RECT saveIcon{};
-    if (PremiumCombo::GetRetainedExtraIconRect(
-        st->cmbGlobalProfile, st->rcGlobalProfile, &saveIcon) && PtInRect(&saveIcon, pt))
-        return GLOB_ID_GLOBAL_PROFILE_SAVE;
     const std::pair<int, RECT*> hits[] = {
-        { GLOB_ID_GLOBAL_PROFILE_COMBO, &st->rcGlobalProfile },
         { GLOB_ID_AUTOMATIC_LAYOUT, &st->rcAutomaticLayout },
         { GLOB_ID_LAYOUT_COMBO, &st->rcLayout },
         { GLOB_ID_LAYOUT_BRAND, &st->rcLayoutBrand },
         { GLOB_ID_LAYOUT_VARIANT, &st->rcLayoutVariant },
         { GLOB_ID_LAYOUT_EDITOR, &st->rcLayoutEditor },
-        { GLOB_ID_POLL_SLIDER, &st->rcPollSlider },
-        { GLOB_ID_UIREFRESH_SLIDER, &st->rcUiRefreshSlider },
         { GLOB_ID_ENGINE_RUNTIME, &st->rcEngineRuntime },
+        { GLOB_ID_MINIMIZE_TRAY, &st->rcMinimizeToTray },
+        { GLOB_ID_CLOSE_TRAY, &st->rcCloseToTray },
         { GLOB_ID_DIAGNOSTIC_LOGGING, &st->rcDiagnosticLogging },
         { GLOB_ID_HALLJOY_FOLDER, &st->rcHallJoyFolder },
         { GLOB_ID_LICENSES, &st->rcLicenses },
@@ -8098,27 +8170,6 @@ static void Global_OpenComboAnchor(HWND hWnd, GlobalSettingsPageState* st, HWND 
         SWP_NOACTIVATE | SWP_SHOWWINDOW);
     SetFocus(combo);
     PremiumCombo::ShowDropDown(combo, true);
-}
-
-static void Global_SetSliderFromClient(HWND hWnd, GlobalSettingsPageState* st, int id, int clientX)
-{
-    if (!st) return;
-    if (id == GLOB_ID_POLL_SLIDER)
-    {
-        const int value = CustomPage_SliderValueFromPoint(hWnd, st->rcPollSlider, 1, 20, clientX);
-        Settings_SetPollingMs((UINT)value);
-        RealtimeLoop_SetIntervalMs(Settings_GetPollingMs());
-    }
-    else if (id == GLOB_ID_UIREFRESH_SLIDER)
-    {
-        const int value = CustomPage_SliderValueFromPoint(hWnd, st->rcUiRefreshSlider, 1, 200, clientX);
-        Settings_SetUIRefreshMs((UINT)value);
-    }
-    else return;
-    GlobalProfiles_SetDirty(true);
-    Global_RequestApplyTiming(hWnd);
-    Global_RequestSave(hWnd);
-    CustomPageSurface_MarkDirty(hWnd, &st->surface);
 }
 
 LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -8368,15 +8419,7 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
         st = new GlobalSettingsPageState();
         SetWindowLongPtrW(hWnd, GWLP_USERDATA, (LONG_PTR)st);
 
-        st->lblGlobalProfile = CreateWindowW(L"STATIC", L"Global profile",
-            WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hWnd, nullptr, hInst, nullptr);
-        SendMessageW(st->lblGlobalProfile, WM_SETFONT, (WPARAM)hFont, TRUE);
-
-        st->cmbGlobalProfile = PremiumCombo::Create(hWnd, hInst,
-            0, 0, 10, 10, GLOB_ID_GLOBAL_PROFILE_COMBO,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP);
-        PremiumCombo::SetFont(st->cmbGlobalProfile, hFont, true);
-        Global_RefreshGlobalProfileCombo(st);
+        // Profile controls have moved to the dedicated Profiles page.
 
         st->lblLayout = CreateWindowW(L"STATIC", L"Keyboard layout",
             WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hWnd, nullptr, hInst, nullptr);
@@ -8401,28 +8444,6 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
             0, 0, 10, 10, hWnd, (HMENU)(INT_PTR)GLOB_ID_LAYOUT_EDITOR, hInst, nullptr);
         SendMessageW(st->btnLayoutEditor, WM_SETFONT, (WPARAM)hFont, TRUE);
 
-        st->lblPoll = CreateWindowW(L"STATIC", L"Polling rate",
-            WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hWnd, nullptr, hInst, nullptr);
-        SendMessageW(st->lblPoll, WM_SETFONT, (WPARAM)hFont, TRUE);
-
-        st->sldPoll = PremiumSlider_Create(hWnd, hInst, 0, 0, 10, 10, GLOB_ID_POLL_SLIDER);
-        SendMessageW(st->sldPoll, TBM_SETRANGE, TRUE, MAKELONG(1, 20));
-        SendMessageW(st->sldPoll, TBM_SETPOS, TRUE, (LPARAM)std::clamp(Settings_GetPollingMs(), 1u, 20u));
-
-        st->chipPoll = PremiumChip_Create(hWnd, hInst, 0, 0, 10, 10, GLOB_ID_POLL_SLIDER + 100);
-        SendMessageW(st->chipPoll, WM_SETFONT, (WPARAM)hFont, TRUE);
-
-        st->lblUiRefresh = CreateWindowW(L"STATIC", L"UI refresh interval",
-            WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hWnd, nullptr, hInst, nullptr);
-        SendMessageW(st->lblUiRefresh, WM_SETFONT, (WPARAM)hFont, TRUE);
-
-        st->sldUiRefresh = PremiumSlider_Create(hWnd, hInst, 0, 0, 10, 10, GLOB_ID_UIREFRESH_SLIDER);
-        SendMessageW(st->sldUiRefresh, TBM_SETRANGE, TRUE, MAKELONG(1, 200));
-        SendMessageW(st->sldUiRefresh, TBM_SETPOS, TRUE, (LPARAM)std::clamp(Settings_GetUIRefreshMs(), 1u, 200u));
-
-        st->chipUiRefresh = PremiumChip_Create(hWnd, hInst, 0, 0, 10, 10, GLOB_ID_UIREFRESH_SLIDER + 100);
-        SendMessageW(st->chipUiRefresh, WM_SETFONT, (WPARAM)hFont, TRUE);
-
         st->lblFactoryReset = CreateWindowW(L"STATIC", L"Factory reset",
             WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hWnd, nullptr, hInst, nullptr);
         SendMessageW(st->lblFactoryReset, WM_SETFONT, (WPARAM)hFont, TRUE);
@@ -8442,8 +8463,7 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
         // rendered by the page surface.
         HWND compatibilityChildren[] = {
             st->lblGlobalProfile, st->cmbGlobalProfile, st->lblLayout, st->cmbLayout,
-            st->btnLayoutEditor, st->lblPoll, st->sldPoll,
-            st->chipPoll, st->lblUiRefresh, st->sldUiRefresh, st->chipUiRefresh,
+            st->btnLayoutEditor,
             st->lblFactoryReset, st->btnFactoryReset, st->lblFactoryResetHint
         };
         for (HWND child : compatibilityChildren)
@@ -8472,13 +8492,10 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
                 return 0;
             }
             st->pressedId = Global_HitTest(st, pt);
-            st->dragId = (st->pressedId == GLOB_ID_POLL_SLIDER ||
-                st->pressedId == GLOB_ID_UIREFRESH_SLIDER) ? st->pressedId : 0;
+            st->dragId = 0;
             if (st->pressedId)
             {
                 SetCapture(hWnd);
-                if (st->dragId)
-                    Global_SetSliderFromClient(hWnd, st, st->dragId, pt.x);
                 CustomPageSurface_MarkDirty(hWnd, &st->surface);
             }
             return 0;
@@ -8494,11 +8511,6 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
             if (scrollResult != CustomPageScrollResult::NotHandled)
             {
                 st->scrollY = st->surface.scrollY;
-                return 0;
-            }
-            if (st->dragId)
-            {
-                Global_SetSliderFromClient(hWnd, st, st->dragId, pt.x);
                 return 0;
             }
             const int hot = Global_HitTest(st, pt);
@@ -8605,6 +8617,7 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
         break;
 
     case WM_TIMER:
+        if (!HallJoyUiVisible(hWnd)) return 0;
         if (st && wParam == GLOBAL_PAUSE_PULSE_TIMER)
         {
             Global_UpdatePulse(hWnd, st);
@@ -8623,40 +8636,6 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
             return 0;
         }
         break;
-
-    case WM_HSCROLL:
-    {
-        if (!st) return 0;
-
-        if ((HWND)lParam == st->sldPoll)
-        {
-            int v = (int)SendMessageW(st->sldPoll, TBM_GETPOS, 0, 0);
-            v = std::clamp(v, 1, 20);
-            Settings_SetPollingMs((UINT)v);
-            RealtimeLoop_SetIntervalMs(Settings_GetPollingMs());
-            GlobalProfiles_SetDirty(true);
-            Global_UpdateProfileSaveIcon(st);
-            Global_UpdateUi(st);
-            Global_RequestApplyTiming(hWnd);
-            Global_RequestSave(hWnd);
-            return 0;
-        }
-
-        if ((HWND)lParam == st->sldUiRefresh)
-        {
-            int v = (int)SendMessageW(st->sldUiRefresh, TBM_GETPOS, 0, 0);
-            v = std::clamp(v, 1, 200);
-            Settings_SetUIRefreshMs((UINT)v);
-            GlobalProfiles_SetDirty(true);
-            Global_UpdateProfileSaveIcon(st);
-            Global_UpdateUi(st);
-            Global_RequestApplyTiming(hWnd);
-            Global_RequestSave(hWnd);
-            return 0;
-        }
-
-        return 0;
-    }
 
     case WM_DRAWITEM:
     {
@@ -8746,6 +8725,19 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
             CustomPageSurface_MarkDirty(hWnd,&st->surface);
             return 0;
         }
+        if ((LOWORD(wParam) == GLOB_ID_MINIMIZE_TRAY || LOWORD(wParam) == GLOB_ID_CLOSE_TRAY) && HIWORD(wParam) == BN_CLICKED)
+        {
+            const bool minimize = LOWORD(wParam) == GLOB_ID_MINIMIZE_TRAY;
+            const bool oldValue = minimize ? Settings_GetMinimizeToTray() : Settings_GetCloseToTray();
+            if (minimize) Settings_SetMinimizeToTray(!oldValue); else Settings_SetCloseToTray(!oldValue);
+            // WindowUpdate is atomic and never changes the active input profile.
+            if (!SettingsIni_SaveWindow(AppPaths_SettingsIni().c_str())) {
+                if (minimize) Settings_SetMinimizeToTray(oldValue); else Settings_SetCloseToTray(oldValue);
+                MessageBoxW(hWnd, L"Could not save window behavior. The previous setting is unchanged.", L"HallJoy", MB_OK | MB_ICONWARNING);
+            }
+            CustomPageSurface_MarkDirty(hWnd, &st->surface);
+            return 0;
+        }
         if (LOWORD(wParam) == GLOB_ID_DIAGNOSTIC_LOGGING && HIWORD(wParam) == BN_CLICKED)
         {
 #if !defined(HALLJOY_INPUT_PATH_DIAGNOSTIC)
@@ -8756,7 +8748,10 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
             return 0;
         }
         if (LOWORD(wParam) == GLOB_ID_LICENSES && HIWORD(wParam) == BN_CLICKED)
-        { HallJoyShowLicenses(hWnd); return 0; }
+        {
+            HallJoyShowLicenses(hWnd);
+            return 0;
+        }
         if (LOWORD(wParam) == GLOB_ID_HALLJOY_FOLDER && HIWORD(wParam) == BN_CLICKED)
         {
             const auto directory = AppPaths_DataRoot();
@@ -8864,6 +8859,20 @@ bool KeyboardSubpages_TestLayoutPicker()
         0, 0, 850, 750, owner, nullptr, wc.hInstance, nullptr);
     auto* st = (GlobalSettingsPageState*)GetWindowLongPtrW(page, GWLP_USERDATA);
     bool ok = st && owner;
+    // Real Win32 visibility lifecycle on the test's private desktop. No input
+    // backend is started and no test window appears on the owner's desktop.
+    HWND probe=CreateWindowW(L"STATIC",L"",WS_CHILD | WS_VISIBLE,
+        0,0,20,20,owner,nullptr,wc.hInstance,nullptr);
+    ok &= probe && !HallJoyUiVisible(probe);
+    ShowWindow(owner,SW_SHOWNOACTIVATE);
+    ok &= HallJoyUiVisible(probe);
+    ShowWindow(owner,SW_SHOWMINNOACTIVE);
+    ok &= IsIconic(owner) && IsWindowVisible(probe) && !HallJoyUiVisible(probe);
+    ShowWindow(owner,SW_SHOWNOACTIVATE);
+    ok &= HallJoyUiVisible(probe);
+    ShowWindow(owner,SW_HIDE);
+    ok &= !HallJoyUiVisible(probe);
+    DestroyWindow(probe);
     if (st) {
         auto& picker = st->layoutPicker;
         ok &= picker.Selected() == 0 && picker.browsing == L"DrunkDeer";
@@ -9761,6 +9770,7 @@ static LRESULT MouseCustom_PageProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
     }
     case WM_TIMER:
+        if (!HallJoyUiVisible(hWnd)) return 0;
         if (st && (wParam == MOUSE_STATUS_TIMER_ID || wParam == MOUSE_VIS_TIMER_ID))
         {
             MouseCustom_RebuildLayout(hWnd, st);
@@ -10335,6 +10345,7 @@ LRESULT CALLBACK KeyboardSubpages_MouseSettingsPageProc(HWND hWnd, UINT msg, WPA
         return 0;
 
     case WM_TIMER:
+        if (!HallJoyUiVisible(hWnd)) return 0;
         if (st && wParam == MOUSE_STATUS_TIMER_ID)
         {
             Mouse_UpdateUi(st);
@@ -10541,6 +10552,7 @@ static LRESULT CALLBACK SnappyToggle_SubclassProc(HWND hBtn, UINT msg, WPARAM wP
     }
 
     case WM_TIMER:
+        if (!HallJoyUiVisible(hBtn)) return 0;
         if (wParam == 1) { SnappyToggle_Tick(hBtn); return 0; }
         break;
 
@@ -10961,7 +10973,7 @@ static void LayoutConfigControls(HWND hWnd, ConfigPageState* st)
     int totalW = S(hWnd, 416);
 
     int x = margin;
-    int y = S(hWnd, 310);
+    int y = (S(hWnd, 310) - KeySettingsPanel_HeaderOffsetPx(hWnd));
     int yAfter = y;
 
     // Snappy toggle
@@ -11049,7 +11061,7 @@ static RECT Config_ToViewRect(RECT rc, ConfigPageState* st)
 static RECT Config_CustomToggleRect(HWND hWnd, int ordinal)
 {
     int x = S(hWnd, 12);
-    int y = S(hWnd, 310);
+    int y = (S(hWnd, 310) - KeySettingsPanel_HeaderOffsetPx(hWnd));
     int h = S(hWnd, 26);
     int gap = S(hWnd, 10);
     ordinal = std::max(0, ordinal);
@@ -11920,10 +11932,10 @@ static int Config_ComputeBaseContentBottom(HWND hWnd)
 
     // Graph + CP hint region (painted on parent, not child controls)
     int graphBottom = S(hWnd, 86) + S(hWnd, 160) + margin;
-    int cpHintBottom = S(hWnd, 286) + S(hWnd, 20) + margin;
+    int cpHintBottom = (S(hWnd, 286) - KeySettingsPanel_HeaderOffsetPx(hWnd)) + S(hWnd, 20) + margin;
 
     // Explicit controls below graph
-    int y = S(hWnd, 310);
+    int y = (S(hWnd, 310) - KeySettingsPanel_HeaderOffsetPx(hWnd));
     int bottom = y
         + (S(hWnd, 26) + S(hWnd, 10)) // Snap Stick
         + (S(hWnd, 26) + S(hWnd, 10)) // Last Key Priority + sensitivity slider
@@ -12313,7 +12325,7 @@ static void DrawCpWeightHintIfNeeded(HWND hWnd, HDC hdc)
     GetClientRect(hWnd, &rcClient);
 
     int x = S(hWnd, 12);
-    int y = S(hWnd, 286);
+    int y = (S(hWnd, 286) - KeySettingsPanel_HeaderOffsetPx(hWnd));
     auto* st = (ConfigPageState*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
     if (st)
         y -= st->scrollY;

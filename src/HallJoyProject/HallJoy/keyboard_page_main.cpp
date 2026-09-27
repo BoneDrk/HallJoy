@@ -1,3 +1,4 @@
+#include "ui_activity.h"
 // keyboard_page_main.cpp
 #ifndef _WIN32_IE
 #define _WIN32_IE 0x0600
@@ -7,6 +8,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include "support_log.h"
+#include "mchose_mix87_backend.h"
 #include "engine_runtime_owner.h"
 #include "community_links.h"
 #include <commctrl.h>
@@ -38,6 +40,8 @@
 #include "app_paths.h"
 #include "ui_theme.h"
 #include "tab_dark.h"
+#include "profiles_page.h"
+#include <thread>
 #include "debug_log.h"
 
 #include "binding_actions.h"
@@ -51,11 +55,16 @@
 static constexpr UINT WM_APP_SYNC_MOUSE_SLOTS = WM_APP + 360;
 static constexpr UINT WM_APP_ANALOG_SOURCE_STATUS_CHANGED = WM_APP + 361;
 static constexpr int kSupportBannerHeightPx = 100;
+static bool Mad68LimitedVisible() { return (halljoy::keyboard_support::GetStatusSnapshot().frozenModels & halljoy::keyboard_support::Mad68DualLimited) != 0; }
+static bool Mix87LimitedVisible() { return (halljoy::keyboard_support::GetStatusSnapshot().frozenModels & halljoy::keyboard_support::Mix87Limited) != 0; }
+static bool KnownLimitedVisible() { return Mad68LimitedVisible() || Mix87LimitedVisible(); }
 static bool CommunicationWarningVisible() { return halljoy::keyboard_support::GetStatusSnapshot().communicationWarning; }
 static bool FrozenSupportVisible() { return CommunicationWarningVisible() || halljoy::keyboard_support::GetStatusSnapshot().frozenModels != 0; }
 static bool ImplementedSupportVisible() { return CommunicationWarningVisible() || (halljoy::keyboard_support::GetStatusSnapshot().frozenModels & halljoy::keyboard_support::ImplementedModels) != 0; }
 static int SupportBannerHeight() { return FrozenSupportVisible() ? 154 : kSupportBannerHeightPx; }
 static const wchar_t* FrozenSupportTitle() {
+    if(Mix87LimitedVisible()) return L"MCHOSE Mix87 III: limited analog";
+    if(Mad68LimitedVisible()) return L"MAD 68 V2 Dual: low-quality firmware analog";
     if(CommunicationWarningVisible())return L"Keyboard communication is unstable";
     using namespace halljoy::keyboard_support;
     switch(GetStatusSnapshot().frozenModels) {
@@ -84,6 +93,8 @@ static const wchar_t* FrozenSupportTitle() {
     }
 }
 static const wchar_t* FrozenSupportBody() {
+    if(Mix87LimitedVisible()) return L"Very shallow presses are not reported by this firmware. Analog mode is saved in the keyboard and stays enabled after closing HallJoy.";
+    if(Mad68LimitedVisible()) return L"This firmware has no suitable analog protocol. This is the best available method: shallow input is lost, small changes are delayed, and normal typing is blocked. Exit HallJoy to restore typing.";
     if(CommunicationWarningVisible())return L"Another app may be interfering. Close keyboard configuration apps and browser configurator tabs, then try again. Keep software required for analog input running. If this continues, check the USB connection.";
     const auto models=halljoy::keyboard_support::GetStatusSnapshot().frozenModels;
     if(models==halljoy::keyboard_support::TartarusPro)
@@ -102,6 +113,8 @@ static const wchar_t* FrozenSupportBody() {
 // Mouse settings currently work poorly and are disabled in the UI.
 // Keep the implementation as a foundation for future fixes; do not delete it.
 static constexpr bool kMouseSettingsPageEnabled = false;
+// Temporarily hidden at owner request; retain the implementation for later.
+static constexpr bool kProfilesPageEnabled = false;
 
 static HWND g_hSupportBanner = nullptr;
 static HWND g_hPausePreview = nullptr;
@@ -135,8 +148,12 @@ static void ComputeMousePanelRect(HWND hWnd, RECT& outRc);
 static constexpr const char* kDiscordQrRows[] = {
     "11111110101100000000101111111", "10000010010110001111001000001", "10111010010101011100001011101", "10111010111000111000101011101", "10111010101001101101001011101", "10000010100011110011101000001", "11111110101010101010101111111", "00000000111010100111100000000", "10001011111001111111111111001", "10110000111110000001001111111", "01100011001001110010100010001", "00010100010101011110100101011", "01110011110111000101010000010", "10000100110111101100111111111", "10001111011110001100111011101", "01000101001010100111110100011", "11110110100101111000110100010", "10010101000010000100101111011", "00011111011001110000101000101", "00100100101001011101111110011", "11001010011001000101111111001", "00000000110011101111100010001", "11111110110110001101101011101", "10000010011100100101100010011", "10111010111111111011111111011", "10111010011000000110000000010", "10111010011011010011010001111", "10000010000011111000100101011", "11111110111000000000101111010",
 };
-enum class SupportBannerAction { None, Join, Copy };
-struct SupportBannerLayout { RECT title{}, body{}, join{}, copy{}, qr{}; };
+enum class SupportBannerAction { None, Join, Copy, Log, Mix87Mode };
+static constexpr UINT_PTR kMix87ModeTimer = 2;
+static std::uint64_t g_supportLogRequest = 0;
+static ULONGLONG g_supportLogDeadline = 0;
+static constexpr UINT_PTR kSupportLogTimer = 1;
+struct SupportBannerLayout { RECT title{}, body{}, join{}, copy{}, log{}, qr{}, mode{}; };
 static SupportBannerAction g_supportBannerHot = SupportBannerAction::None;
 static SupportBannerAction g_supportBannerPressed = SupportBannerAction::None;
 static constexpr wchar_t kSupportPrompt[] = L"Want to help add support for your analogue keyboard?";
@@ -178,7 +195,7 @@ static SupportBannerLayout SupportBanner_GetLayout(HWND hWnd, const RECT& rc)
     if (old) SelectObject(dc, old);
     if (font) DeleteObject(font);
     ReleaseDC(hWnd, dc);
-    const bool inlineButtons = pad + measured.cx + gap + joinW + gap + copyW <= textRight;
+    const bool inlineButtons = pad + measured.cx + gap + joinW + gap + copyW + gap + S(hWnd, 96) <= textRight;
     const int bodyTop = std::max(S(hWnd, inlineButtons ? 51 : 39), static_cast<int>(result.title.bottom));
     result.body = { pad, bodyTop, textRight, bodyTop + S(hWnd, inlineButtons ? 32 : 21) };
     const int buttonX = inlineButtons ? pad + measured.cx + gap : pad;
@@ -191,9 +208,18 @@ static SupportBannerLayout SupportBanner_GetLayout(HWND hWnd, const RECT& rc)
         result.join = {pad, S(hWnd,114), pad + joinW, S(hWnd,146)};
         result.copy = {result.join.right + gap, result.join.top, result.join.right + gap + copyW, result.join.bottom};
     }
+    result.log = {result.copy.right + gap, result.copy.top, result.copy.right + gap + S(hWnd,96), result.copy.bottom};
     if (CommunicationWarningVisible()) {
         result.title.right=rc.right-pad;
-        result.body={pad,result.title.bottom+S(hWnd,8),rc.right-pad,rc.bottom-S(hWnd,12)};
+        result.body={pad,result.title.bottom+S(hWnd,8),rc.right-pad,S(hWnd,108)};
+        result.log={pad,S(hWnd,114),pad+S(hWnd,96),S(hWnd,146)};
+        result.join={};result.copy={};result.qr={};
+    }
+    if (Mix87LimitedVisible()) {
+        result.title.right=rc.right-pad;
+        result.body={pad,result.title.bottom+S(hWnd,8),rc.right-pad,S(hWnd,108)};
+        result.mode={pad,S(hWnd,114),pad+S(hWnd,220),S(hWnd,146)};
+        result.log={result.mode.right+gap,result.mode.top,result.mode.right+gap+S(hWnd,96),result.mode.bottom};
         result.join={};result.copy={};result.qr={};
     }
     return result;
@@ -201,6 +227,8 @@ static SupportBannerLayout SupportBanner_GetLayout(HWND hWnd, const RECT& rc)
 
 static SupportBannerAction SupportBanner_HitTest(const SupportBannerLayout& layout, POINT point)
 {
+    if (PtInRect(&layout.mode, point)) return SupportBannerAction::Mix87Mode;
+    if (PtInRect(&layout.log, point)) return SupportBannerAction::Log;
     if (PtInRect(&layout.join, point)) return SupportBannerAction::Join;
     if (PtInRect(&layout.copy, point)) return SupportBannerAction::Copy;
     return SupportBannerAction::None;
@@ -233,14 +261,14 @@ static void DrawSupportQr(Gdiplus::Graphics& g, HWND hWnd, const RECT& tile)
 {
     // Warm rose paper and burgundy ink match the card. Keep the required
     // quiet zone, without an extra decorative frame or padding.
-    CustomPage_DrawRoundRect(g, tile, FrozenSupportVisible() ? (ImplementedSupportVisible() ? RGB(250, 229, 186) : RGB(210, 215, 224)) : RGB(239, 209, 216), FrozenSupportVisible() ? (ImplementedSupportVisible() ? RGB(250, 229, 186) : RGB(210, 215, 224)) : RGB(239, 209, 216), (float)S(hWnd, 5));
+    CustomPage_DrawRoundRect(g, tile, (FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? RGB(250, 229, 186) : RGB(210, 215, 224)) : RGB(239, 209, 216), (FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? RGB(250, 229, 186) : RGB(210, 215, 224)) : RGB(239, 209, 216), (float)S(hWnd, 5));
     constexpr int kModules = 29, kQuiet = 4;
     // Snap every boundary to a pixel instead of rounding the module size down:
     // the code fills its tile at every DPI, with no blur or gaps between cells.
     constexpr int total = kModules + kQuiet * 2;
     const int size = static_cast<int>(tile.right - tile.left);
     const auto edge = [size](int module) { return MulDiv(module, size, total); };
-    Gdiplus::SolidBrush ink(FrozenSupportVisible() ? (ImplementedSupportVisible() ? Gdiplus::Color(255, 62, 42, 12) : Gdiplus::Color(255, 38, 43, 52)) : Gdiplus::Color(255, 73, 31, 43));
+    Gdiplus::SolidBrush ink((FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? Gdiplus::Color(255, 62, 42, 12) : Gdiplus::Color(255, 38, 43, 52)) : Gdiplus::Color(255, 73, 31, 43));
     const auto smoothing = g.GetSmoothingMode();
     g.SetSmoothingMode(Gdiplus::SmoothingModeNone);
     for (int y = 0; y < kModules; ++y)
@@ -256,6 +284,34 @@ static void DrawSupportQr(Gdiplus::Graphics& g, HWND hWnd, const RECT& tile)
 
 static LRESULT CALLBACK SupportBannerProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (msg == WM_TIMER && wParam == kSupportLogTimer) {
+        const bool ready = SupportLog_CompletedSnapshot() >= g_supportLogRequest;
+        if (!ready && GetTickCount64() < g_supportLogDeadline) return 0;
+        KillTimer(hWnd, kSupportLogTimer);
+        if (ready) {
+            const auto argument = L"\"" + SupportLog_Directory() + L"\\HallJoy.log\"";
+            wchar_t system[MAX_PATH]{};
+            GetSystemDirectoryW(system, _countof(system));
+            const auto editor = std::wstring(system) + L"\\notepad.exe";
+            if (reinterpret_cast<INT_PTR>(ShellExecuteW(hWnd, L"open", editor.c_str(), argument.c_str(), nullptr, SW_SHOWNORMAL)) > 32) return 0;
+            MessageBoxW(hWnd, L"Could not open the log in Notepad. Use Open HallJoy folder in Global settings.", L"HallJoy", MB_ICONWARNING);
+        } else {
+            wchar_t error[256]{};
+            const DWORD errorCode = SupportLog_LastError();
+            if (errorCode) swprintf_s(error, L"Could not save the support log. Windows error: %lu. Please try again.", errorCode);
+            else wcscpy_s(error, L"Saving the support log timed out. Please try again.");
+            MessageBoxW(hWnd, error, L"HallJoy", MB_ICONWARNING);
+        }
+        return 0;
+    }
+    if (msg == WM_TIMER && wParam == kMix87ModeTimer) {
+        if(IsWindowVisible(hWnd) && !IsIconic(GetAncestor(hWnd,GA_ROOT)))InvalidateRect(hWnd,nullptr,FALSE);return 0;
+    }
+    if (msg == WM_SHOWWINDOW) {
+        if(wParam && Mix87LimitedVisible())SetTimer(hWnd,kMix87ModeTimer,500,nullptr);
+        else KillTimer(hWnd,kMix87ModeTimer);
+    }
+    if (msg == WM_DESTROY) { KillTimer(hWnd, kSupportLogTimer); KillTimer(hWnd,kMix87ModeTimer); }
     if (msg == WM_ERASEBKGND) return 1;
     if (msg == WM_SIZE)
     {
@@ -289,17 +345,24 @@ static LRESULT CALLBACK SupportBannerProc(HWND hWnd, UINT msg, WPARAM wParam, LP
         SelectObject(hdc, headingFont ? headingFont : GetStockObject(SYSTEM_FONT));
         Gdiplus::Graphics g(hdc);
         g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-        CustomPage_DrawRoundRect(g, rc, FrozenSupportVisible() ? (ImplementedSupportVisible() ? RGB(53, 42, 24) : RGB(35, 38, 44)) : RGB(51, 30, 35), FrozenSupportVisible() ? (ImplementedSupportVisible() ? RGB(140, 102, 40) : RGB(100, 110, 125)) : RGB(118, 61, 72),
+        CustomPage_DrawRoundRect(g, rc, (FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? RGB(53, 42, 24) : RGB(35, 38, 44)) : RGB(51, 30, 35), (FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? RGB(140, 102, 40) : RGB(100, 110, 125)) : RGB(118, 61, 72),
             (float)S(hWnd, 8));
         RECT accent{S(hWnd, 1), S(hWnd, 13), S(hWnd, 4), rc.bottom - S(hWnd, 13)};
-        CustomPage_DrawRoundRect(g, accent, FrozenSupportVisible() ? (ImplementedSupportVisible() ? RGB(239, 179, 70) : RGB(155, 166, 185)) : RGB(214, 103, 122), FrozenSupportVisible() ? (ImplementedSupportVisible() ? RGB(239, 179, 70) : RGB(155, 166, 185)) : RGB(214, 103, 122), 1.0f);
+        CustomPage_DrawRoundRect(g, accent, (FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? RGB(239, 179, 70) : RGB(155, 166, 185)) : RGB(214, 103, 122), (FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? RGB(239, 179, 70) : RGB(155, 166, 185)) : RGB(214, 103, 122), 1.0f);
         CustomPage_DrawText(hdc, FrozenSupportVisible() ? FrozenSupportTitle() : L"No supported analogue keyboard detected", layout.title,
-            FrozenSupportVisible() ? (ImplementedSupportVisible() ? RGB(255, 205, 112) : RGB(210, 218, 230)) : RGB(245, 164, 182), DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
+            (FrozenSupportVisible() && !KnownLimitedVisible()) ? (ImplementedSupportVisible() ? RGB(255, 205, 112) : RGB(210, 218, 230)) : RGB(245, 164, 182), DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         SelectObject(hdc, bodyFont ? bodyFont : GetStockObject(SYSTEM_FONT));
         CustomPage_DrawText(hdc, FrozenSupportVisible() ? FrozenSupportBody() : kSupportPrompt, layout.body, UiTheme::Color_Text(),
             FrozenSupportVisible() ? DT_LEFT | DT_TOP | DT_WORDBREAK : DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        if (!CommunicationWarningVisible()) {
+        if(Mix87LimitedVisible()) {
+            const auto mode=MchoseMix87_GetMode();
+            const bool ready=mode.state==Mix87ModeState::Enabled || mode.state==Mix87ModeState::Disabled;
+            CustomPage_DrawCheckbox(g,hdc,hWnd,layout.mode,L"Analog mode",mode.state==Mix87ModeState::Enabled,ready);
+        }
+        CustomPage_DrawButton(g, hdc, layout.log, L"Open log",
+            g_supportBannerHot == SupportBannerAction::Log, g_supportBannerPressed == SupportBannerAction::Log, true);
+        if (!CommunicationWarningVisible() && !Mix87LimitedVisible()) {
         CustomPage_DrawButton(g, hdc, layout.join, L"Join Discord",
             g_supportBannerHot == SupportBannerAction::Join, g_supportBannerPressed == SupportBannerAction::Join, true);
         CustomPage_DrawButton(g, hdc, layout.copy, L"Copy link",
@@ -371,7 +434,18 @@ static LRESULT CALLBACK SupportBannerProc(HWND hWnd, UINT msg, WPARAM wParam, LP
         InvalidateRect(hWnd, nullptr, FALSE);
         if (pressed == hit && hit != SupportBannerAction::None)
         {
-            if (hit == SupportBannerAction::Copy)
+            if(hit==SupportBannerAction::Mix87Mode) {
+                const auto mode=MchoseMix87_GetMode();
+                (void)MchoseMix87_RequestMode(mode,mode.state!=Mix87ModeState::Enabled);
+                SetTimer(hWnd,kMix87ModeTimer,500,nullptr);
+            }
+            else if (hit == SupportBannerAction::Log) {
+                g_supportLogRequest = SupportLog_RequestSnapshot();
+                g_supportLogDeadline = GetTickCount64() + 12000;
+                if (!SetTimer(hWnd, kSupportLogTimer, 100, nullptr))
+                    MessageBoxW(hWnd, L"Could not open the log. Please try again.", L"HallJoy", MB_ICONWARNING);
+            }
+            else if (hit == SupportBannerAction::Copy)
             {
                 if (!SupportBanner_CopyInvite(hWnd))
                     MessageBoxW(hWnd, L"Could not copy the Discord invite. Please try again.", L"HallJoy", MB_ICONWARNING);
@@ -695,6 +769,7 @@ static LRESULT CALLBACK PausePreviewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
         else PausePreview_Timer(hwnd, *state);
     }
     if (msg == WM_TIMER && wp == 1) {
+        if (!HallJoyUiVisible(hwnd)) return 0;
         PausePreview_Timer(hwnd, *state);
         if (state->timer) InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
@@ -936,7 +1011,8 @@ static void ShowSubPage(int idx)
     if (g_hPageTester) ShowWindow(g_hPageTester, idx == 2 ? SW_SHOW : SW_HIDE);
     if (g_hPageGlobal) ShowWindow(g_hPageGlobal, idx == 3 ? SW_SHOW : SW_HIDE);
     if (g_hPageInputOverlay) ShowWindow(g_hPageInputOverlay, idx == 4 ? SW_SHOW : SW_HIDE);
-    if (g_hPageMouse)  ShowWindow(g_hPageMouse, idx == 5 ? SW_SHOW : SW_HIDE);
+    if (halljoy::profiles::ui::page) ShowWindow(halljoy::profiles::ui::page, idx == 5 ? SW_SHOW : SW_HIDE);
+    if (g_hPageMouse)  ShowWindow(g_hPageMouse, idx == (kProfilesPageEnabled ? 6 : 5) ? SW_SHOW : SW_HIDE);
 
     if (g_hSubTab) InvalidateRect(g_hSubTab, nullptr, FALSE);
 }
@@ -953,7 +1029,7 @@ static void ResizeSubUi(HWND hWnd)
     const auto supportStatus = halljoy::keyboard_support::GetStatusSnapshot();
     const bool showBanner = supportStatus.searchCompleted && (!supportStatus.analogSourceConnected || supportStatus.frozenModels != 0 || supportStatus.communicationWarning);
     static bool previousBanner = false;
-    if (showBanner && !previousBanner && !supportStatus.frozenModels && !supportStatus.communicationWarning) SupportLog_ReportMissingSource();
+    if (showBanner && !previousBanner && halljoy::keyboard_support::ShouldAutoSaveSupportLog(supportStatus)) SupportLog_ReportMissingSource();
     previousBanner = showBanner;
     const int bannerY = kbBottom + S(hWnd, 8);
     if (g_hSupportBanner)
@@ -996,6 +1072,8 @@ static void ResizeSubUi(HWND hWnd)
     if (g_hPageInputOverlay)
         SetWindowPos(g_hPageInputOverlay, nullptr, tabRc.left, tabRc.top, pw, ph, SWP_NOZORDER);
 
+    if (halljoy::profiles::ui::page)
+        SetWindowPos(halljoy::profiles::ui::page, nullptr, tabRc.left, tabRc.top, pw, ph, SWP_NOZORDER);
     if (g_hPageMouse)
         SetWindowPos(g_hPageMouse, nullptr, tabRc.left, tabRc.top, pw, ph, SWP_NOZORDER);
 }
@@ -2603,10 +2681,17 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         tie.pszText = (LPWSTR)L"Input Overlay";
         TabCtrl_InsertItem(g_hSubTab, 4, &tie);
 
+        if (kProfilesPageEnabled)
+        {
+            tie.pszText = (LPWSTR)L"Profiles";
+            TabCtrl_InsertItem(g_hSubTab, 5, &tie);
+            halljoy::profiles::ui::Create(g_hSubTab, hInst);
+        }
+
         if (kMouseSettingsPageEnabled)
         {
             tie.pszText = (LPWSTR)L"Mouse settings";
-            TabCtrl_InsertItem(g_hSubTab, 5, &tie);
+            TabCtrl_InsertItem(g_hSubTab, kProfilesPageEnabled ? 6 : 5, &tie);
         }
 
         g_hPageRemap = RemapPanel_Create(g_hSubTab, hInst, hWnd);
@@ -2748,6 +2833,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         return 0;
 
     case WM_TIMER:
+        if (!HallJoyUiVisible(hWnd)) return 0;
         if (wParam == KEYDRAG_TIMER_ID)
         {
             KeyDrag_Tick();
@@ -2941,6 +3027,10 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         }
         return 0;
 
+    case WM_APP_PROFILES_RESUME_VISUAL:
+        halljoy::profiles::ui::ResumeVisual();
+        return 0;
+
     case WM_APP_KEYBOARD_LAYOUT_CHANGED:
         if (g_hPageGlobal) PostMessageW(g_hPageGlobal, WM_APP_KEYBOARD_LAYOUT_CHANGED, 0, 0);
         if (wParam==KeyboardLayoutChange_StatusOnly) return 0;
@@ -3052,3 +3142,47 @@ extern "C" HWND KeyboardPageMain_CreatePage(HWND hParent, HINSTANCE hInst)
     return CreateWindowExW(0, L"PageMainClass", L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
         0, 0, 100, 100, hParent, nullptr, hInst, nullptr);
 }
+
+#if defined(HALLJOY_ANALOG_SIMULATOR)
+bool ProfilesPage_Test() {
+    bool passed=false;
+    std::thread worker([&] {
+        const auto previous=GetThreadDesktop(GetCurrentThreadId());
+        const auto name=L"HallJoyProfilesTest-"+std::to_wstring(GetCurrentProcessId());
+        HDESK desktop=CreateDesktopW(name.c_str(),nullptr,nullptr,0,GENERIC_ALL,nullptr);
+        if(!desktop)return;
+        if(!SetThreadDesktop(desktop)){CloseDesktop(desktop);return;}
+        using namespace halljoy::profiles;
+        using namespace halljoy::profiles::ui;
+        const auto active=GlobalProfiles_GetActiveName();
+        HWND root=CreateWindowW(L"STATIC",L"Profiles test",WS_POPUP,0,0,850,600,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+        HWND tab=CreateWindowW(L"STATIC",L"",WS_CHILD,0,0,850,600,root,nullptr,GetModuleHandleW(nullptr),nullptr);
+        HWND view=Create(tab,GetModuleHandleW(nullptr));
+        bool ok=view!=nullptr;
+        if(view) {
+            SetWindowPos(view,nullptr,0,0,700,320,SWP_NOZORDER);
+            const auto before=GlobalProfiles_GetActiveName();
+            const int count=(int)SendMessageW(Control(List),LB_GETCOUNT,0,0);
+            if(count>1) {
+                SendMessageW(Control(List),LB_SETCURSEL,Same(names[0],before)?1:0,0);
+                SendMessageW(view,WM_COMMAND,MAKEWPARAM(List,LBN_SELCHANGE),(LPARAM)Control(List));
+                ok &= GlobalProfiles_GetActiveName()==before && !Same(selected,before);
+                ok &= !IsWindowEnabled(Control(Undo));
+            } else ok=false;
+            SendMessageW(view,WM_VSCROLL,SB_PAGEDOWN,0);
+            RECT client{},list{};GetClientRect(body,&client);GetWindowRect(Control(List),&list);
+            ok &= scroll>0 && client.bottom>0 && GetParent(Control(Name))==body && GetParent(Control(List))==view;
+            ok &= IsWindow(Control(Activate))&&IsWindow(Control(AddRunning));
+            session.error=L"Deliberate error for fixed-header containment test";Update();
+            RECT header{},viewport{};GetWindowRect(Control(Error),&header);GetWindowRect(body,&viewport);
+            ok &= GetParent(Control(Error))==view && header.bottom<=viewport.top;
+            visualPending=true;ResumeVisual();ok &= visualPending; // Hidden parent must defer rebuilding UI.
+
+            DestroyWindow(view);
+            ok &= page==nullptr && hook==nullptr;
+        }
+        DestroyWindow(root);
+        ok &= SetThreadDesktop(previous)!=FALSE;CloseDesktop(desktop);passed=ok;
+    });worker.join();return passed;
+}
+#endif

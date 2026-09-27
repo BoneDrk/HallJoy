@@ -29,6 +29,8 @@ enum class NativeAnalogProtocol : std::uint8_t
     TartarusPro = 23,
     Neo65 = 24,
     SteelSeriesApex = 25,
+    Mad68DualTrial = 26,
+    MchoseMix87 = 27,
     Simulator = 250,
 };
 

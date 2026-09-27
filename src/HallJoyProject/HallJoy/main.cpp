@@ -19,6 +19,7 @@
 #include "vigem_output_self_host_test.h"
 #include "embedded_analog_stack.h"
 #include "instance_guard.h"
+#include "tray_window.h"
 
 #include "app.h"
 #include "win_util.h"
@@ -241,6 +242,7 @@ int WINAPI wWinMain(
     {
         const bool conflict = instanceResult == halljoy::instance_guard::AcquireResult::Conflicted;
         wchar_t message[512]{};
+        if (conflict && halljoy::tray::ShowExisting()) return 0;
         if (conflict)
         {
             StringCchCopyW(message, sizeof(message) / sizeof(message[0]),

@@ -1,6 +1,10 @@
 #pragma once
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+static constexpr UINT WM_APP_PROFILES_RESUME_VISUAL = WM_APP + 482;
+static constexpr UINT WM_APP_PROFILE_RUNTIME_APPLIED = WM_APP + 483;
+
 #include <cstdint>
 
 HWND KeyboardUI_CreatePage(HWND hParent, HINSTANCE hInst);

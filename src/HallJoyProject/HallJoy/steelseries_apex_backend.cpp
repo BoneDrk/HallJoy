@@ -72,7 +72,7 @@ std::vector<Candidate> Enumerate() {
   const std::uint64_t shape=(std::uint64_t(caps.UsagePage)<<48)|(std::uint64_t(caps.InputReportByteLength)<<32)|
       (std::uint64_t(caps.OutputReportByteLength)<<16)|caps.FeatureReportByteLength;
   if(g_loggedCaps.size()<32 && std::find(g_loggedCaps.begin(),g_loggedCaps.end(),shape)==g_loggedCaps.end()) {
-   g_loggedCaps.push_back(shape);SupportLog_Event("apex.hid_caps_page_in_out_feature",shape,caps.Usage);
+   g_loggedCaps.push_back(shape);SupportLog_Event("apex.hid_caps_page_in_out_feature",shape,SupportLog_Data(caps.Usage));
    SupportLog_Event(valid?"apex.collection_accepted":"apex.collection_rejected",shape);
   }
   if(valid)out.push_back({detail->DevicePath,caps,a.ProductID});
@@ -104,11 +104,11 @@ bool Exchange(HANDLE handle,const tp::Report& request,tp::Report& reply) {
  const auto deadline=GetTickCount64()+100;
  if(g_stop.load())return false;
  if(!finish(write,write.StartWrite(request.data(),65,&error),deadline) || done!=65) {
-  SupportLog_Event("apex.write_failed",(std::uint64_t(request[1])<<48)|(std::uint64_t(request[2])<<32)|done,error);
+  SupportLog_Event("apex.write_failed",(std::uint64_t(request[1])<<48)|(std::uint64_t(request[2])<<32)|done,SupportLog_Win32(error));
   DebugLog_Write(L"[steelseries_apex] write failed cmd=%02x arg=%u bytes=%lu error=%lu",request[1],request[2],done,error);return false;
  }
  if(!finish(read,read.StartRead(reply.data(),65,&error),deadline) || done!=65 || reply[0]!=0) {
-  SupportLog_Event("apex.reply_failed",(std::uint64_t(request[1])<<48)|(std::uint64_t(request[2])<<32)|done,error);
+  SupportLog_Event("apex.reply_failed",(std::uint64_t(request[1])<<48)|(std::uint64_t(request[2])<<32)|done,SupportLog_Win32(error));
   DebugLog_Write(L"[steelseries_apex] reply failed cmd=%02x arg=%u bytes=%lu error=%lu",request[1],request[2],done,error);return false;
  }
  return true;
@@ -118,7 +118,7 @@ bool ReadRanges(HANDLE h,tp::Ranges& ranges) {
  for(unsigned start=0;start<68;start+=12) {
   const auto count=std::min(12u,68-start);
   if(!Exchange(h,tp::RangeRequest(start,count),reply) || !tp::ParseRanges(reply,start,count,next)) {
-   SupportLog_Event("apex.calibration_reply_rejected",start,count);
+   SupportLog_Event("apex.calibration_reply_rejected",start,SupportLog_Data(count));
    DebugLog_Write(L"[steelseries_apex] calibration read rejected start=%u count=%u first=%02x %02x %02x %02x %02x",start,count,reply[1],reply[2],reply[3],reply[4],reply[5]);return false;
   }
  }
@@ -133,14 +133,14 @@ void Run(const Candidate& c) {
  Clear();g_pid.store(c.pid);g_bytes.store(65);g_page.store(c.caps.UsagePage);g_usage.store(c.caps.Usage);
  Handle input(CreateFileW(c.path.c_str(),GENERIC_READ|GENERIC_WRITE,0,
                          nullptr,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,nullptr));
- if(!input) {SupportLog_Event("apex.open_failed",0,GetLastError());++g_bad;DebugLog_Write(L"[steelseries_apex] exclusive vendor collection open failed error=%lu; another HID client may own it",GetLastError());return;}
+ if(!input) {SupportLog_Event("apex.open_failed",0,SupportLog_Win32(GetLastError()));++g_bad;DebugLog_Write(L"[steelseries_apex] exclusive vendor collection open failed error=%lu; another HID client may own it",GetLastError());return;}
  // Revalidate the opened collection before any output after re-enumeration.
  HIDD_ATTRIBUTES live{};live.Size=sizeof(live);
  if(!HidD_GetAttributes(input.v,&live) || !tp::SupportedIdentity(live.VendorID,live.ProductID) || live.ProductID!=c.pid) {
   SupportLog_Event("apex.identity_changed",c.pid);++g_bad;return;
  }
  SupportLog_Event("apex.device",c.pid);
- if(!HidD_FlushQueue(input.v)) {SupportLog_Event("apex.flush_failed",0,GetLastError());++g_bad;DebugLog_Write(L"[steelseries_apex] input queue flush failed error=%lu",GetLastError());return;}
+ if(!HidD_FlushQueue(input.v)) {SupportLog_Event("apex.flush_failed",0,SupportLog_Win32(GetLastError()));++g_bad;DebugLog_Write(L"[steelseries_apex] input queue flush failed error=%lu",GetLastError());return;}
  tp::Report reply{};
  SupportLog_Event("apex.version_query",0x90);
  if(!Exchange(input.v,tp::VersionRequest(),reply)) {++g_bad;return;}

@@ -34,6 +34,8 @@
 #include <cwchar>
 
 #include "app.h"
+#include "tray_window.h"
+static halljoy::tray::Window g_tray;
 #include "gamepad_latency.h"
 #include "app_deps.h"
 #include "Resource.h"
@@ -971,8 +973,22 @@ static void ApplyTimingSettings(HWND hMainWnd)
     UINT pollMs = std::clamp(Settings_GetPollingMs(), 1u, 20u);
     RealtimeLoop_SetIntervalMs(pollMs);
 
-    UINT uiMs = std::clamp(Settings_GetUIRefreshMs(), 1u, 200u);
+    // Keep maintenance (hooks, routing, recovery) alive while suspended.
+    // This does not change the independent realtime input loop.
+    UINT uiMs = IsWindowVisible(hMainWnd) && !IsIconic(hMainWnd) ? Settings_GetUIRefreshMs() : 100u;
     SetTimer(hMainWnd, UI_TIMER_ID, uiMs, nullptr);
+}
+
+static void UpdateUiVisibility(HWND hwnd, bool visible)
+{
+    BackendUI_SetPreviewWindow(visible ? hwnd : nullptr);
+    KeychronOnboard_MonitorVisible(visible);
+    SetTimer(hwnd, UI_TIMER_ID, visible ? Settings_GetUIRefreshMs() : 100u, nullptr);
+    if (visible && g_hPageMain) {
+        PostMessageW(g_hPageMain, WM_APP_PROFILES_RESUME_VISUAL, 0, 0);
+        KeyboardUI_OnTimerTick(g_hPageMain);
+        RedrawWindow(g_hPageMain, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+    }
 }
 
 static void ResizeChildren(HWND hwnd)
@@ -1314,7 +1330,7 @@ static bool EngineRuntimeReleaseFailedResume(void*, std::uint32_t& nativeError) 
 static void EngineRuntimeStateChanged(void* context) noexcept
 {
     const auto state = halljoy::engine_runtime::EngineRuntimeOwner_Snapshot();
-    SupportLog_Event("engine.state", static_cast<unsigned>(state.state), state.lastNativeError);
+    SupportLog_Event("engine.state", static_cast<unsigned>(state.state),SupportLog_Win32(state.lastNativeError));
     if (state.state == halljoy::runtime_command::State::PauseFaulted)
         SupportLog_ReportFailure("engine.fault", state.lastNativeError);
     SupportLog_SetWindow(static_cast<HWND>(context));
@@ -1420,8 +1436,61 @@ static void AppShutdownNoThrow(HWND hwnd) noexcept
 
 static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (msg == halljoy::tray::ShowMessage()) {
+        g_tray.Restore();
+        return halljoy::tray::ShowAcknowledged;
+    }
+    if (msg == halljoy::tray::TaskbarMessage()) { g_tray.ShellRestarted(); return 0; }
+    if (msg == halljoy::tray::ExitMessage()) {
+        if (KeyboardUI_CloseLayoutEditor()) DestroyWindow(hwnd);
+        return 0;
+    }
     switch (msg)
     {
+    case halljoy::tray::Callback:
+        if (lParam == WM_LBUTTONUP || lParam == NIN_SELECT || lParam == NIN_KEYSELECT) g_tray.Restore();
+        else if (lParam == WM_RBUTTONUP || lParam == WM_CONTEXTMENU) {
+            using halljoy::runtime_command::State;
+            using halljoy::tray::Action;
+            const auto state = halljoy::engine_runtime::EngineRuntimeOwner_Snapshot().state;
+            const bool active = state == State::Active, paused = state == State::Paused;
+            const wchar_t* text = active ? L"Pause HallJoy" : paused ? L"Resume HallJoy" :
+                state == State::PauseFaulted ? L"Restart required" : L"HallJoy is changing state...";
+            const auto action = g_tray.ContextMenu({ text, active || paused, paused, OverlayServer_IsRunning() });
+            // A menu pumps messages: honor the selected action, never invert a newer state.
+            const auto current = halljoy::engine_runtime::EngineRuntimeOwner_Snapshot().state;
+            if ((action == Action::Pause && current == State::Active) ||
+                (action == Action::Resume && current == State::Paused))
+                SendMessageW(hwnd, WM_APP_ENGINE_RUNTIME_TOGGLE, 0, 0);
+            else if (action == Action::StartOverlay || action == Action::StopOverlay) {
+                g_cmdStartOverlay = false; // An explicit stop overrides startup/watchdog intent.
+                bool ok = true;
+                if (action == Action::StopOverlay) {
+                    OverlayServer_SetAutoStart(false);
+                    ok = OverlayServer_Stop().RestartSafe();
+                } else {
+                    ok = OverlayServer_IsRunning() || OverlayServer_Start(OverlayServer_GetConfiguredPort());
+                    OverlayServer_SetAutoStart(ok);
+                }
+                RequestSettingsSave(hwnd);
+                if (g_hPageInputOverlay) PostMessageW(g_hPageInputOverlay, WM_APP_OVERLAY_STATE_CHANGED, 0, 0);
+                if (!ok) {
+                    g_tray.Restore();
+                    const std::wstring error = L"Input Overlay could not complete the action.\n\n" + OverlayServer_GetLastError();
+                    MessageBoxW(hwnd, error.c_str(), L"HallJoy", MB_OK | MB_ICONWARNING);
+                }
+            }
+            else if (action == Action::Exit && KeyboardUI_CloseLayoutEditor()) DestroyWindow(hwnd);
+        }
+        return 0;
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xFFF0) == SC_MINIMIZE && Settings_GetMinimizeToTray()) {
+            if (!KeyboardUI_CloseLayoutEditor()) return 0;
+            SaveMainWindowPlacement(hwnd);
+            if (g_tray.Hide()) return 0;
+            // No tray available: retain ordinary taskbar minimization.
+        }
+        break;
     case WM_ERASEBKGND:
         return 1;
 
@@ -1439,6 +1508,10 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     case WM_CREATE:
     {
         DebugLog_Write(L"[app] WM_CREATE");
+        g_tray.Attach(hwnd, reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICON)));
+        SetPropW(hwnd, L"HallJoy.TrayLifecycle.v1", reinterpret_cast<HANDLE>(1));
+        ChangeWindowMessageFilterEx(hwnd, halljoy::tray::ShowMessage(), MSGFLT_ALLOW, nullptr);
+        ChangeWindowMessageFilterEx(hwnd, halljoy::tray::TaskbarMessage(), MSGFLT_ALLOW, nullptr);
         g_mouseBlockPauseByRShift.store(false, std::memory_order_relaxed);
         g_engineUiInputPassThrough.store(false, std::memory_order_release);
         g_mouseCursorLocked = false;
@@ -1541,15 +1614,23 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         if (!KeyboardUI_CloseLayoutEditor(true)) return FALSE;
         SaveMainWindowPlacement(hwnd);
         return TRUE;
+    case WM_ENDSESSION:
+        if (wParam) DestroyWindow(hwnd); // OS shutdown must never become hide-to-tray.
+        return 0;
     case WM_MOVE:
         if (g_windowPlacementReady && !g_windowMoving && !g_windowApplying)
             SetTimer(hwnd, WINDOW_SAVE_TIMER_ID, 350, nullptr);
         break;
     case WM_SIZE:
-        ResizeChildren(hwnd);
+        UpdateUiVisibility(hwnd, wParam != SIZE_MINIMIZED && IsWindowVisible(hwnd));
+        if (wParam != SIZE_MINIMIZED) ResizeChildren(hwnd);
         if (g_windowPlacementReady && !g_windowMoving && !g_windowApplying)
             SetTimer(hwnd, WINDOW_SAVE_TIMER_ID, 350, nullptr);
         return 0;
+
+    case WM_SHOWWINDOW:
+        UpdateUiVisibility(hwnd, wParam != 0 && !IsIconic(hwnd));
+        break;
 
     case WM_INPUT:
     {
@@ -1720,9 +1801,12 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         }
         if (wParam == UI_TIMER_ID)
         {
+            const bool uiVisible=IsWindowVisible(hwnd) && !IsIconic(hwnd);
+            if (uiVisible) {
             Na87Diagnostic_UpdateWindow(hwnd);
             IrokNa87_UpdateWindow(hwnd);
-            KeychronOnboard_MonitorVisible(IsWindowVisible(hwnd) && !IsIconic(hwnd));
+            }
+            KeychronOnboard_MonitorVisible(uiVisible);
 #if defined(HALLJOY_AJAZZ_DIAGNOSTIC)
             static const auto diagnosticUiStart=GetTickCount64();
             static bool smokeClosePosted=false;
@@ -1734,8 +1818,10 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             }
 #endif
 
-            Mini60Diagnostic_UpdateWindow(hwnd);
-            SharkDiagnostic_UpdateWindow(hwnd);
+            if (uiVisible) {
+                Mini60Diagnostic_UpdateWindow(hwnd);
+                SharkDiagnostic_UpdateWindow(hwnd);
+            }
             uint32_t tick = g_uiTimerTickCount.fetch_add(1u, std::memory_order_relaxed) + 1u;
             if (tick <= 8 || (tick % 120u) == 0u)
                 DebugLog_Write(L"[app.timer] ui tick=%u", tick);
@@ -1824,6 +1910,11 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         }
         return 0;
 
+    case WM_APP_PROFILE_RUNTIME_APPLIED:
+        RefreshLowLevelHooks();
+        ApplyTimingSettings(hwnd);
+        return 0;
+
     case WM_APP_APPLY_TIMING:
         ApplyTimingSettings(hwnd);
         return 0;
@@ -1850,8 +1941,13 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
 
     case WM_APP_ENGINE_RUNTIME_STATE_CHANGED:
+    {
+        const auto state = halljoy::engine_runtime::EngineRuntimeOwner_Snapshot().state;
+        if (state == halljoy::runtime_command::State::Paused) g_tray.SetPaused(true);
+        else if (state == halljoy::runtime_command::State::Active) g_tray.SetPaused(false);
         KeyboardUI_OnEngineStateChanged();
         return 0;
+    }
 
     case WM_APP + 363: // Preview Resume is one-way: delayed/double clicks cannot pause again.
         (void)halljoy::engine_runtime::EngineRuntimeOwner_RequestResume();
@@ -1875,12 +1971,20 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
     case WM_CLOSE:
         if (!KeyboardUI_CloseLayoutEditor()) return 0;
+        if (Settings_GetCloseToTray() && !g_relaunchAfterExit.load(std::memory_order_acquire)) {
+            SaveMainWindowPlacement(hwnd);
+            if (!g_tray.Hide()) MessageBoxW(hwnd,
+                L"The system tray is unavailable. HallJoy will stay open.", L"HallJoy", MB_OK | MB_ICONWARNING);
+            return 0;
+        }
         StabilityTrace_WriteCritical(L"INFO", L"app", L"window.close",
             L"source=WM_CLOSE");
         DestroyWindow(hwnd);
         return 0;
 
     case WM_DESTROY:
+        RemovePropW(hwnd, L"HallJoy.TrayLifecycle.v1");
+        g_tray.Remove();
         GamepadLatency_Stop();
         g_blockHotkey.Stop();
         StabilityTrace_WriteCritical(L"INFO", L"app", L"window.destroy",

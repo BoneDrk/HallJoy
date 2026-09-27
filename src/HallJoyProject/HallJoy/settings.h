@@ -1,6 +1,11 @@
 // settings.h
 #pragma once
 #include <windows.h>
+// Application-wide preferences, independent of game/input profiles.
+bool Settings_GetMinimizeToTray();
+void Settings_SetMinimizeToTray(bool enabled);
+bool Settings_GetCloseToTray();
+void Settings_SetCloseToTray(bool enabled);
 bool Settings_GetDiagnosticLogging();
 void Settings_SetDiagnosticLogging(bool enabled);
 
@@ -55,12 +60,13 @@ bool Settings_GetInputInvert();
 // Apply current input deadzones to value in [0..1]
 float Settings_ApplyInputDeadzones(float v01);
 
-// Keyboard polling / update tick
-void Settings_SetPollingMs(UINT ms); // 1..20
+// Fixed 1ms input scheduling request; legacy setters are compatibility no-ops.
+void Settings_SetPollingMs(UINT ms);
 UINT Settings_GetPollingMs();
 
-// UI refresh timer interval (ms)
-void Settings_SetUIRefreshMs(UINT ms); // 1..200
+// Fixed foreground refresh request. Windows timer minimum still applies;
+// event-driven preview hints are coalesced independently. Not a saved setting.
+void Settings_SetUIRefreshMs(UINT ms);
 UINT Settings_GetUIRefreshMs();
 
 // Number of virtual X360 gamepads to expose through ViGEm (1..4).

@@ -211,11 +211,10 @@ Remaining: public/private audit separation; all copied-code/catalog provenance;
 ABI0 exact source/transitive review or removal from publication/build outputs;
 exact shipped Soup/ViGEm closure evidence; historical cleanup and release assets.
 
-## Later checkpoint: publication preparation
+## Published historical cleanup result
 
-Owner authorized history rewriting on 2026-09-27 on condition that release
-asset download counts are preserved. The earlier pending-permission and failed
-public-runner items are superseded: all original private generators/tests pass,
-public reference verification plus the full static runner pass after source
-audits were explicitly separated. See HISTORY_CLEANUP_2026-09-27.md. Other
-provenance items remain open; this is not complete legal clearance.
+2026-09-27: owner authorized cleanup with download preservation. Published main 4af3fcf4f3f49752500926cf670ea46a012102f5. All15 releases,48 asset IDs and15 EXEs remain unchanged;520 downloads before/after and no per-asset decrease. Main and11 affected tags verified remotely. Full private source/layout audits and public hash-reference/static checks plus clean publication Release gates PASS. Source-evidence separation resolves the earlier public-runner blocker. See HISTORY_CLEANUP_2026-09-27.md and local final-verification.json. Unrelated local runtime features were not published. Remaining binary/source provenance items are not declared closed.
+
+## Local dependency provenance follow-up
+
+See [DEPENDENCY_PROVENANCE_2026-09-27.md](DEPENDENCY_PROVENANCE_2026-09-27.md) for the newly built exact ABI1 closure, pinned ViGEmClient source build, verified Wooting v0.9.1 header, retired binary publication policy and passing Release/package checks. Local only; old shipped binary provenance is not retroactively established.

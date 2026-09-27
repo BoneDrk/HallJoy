@@ -12,6 +12,7 @@
 #include "physical_analog_state.h"
 #include "realtime_loop.h"
 #include "settings.h"
+#include "profile_runtime_gate.h"
 #include "worker_exception_barrier.h"
 #include <atomic>
 #include <mutex>
@@ -100,16 +101,18 @@ unsigned Body() {
         present.store(true);connected.store(true);Bind();state.store(2);
         bool healthy=true;
         auto nextProfile=uint64_t{0};
+        auto appliedRevision=uint64_t{0};
         while(!stopping.load() && healthy) {
             const auto now=GetTickCount64();
             const bool enabled=admitted.load() && Settings_GetVirtualGamepadsEnabled();
             if(!enabled && client.Active()) {
                 state.store(2);ClearPad();healthy=client.Close();
             }
-            if(enabled && now>=nextProfile) {
+            const auto revision=halljoy::profile_runtime::revision.load(std::memory_order_acquire);
+            if(enabled && (now>=nextProfile || revision!=appliedRevision)) {
                 hjo_profile profile{};
                 const auto captured=CaptureProfile(profile);
-                nextProfile=now+100;
+                if(captured!=ProfileResult::Busy) {nextProfile=now+100;appliedRevision=revision;}
                 if(captured==ProfileResult::Ready) {
                     state.store(client.Active()?4:3);
                     healthy=client.Active()?client.Update(profile):client.Open(profile);

@@ -358,7 +358,7 @@ static bool ValidateProfileNumbers(const wchar_t* path, bool complete)
         }
         return true;
     };
-    return validate(L"Main", {L"PollingMs", L"UIRefreshMs", L"VirtualGamepads",
+    return validate(L"Main", {L"VirtualGamepads",
         L"VirtualGamepadsEnabled", L"SparkPollMode", L"SparkRowLimit",
         L"MouseToStickEnabled", L"MouseToStickTarget", L"MouseToStickSensitivity",
         L"MouseToStickAggressiveness", L"MouseToStickMaxOffset", L"MouseToStickFollowSpeed"}) &&
@@ -422,8 +422,6 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     float lkpSensDef = profileOnly ? 0.12f : Settings_GetLastKeyPrioritySensitivity();
     int blockDef = profileOnly ? 0 : (Settings_GetBlockBoundKeys() ? 1 : 0);
     int blockMouseDef = profileOnly ? 0 : (Settings_GetBlockMouseInput() ? 1 : 0);
-    UINT pollDef = profileOnly ? 1u : Settings_GetPollingMs();
-    UINT uiDef = profileOnly ? 1u : Settings_GetUIRefreshMs();
     int padsDef = profileOnly ? 1 : Settings_GetVirtualGamepadCount();
     int padsEnabledDef = profileOnly ? 1 : (Settings_GetVirtualGamepadsEnabled() ? 1 : 0);
     UINT sparkPollModeDef = profileOnly ? 0u : Settings_GetSparkPollMode();
@@ -477,8 +475,6 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     int blockBoundKeys = IniReadI32(L"Input", L"BlockBoundKeys", blockDef, path);
     int blockMouseInput = IniReadI32(L"Input", L"BlockMouseInput", blockMouseDef, path);
 
-    UINT poll = IniReadU32(L"Main", L"PollingMs", pollDef, path);
-    UINT uiMs = IniReadU32(L"Main", L"UIRefreshMs", uiDef, path);
     int vpadCount = IniReadI32(L"Main", L"VirtualGamepads", padsDef, path);
     int vpadEnabled = IniReadI32(L"Main", L"VirtualGamepadsEnabled", padsEnabledDef, path);
     UINT sparkPollMode = IniReadU32(L"Main", L"SparkPollMode", sparkPollModeDef, path);
@@ -556,6 +552,7 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     int winX = std::numeric_limits<int>::min();
     int winY = std::numeric_limits<int>::min();
     int winVersion = 0, winDpi = 0, winMaximized = 0;
+    bool minimizeToTray = false, closeToTray = false;
     if (loadWindow)
     {
         winW = IniReadI32(L"Window", L"Width", Settings_GetMainWindowWidthPx(), path);
@@ -565,6 +562,8 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
         winVersion = IniReadI32(L"Window", L"PlacementVersion", 0, path);
         winDpi = IniReadI32(L"Window", L"Dpi", 0, path);
         winMaximized = IniReadI32(L"Window", L"Maximized", 0, path);
+        minimizeToTray = IniReadI32(L"Window", L"MinimizeToTray", 0, path) == 1;
+        closeToTray = IniReadI32(L"Window", L"CloseToTray", 0, path) == 1;
     }
 
     auto apply = [=, keys = std::move(preparedKeys)]() mutable {
@@ -590,8 +589,6 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     Settings_SetBlockBoundKeys(blockBoundKeys != 0);
     Settings_SetBlockMouseInput(blockMouseInput != 0);
 
-    Settings_SetPollingMs(poll);
-    Settings_SetUIRefreshMs(uiMs);
     Settings_SetVirtualGamepadCount(vpadCount);
     Settings_SetVirtualGamepadsEnabled(vpadEnabled != 0);
     Settings_SetSparkPollMode(sparkPollMode);
@@ -639,6 +636,8 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
         Settings_SetMainWindowPosXPx(winX);
         Settings_SetMainWindowPosYPx(winY);
         Settings_SetMainWindowPlacementMeta(winVersion, winDpi, winMaximized == 1);
+        Settings_SetMinimizeToTray(minimizeToTray);
+        Settings_SetCloseToTray(closeToTray);
     }
 
     KeySettings_ApplyPrepared(keys);
@@ -687,6 +686,8 @@ static bool SettingsIni_WriteWindow(const wchar_t* tmpPath)
     ok &= IniWriteI32(L"Window", L"PlacementVersion", Settings_GetMainWindowPlacementVersion(), tmpPath);
     ok &= IniWriteI32(L"Window", L"Dpi", Settings_GetMainWindowDpi(), tmpPath);
     ok &= IniWriteI32(L"Window", L"Maximized", Settings_GetMainWindowMaximized() ? 1 : 0, tmpPath);
+    ok &= IniWriteI32(L"Window", L"MinimizeToTray", Settings_GetMinimizeToTray() ? 1 : 0, tmpPath);
+    ok &= IniWriteI32(L"Window", L"CloseToTray", Settings_GetCloseToTray() ? 1 : 0, tmpPath);
     return ok;
 }
 
@@ -725,8 +726,8 @@ static bool SettingsIni_Save_Internal(
     ok &= IniWriteI32(L"Input", L"BlockBoundKeys", Settings_GetBlockBoundKeys() ? 1 : 0, tmpPath);
     ok &= IniWriteI32(L"Input", L"BlockMouseInput", Settings_GetBlockMouseInput() ? 1 : 0, tmpPath);
 
-    ok &= IniWriteU32(L"Main", L"PollingMs", Settings_GetPollingMs(), tmpPath);
-    ok &= IniWriteU32(L"Main", L"UIRefreshMs", Settings_GetUIRefreshMs(), tmpPath);
+    ok &= halljoy::ini::WriteBatch::Put(L"Main", L"PollingMs", nullptr, tmpPath) != FALSE;
+    ok &= halljoy::ini::WriteBatch::Put(L"Main", L"UIRefreshMs", nullptr, tmpPath) != FALSE;
     ok &= IniWriteI32(L"Main", L"VirtualGamepads", std::clamp(Settings_GetVirtualGamepadCount(), 1, 4), tmpPath);
     ok &= IniWriteI32(L"Main", L"VirtualGamepadsEnabled", Settings_GetVirtualGamepadsEnabled() ? 1 : 0, tmpPath);
     ok &= IniWriteU32(L"Main", L"SparkPollMode", Settings_GetSparkPollMode(), tmpPath);
@@ -835,10 +836,11 @@ namespace
     {
         auto* context = static_cast<SettingsTransactionContext*>(rawContext);
         if (context->kind == SettingsTransactionKind::WindowUpdate) {
-            const wchar_t* names[] = {L"Width", L"Height", L"PosX", L"PosY", L"PlacementVersion", L"Dpi", L"Maximized"};
+            const wchar_t* names[] = {L"Width", L"Height", L"PosX", L"PosY", L"PlacementVersion", L"Dpi", L"Maximized", L"MinimizeToTray", L"CloseToTray"};
             const int values[] = {Settings_GetMainWindowWidthPx(), Settings_GetMainWindowHeightPx(),
                 Settings_GetMainWindowPosXPx(), Settings_GetMainWindowPosYPx(), Settings_GetMainWindowPlacementVersion(),
-                Settings_GetMainWindowDpi(), Settings_GetMainWindowMaximized() ? 1 : 0};
+                Settings_GetMainWindowDpi(), Settings_GetMainWindowMaximized() ? 1 : 0,
+                Settings_GetMinimizeToTray() ? 1 : 0, Settings_GetCloseToTray() ? 1 : 0};
             bool valid = true;
             for (size_t i = 0; i < _countof(names); ++i) {
                 wchar_t expected[32]{};
@@ -865,11 +867,9 @@ namespace
         }
         else
         {
-            wchar_t polling[64]{};
             wchar_t deadzone[64]{};
-            GetPrivateProfileStringW(L"Main", L"PollingMs", L"{missing}", polling, (DWORD)_countof(polling), temporaryPath);
             GetPrivateProfileStringW(L"Input", L"DeadzoneLow", L"{missing}", deadzone, (DWORD)_countof(deadzone), temporaryPath);
-            ok &= wcscmp(polling, L"{missing}") != 0 && wcscmp(deadzone, L"{missing}") != 0;
+            ok &= wcscmp(deadzone, L"{missing}") != 0;
             BindingsSnapshot bindings;
             ok &= Profile_PrepareIni(temporaryPath, bindings);
         }

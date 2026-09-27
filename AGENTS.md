@@ -25,6 +25,24 @@ Keep versioned patch notes in `docs/releases/`, detailed compatibility in
 guidance in `.github/CONTRIBUTING.md`. Read `docs/current/PROJECT_LAYOUT.md` before
 adding root files. Keep correspondence marked local-only out of publication.
 
+## Firmware analysis decisions
+
+Before proposing a firmware protocol integration, follow
+`docs/development/FIRMWARE_BEHAVIOR_REVIEW.md`. Separate execution PASS from
+suitability; surface typing loss, state changes and unknowns. Compare alternatives
+and retain the best reviewed limited analog path with explicit restrictions when
+no unrestricted path is established. Do not infer exhaustive absence from bounded
+emulation. Do not use the retired MAD68 diagnostic directory for new builds.
+
+## Distribution provenance
+
+Before publishing vendor firmware, captured configurator code or vendor artwork,
+record the source-specific redistribution permission. A public download URL and
+HallJoy's root license are not such permission. Keep unclear acquisitions local.
+Consult `docs/legal/DISTRIBUTION_AUDIT_2026-09-27.md` for unresolved published
+materials and runtime notices. Preserve original third-party attribution; never
+claim exclusive ownership or royalty clearance merely from a scanner result.
+
 ## Publication after the 2026-09-27 history cleanup
 
 Vendor firmware/configurator/art/manual/copied-code files with unestablished

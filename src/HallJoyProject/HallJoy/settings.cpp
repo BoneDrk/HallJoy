@@ -29,8 +29,11 @@ static int ClampM01(int m) { return std::clamp(m, 0, 1000); }
 static std::atomic<uint32_t> g_inDzPacked{ PackDz(80, 900) };
 
 // Polling/UI
-static std::atomic<UINT> g_pollMs{ 1 };
-static std::atomic<UINT> g_uiRefreshMs{ 1 };
+static std::atomic<bool> g_minimizeToTray{ false }, g_closeToTray{ false };
+bool Settings_GetMinimizeToTray() { return g_minimizeToTray.load(); }
+void Settings_SetMinimizeToTray(bool enabled) { g_minimizeToTray.store(enabled); }
+bool Settings_GetCloseToTray() { return g_closeToTray.load(); }
+void Settings_SetCloseToTray(bool enabled) { g_closeToTray.store(enabled); }
 static std::atomic<bool> g_diagnosticLogging{ false };
 bool Settings_GetDiagnosticLogging() { return g_diagnosticLogging.load(std::memory_order_relaxed); }
 void Settings_SetDiagnosticLogging(bool enabled) { g_diagnosticLogging.store(enabled, std::memory_order_relaxed); }
@@ -471,28 +474,12 @@ float Settings_GetMouseToStickFollowSpeed()
     return (float)m / 1000.0f;
 }
 
-// ---------------- Polling / UI refresh ----------------
-void Settings_SetPollingMs(UINT ms)
-{
-    ms = std::clamp(ms, 1u, 20u);
-    g_pollMs.store(ms, std::memory_order_release);
-}
-
-UINT Settings_GetPollingMs()
-{
-    return g_pollMs.load(std::memory_order_acquire);
-}
-
-void Settings_SetUIRefreshMs(UINT ms)
-{
-    ms = std::clamp(ms, 1u, 200u);
-    g_uiRefreshMs.store(ms, std::memory_order_release);
-}
-
-UINT Settings_GetUIRefreshMs()
-{
-    return g_uiRefreshMs.load(std::memory_order_acquire);
-}
+// Fixed scheduling policy. Legacy setters intentionally cannot alter runtime
+// cadence, including callers restoring old profiles.
+void Settings_SetPollingMs(UINT) {}
+UINT Settings_GetPollingMs() { return 1; }
+void Settings_SetUIRefreshMs(UINT) {}
+UINT Settings_GetUIRefreshMs() { return 1; }
 
 void Settings_SetVirtualGamepadCount(int count)
 {

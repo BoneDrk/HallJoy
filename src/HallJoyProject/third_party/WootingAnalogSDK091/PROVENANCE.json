@@ -1,0 +1,14 @@
+{
+  "source_repository": "https://github.com/WootingKb/wooting-analog-sdk.git",
+  "source_commit": "be67cbf479eb1e10e2859e71dbdcc12fff7ba266",
+  "source_tag": "v0.9.1",
+  "license": "MPL-2.0",
+  "scope": "Header only; not a provenance claim for retired binaries",
+  "files": {
+    "include/wooting-analog-sdk.h": {
+      "upstream_path": "includes/wooting-analog-sdk.h",
+      "sha256": "7bfb506580ac100a766c13196f9d797904105d4bbd8c68c776833693d7761118",
+      "comparison": "Identical after CRLF/LF normalization; no source modifications"
+    }
+  }
+}

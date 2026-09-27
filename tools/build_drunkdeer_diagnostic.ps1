@@ -13,7 +13,6 @@ $delivery = Join-Path $repo 'build\packages\HallJoy-DrunkDeer-Diagnostic.exe'
 
 foreach ($required in @(
     $project,
-    (Join-Path $projectRoot '..\..\build\runtime\universal_analog_abiv0.dll'),
     (Join-Path $projectRoot '..\..\build\runtime\universal_analog_abiv1.dll'),
     (Join-Path $repo 'docs\v1.4\DRUNKDEER_DIAGNOSTIC.md')
 )) {

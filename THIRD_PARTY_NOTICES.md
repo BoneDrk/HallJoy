@@ -61,22 +61,26 @@ HallJoy's AGPL-3.0 license is supplied as the separate LICENSE release asset.
 
 ## Wooting Analog SDK/common library
 
-- Headers and prebuilt common libraries are used by the isolated Universal Analog
-  Plugin compatibility layer.
-- Bundled library files are under `third_party/UniversalAnalogPluginFixed/`.
+- MPL-covered SDK headers and protocol definitions are used for compatibility.
+- Current HallJoy builds use ABI1 with C++ ownership. Legacy ABI0 Rust common
+  archives and the unused Wooting SDK import library are not distribution inputs.
 - License: Mozilla Public License 2.0 (MPL-2.0).
 - Upstream source: https://github.com/WootingKb/wooting-analog-sdk
 - License text: https://www.mozilla.org/MPL/2.0/
 - Covered source remains available under MPL-2.0; HallJoy's license does not
   restrict recipients' rights to those components under MPL-2.0.
-- Do not replace these binaries without updating the build preflight hashes/source
-  attribution and reviewing the corresponding upstream license.
+- The compatibility headers retain MPL obligations independently of the retired
+  ABI0 binary files. Current source is included with HallJoy.
 
 ## ViGEmClient
 
 - Headers and audited x64 library are under
   `src/HallJoyProject/third_party/ViGEmClient/`.
 - Copyright (c) 2017-2023 Nefarius Software Solutions e.U. and Contributors.
+- Current static library is built from upstream commit
+  `b66d02d57e32cc8595369c53418b843e958649b4` (Release_LIB, x64, MSVC v143).
+  Source: https://github.com/nefarius/ViGEmClient/tree/b66d02d57e32cc8595369c53418b843e958649b4
+  `tools/dependency-lock.json` and the component PROVENANCE.json pin this build.
 - License: MIT; the full permission and warranty notice reproduced above also
   applies to ViGEmClient with its copyright notice listed here.
 

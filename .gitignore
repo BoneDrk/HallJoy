@@ -116,3 +116,8 @@ node_modules/
 /docs/research/**/*.rs
 /docs/research/**/*.py
 /docs/firmware/**/*.zip
+
+# Retired ABI0/SDK binaries: private rollback only; production is ABI1.
+/third_party/UniversalAnalogPluginFixed/wooting_analog_common.lib
+/third_party/UniversalAnalogPluginFixed/wooting_analog_common.a
+/src/HallJoyProject/third_party/WootingAnalogSDK091/lib/wooting_analog_sdk.dll.lib

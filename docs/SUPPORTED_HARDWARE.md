@@ -1,3 +1,7 @@
+> 2026-09-27 Release1.6.5: **MCHOSE Mix 87 (III revision), stock1.22 - Supported** (green), by owner decision after tester confirmation. Analog mode automatically enables on start/resume and disables on pause/exit; both are persistent flag operations with readback. Shallow cutoff and serialized reports remain; no claim of unrestricted firmware. Mix87 I excluded. [Details](current/MCHOSE_MIX87_LOG35_2026-09-27.md).
+
+> 2026-09-27 limited implementation retained: **MADLIONS MAD 68 V2 Dual — Analog available; low quality** (red). Tester confirms usable analog and loss of ordinary typing. Stock firmware also suppresses shallow input and delays small changes. Available in the separate limited build, outside supported/experimental lists; warning alone does not force logging. [Details](current/MAD68_V2_DUAL_REVIEW_2026-09-27.md).
+
 > 2026-09-26 (1.6.4): EPOMAKER HE108 (USB) is Supported following tester confirmation relayed by the owner. This supersedes its historical experimental entries below. Seven additional EPOMAKER layout presets; HE68 Mag geometry remains unresolved. [Details](current/EPOMAKER_HE108_2026-09-26.md).
 
 > 2026-09-24 visual layout update: [41 existing experimental models](current/ALL_YELLOW_LAYOUTS_2026-09-24.md) gain exact ANSI presets and automatic selection. Some revisions/regions remain manual; protocol support statuses below are unchanged.

@@ -28,8 +28,8 @@ const NativeAnalogBackendDescriptor* const kCatalog[] = {
 };
 #undef HALLJOY_NATIVE_BACKEND
 
-static_assert(std::size(kCatalog) <= kNativeAnalogBackendMaxCount,
-    "Increase kNativeAnalogBackendMaxCount before adding more native protocols.");
+static_assert(std::size(kCatalog) == kNativeAnalogBackendMaxCount,
+    "Compiled catalog and shared diagnostic/lifecycle capacity must match.");
 
 halljoy::lifecycle::BackendLifecycleRegistry<kNativeAnalogBackendMaxCount> g_lifecycle;
 std::mutex g_lifecycleMutex;

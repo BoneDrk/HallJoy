@@ -45,7 +45,8 @@ try {
     if ($shutdownAttempted -and $state -and $state.WasRunning -and (Test-Path -LiteralPath $target)) {
         $now = & (Join-Path $PSScriptRoot 'close_project_halljoy.ps1') -TargetPath $target -InspectOnly
         if (-not $now.WasRunning) {
-            $null = Start-Process -FilePath $target -WorkingDirectory $parent -WindowStyle Normal -PassThru
+            $restored = Start-Process -FilePath $target -WorkingDirectory $parent -WindowStyle $state.WindowStyle -PassThru
+            if ($restored.WaitForExit(1000)) { throw "Restored HallJoy exited immediately: $($restored.ExitCode)" }
             Write-Output 'Restored the previously running HallJoy window.'
         }
     }

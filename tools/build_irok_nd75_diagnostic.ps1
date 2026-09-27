@@ -14,7 +14,6 @@ $expectedPackage = [IO.Path]::GetFullPath($package).TrimEnd('\')
 
 foreach ($required in @(
     $project,
-    (Join-Path $projectRoot '..\..\build\runtime\universal_analog_abiv0.dll'),
     (Join-Path $projectRoot '..\..\build\runtime\universal_analog_abiv1.dll'),
     (Join-Path $repo 'docs\v1.4\IROK_ND75_OWNER_TEST.md')
 )) {

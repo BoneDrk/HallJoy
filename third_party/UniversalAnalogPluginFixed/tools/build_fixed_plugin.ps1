@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$HallJoyRoot = '',
     [switch]$ExcludeMad68ProRNative,
@@ -265,7 +265,7 @@ if ([IO.Path]::GetFullPath($WorkRoot) -ne $expectedWorkRoot) { throw 'Unsafe UAP
 if (Test-Path -LiteralPath $WorkRoot) { Remove-Item -LiteralPath $WorkRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $WorkRoot -Force | Out-Null
 Get-ChildItem -LiteralPath $Root -File | Where-Object {
-    $_.Extension -in @('.cpp', '.h', '.hpp', '.sun', '.lib', '.a')
+    $_.Extension -in @('.cpp', '.h', '.hpp', '.sun')
 } | Copy-Item -Destination $WorkRoot
 # Share reviewed matrix metadata with the application; do not maintain a second PID table.
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'src\HallJoyProject\HallJoy\keychron_layout_identities.h') -Destination $WorkRoot
@@ -277,7 +277,6 @@ try {
     if ($ExcludeMad68ProRNative) {
         Write-Host 'Building UAP with runtime-validated MADLIONS PID exclusion for the native HallJoy backend.' -ForegroundColor DarkGray
         $targets = @(
-            @{ Sun = 'abiv0-mad68native'; Output = 'abiv0' },
             # The private HallJoy host bypasses the Wooting SDK, so ABI1 itself must
             # include Wooting-device support in addition to Madlions/Soup devices.
             @{ Sun = 'abiv1-pluswooting-mad68native'; Output = 'abiv1' }
@@ -288,7 +287,6 @@ try {
         # not exclude any device merely because the native MAD68 backend exists in
         # this source tree.
         $targets = @(
-            @{ Sun = 'abiv0'; Output = 'abiv0' },
             @{ Sun = 'abiv1-pluswooting'; Output = 'abiv1' }
         )
     }
@@ -296,6 +294,10 @@ try {
         $target = [string]$entry.Sun
         $output = [string]$entry.Output
         Write-Host "Building $target.dll as $output.dll..." -ForegroundColor Cyan
+        $recipe = Join-Path $WorkRoot ($target + '.sun')
+        $recipeBefore = [IO.File]::ReadAllText($recipe)
+        if ([IO.File]::ReadAllText($recipe) -cne $recipeBefore) { throw 'Recipe changed during map instrumentation.' }
+        [IO.File]::WriteAllText($recipe, $recipeBefore + "`nlinker_arg -Wl,/map:$target.map`n", [Text.UTF8Encoding]::new($false))
         & $SunExe $target
         if ($LASTEXITCODE -ne 0) {
             throw "Sun build for $target failed with exit code $LASTEXITCODE"
@@ -304,6 +306,9 @@ try {
         if (-not (Test-Path -LiteralPath $dll)) {
             throw "Expected output not found: $dll"
         }
+        & python (Join-Path $RepoRoot 'tools/verify_uap_link_closure.py') --dll $dll --map (Join-Path $WorkRoot "$target.map") --output (Join-Path $DistRoot "$output-link-closure.json")
+        if ($LASTEXITCODE -ne 0) { throw 'UAP linked component review failed.' }
+        Copy-Item -LiteralPath (Join-Path $WorkRoot "$target.map") -Destination (Join-Path $DistRoot "$output-link.map")
         Move-Item -LiteralPath $dll -Destination (Join-Path $PluginOut "$output.dll") -Force
         Remove-Item -LiteralPath (Join-Path $WorkRoot "$target.exp") -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath (Join-Path $WorkRoot "$target.lib") -Force -ErrorAction SilentlyContinue
@@ -313,12 +318,13 @@ finally {
     Pop-Location
 }
 
+Copy-Item -LiteralPath (Join-Path $RepoRoot 'THIRD_PARTY_NOTICES.md') -Destination $PluginOut
+Copy-Item -LiteralPath (Join-Path $Root 'LICENCE') -Destination (Join-Path $PluginOut 'LICENSE-UAP.txt')
 $package = Join-Path $DistRoot 'UniversalAnalogPlugin-HallJoy-Madlions-Fix.zip'
 Compress-Archive -Path $PluginOut -DestinationPath $package -Force
 
 Write-Host ''
 Write-Host 'Plugin build completed:' -ForegroundColor Green
-Write-Host "  $PluginOut\abiv0.dll"
 Write-Host "  $PluginOut\abiv1.dll"
 Write-Host "  $package"
 
@@ -331,8 +337,9 @@ if ($HallJoyRoot) {
     }
 
     New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $PluginOut 'abiv0.dll') -Destination (Join-Path $runtime 'universal_analog_abiv0.dll') -Force
     Copy-Item -LiteralPath (Join-Path $PluginOut 'abiv1.dll') -Destination (Join-Path $runtime 'universal_analog_abiv1.dll') -Force
+    Copy-Item -LiteralPath (Join-Path $DistRoot 'abiv1-link.map') -Destination (Join-Path $runtime 'universal_analog_abiv1.map') -Force
+    Copy-Item -LiteralPath (Join-Path $DistRoot 'abiv1-link-closure.json') -Destination (Join-Path $runtime 'universal_analog_abiv1.json') -Force
 
     Write-Host ''
     Write-Host 'Updated HallJoy embedded plugin DLLs. Building HallJoy...' -ForegroundColor Cyan

@@ -7,6 +7,8 @@
 
 namespace halljoy::profile_runtime {
 inline std::atomic<std::uint32_t> readers{0};
+inline std::atomic<std::uint64_t> revision{1};
+inline void Changed() noexcept { revision.fetch_add(1, std::memory_order_release); }
 inline std::mutex writerMutex;
 inline constexpr std::uint32_t kWriter = 0x80000000u;
 class ReadLease {

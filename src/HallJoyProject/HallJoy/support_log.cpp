@@ -29,6 +29,7 @@ size_t queued = 0;
 std::atomic<unsigned> dropped{0};
 std::atomic<bool> stopping{false}, inventoryDirty{true};
 std::atomic<bool> incidentPending{false};
+std::atomic<std::uint64_t> requestedSnapshot{0}, completedSnapshot{0};
 std::atomic<bool> failurePending{false};
 std::atomic<HWND> uiWindow{nullptr};
 std::atomic<DWORD> lastError{0};
@@ -51,18 +52,18 @@ void Enqueue(const char* text) noexcept {
 void Inventory() {
     GUID guid{}; HidD_GetHidGuid(&guid);
     HDEVINFO devices = SetupDiGetClassDevsW(&guid, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
-    if (devices == INVALID_HANDLE_VALUE) { SupportLog_Event("inventory.enumeration_failed", 0, GetLastError()); return; }
+    if (devices == INVALID_HANDLE_VALUE) { SupportLog_Event("inventory.enumeration_failed", 0,SupportLog_Win32(GetLastError())); return; }
     // Read Windows metadata only. No device opens, feature reports or probes.
     for (DWORD index = 0; index < 256 && !stopping.load(); ++index) {
         SP_DEVINFO_DATA info{sizeof(info)};
         if (!SetupDiEnumDeviceInfo(devices, index, &info)) {
-            if (GetLastError() != ERROR_NO_MORE_ITEMS) SupportLog_Event("inventory.enum_error", index, GetLastError());
+            if (GetLastError() != ERROR_NO_MORE_ITEMS) SupportLog_Event("inventory.enum_error", index,SupportLog_Win32(GetLastError()));
             break;
         }
         wchar_t ids[2048]{}; DWORD type = 0;
         if (!SetupDiGetDeviceRegistryPropertyW(devices, &info, SPDRP_HARDWAREID, &type,
             reinterpret_cast<BYTE*>(ids), sizeof(ids) - sizeof(wchar_t), nullptr)) {
-            SupportLog_Event("inventory.metadata_error", index, GetLastError()); continue;
+            SupportLog_Event("inventory.metadata_error", index,SupportLog_Win32(GetLastError())); continue;
         }
         // Deliberately omit full instance paths, serials and user-editable names.
         _wcsupr_s(ids);
@@ -79,27 +80,42 @@ void Inventory() {
     SetupDiDestroyDeviceInfoList(devices);
     Enqueue("inventory.complete limit=256; HID candidates include mice and other devices, not proof of analogue capability");
 }
-void Snapshot(bool detail) {
-    BackendAnalogTelemetry t{}; Backend_GetAnalogTelemetry(&t);
+const char* LifecycleName(unsigned state) noexcept {
+    static constexpr const char* names[]={"stopped","starting","running","stop_requested","joined","faulted","poisoned"};
+    return state<std::size(names)?names[state]:"unknown";
+}
+void Snapshot() {
+    BackendAnalogTelemetry t{}; Backend_GetAnalogDiagnosticTelemetry(&t);
     char line[kLineBytes]{};
+    static std::uint64_t sequence=0;
+    const auto seq=++sequence;
     const auto engine = halljoy::engine_runtime::EngineRuntimeOwner_Snapshot();
     const auto support = halljoy::keyboard_support::GetStatusSnapshot();
-    sprintf_s(line, "snapshot engine=%u engine_error=%u search_complete=%d analogue_connected=%d sdk_initialised=%d devices=%d analog_error=%d full_buffer_result=%d",
-        unsigned(engine.state), engine.lastNativeError, support.searchCompleted, support.analogSourceConnected,
-        t.sdkInitialised, t.deviceCount, t.lastAnalogError, t.fullBufferRet);
+    // Fresh evidence and cached UI observation are deliberately separate.
+    const char* source=t.deviceCount>0?"connected":t.nativeTelemetryComplete?"none_reported":"unknown";
+    sprintf_s(line, "snapshot.begin seq=%llu schema=2 engine=%u engine_error=%u search_complete_cached=%d source=%s ui_connected_cached=%d sdk_initialised=%d sources=%d sdk_sources=%u native_sources=%u analog_error=%d full_buffer_result=%d",
+        seq,unsigned(engine.state),engine.lastNativeError,support.searchCompleted,source,support.analogSourceConnected,
+        t.sdkInitialised,t.deviceCount,t.sdkDeviceCount,t.nativeConnectedCount,t.lastAnalogError,t.fullBufferRet);
     Enqueue(line);
-    sprintf_s(line, "uap available=%d ready=%d status=%d error=%d transport_error=%d restarts=%d invalid_snapshots=%d",
-        t.pluginHostAvailable,t.pluginHostReady,t.pluginHostStatus,t.pluginHostLastError,
+    sprintf_s(line,"diagnostics.coverage seq=%llu catalog=%u visited=%u rows=%d unavailable=%u complete=%d sampling=per_provider_not_atomic",
+        seq,t.nativeCatalogCount,t.nativeVisitedCount,t.nativeProtocolCount,t.nativeTelemetryFailures,t.nativeTelemetryComplete);
+    Enqueue(line);
+    sprintf_s(line, "uap seq=%llu available=%d ready=%d status=%d error=%d transport_error=%d restarts=%d invalid_snapshots=%d",
+        seq,t.pluginHostAvailable,t.pluginHostReady,t.pluginHostStatus,t.pluginHostLastError,
         t.pluginHostTransportError,t.pluginHostRestartCount,t.pluginHostInvalidSnapshots);
     Enqueue(line);
-    if (!detail) return;
     for (int i=0; i<t.nativeProtocolCount && i<kBackendMaxNativeProtocols; ++i) {
         const auto& n = t.nativeProtocols[i];
-        sprintf_s(line, "native protocol=%u vid=%04X pid=%04X usage_page=%04X usage=%04X present=%d connected=%d flags=%u mapped_keys=%u input_bytes=%u output_bytes=%u updates=%llu failures=%llu age_ms=%u",
-            n.protocol, n.vendorId, n.productId, n.usagePage, n.usage, n.present, n.connected, n.flags,
-            n.mappedKeys, n.inputReportBytes, n.outputReportBytes, n.successfulUpdates, n.failedUpdates, n.lastUpdateAgeMs);
+        const char* state=!n.telemetryAvailable?"unavailable":n.connected?"connected":n.present?"present_not_connected":"not_present";
+        const char* transport=(n.flags&NativeAnalogBackendFlag_StreamTransport)?"stream":(n.flags&NativeAnalogBackendFlag_PolledTransport)?"polled":"unspecified";
+        sprintf_s(line, "native seq=%llu index=%u id=%s protocol=%u observation=%s vid=%04X pid=%04X usage_page=%04X usage=%04X present=%d connected=%d flags=%u transport=%s mapped_keys=%u input_bytes=%u output_bytes=%u updates=%llu failures=%llu age_ms=%u age_valid=%d lifecycle=%s generation=%llu lifecycle_error=%u lifecycle_operation=%u native_error=%u",
+            seq,n.catalogIndex,n.id[0]?n.id:"unknown",n.protocol,state,n.vendorId,n.productId,n.usagePage,n.usage,n.present,n.connected,n.flags,transport,
+            n.mappedKeys,n.inputReportBytes,n.outputReportBytes,n.successfulUpdates,n.failedUpdates,n.lastUpdateAgeMs,n.telemetryAvailable&&n.successfulUpdates!=0,
+            n.lifecycleAvailable?LifecycleName(n.lifecycleState):"unavailable",n.generation,n.lifecycleError,n.lifecycleOperation,n.nativeError);
         Enqueue(line);
     }
+    sprintf_s(line,"snapshot.end seq=%llu rows=%d complete=%d",seq,t.nativeProtocolCount,t.nativeTelemetryComplete);
+    Enqueue(line);
 }
 bool WriteLine(HANDLE file, const Line& line) {
     const DWORD length = static_cast<DWORD>(strlen(line.data())); DWORD written = 0;
@@ -122,7 +138,7 @@ DWORD WINAPI Run(void*) noexcept {
         std::array<Destination, 2> destinations{{{primary}, {mirror}}};
         const bool distinctMirror = !mirror.empty() && _wcsicmp(primary.c_str(), mirror.c_str()) != 0;
         unsigned ticks = 0;
-        Enqueue("session.begin version=" HALLJOY_VERSION_STRING_FULL " schema=1 privacy=no_keys_no_input_values_no_serials_no_paths; support absence is not proof of an unsupported keyboard");
+        Enqueue("session.begin version=" HALLJOY_VERSION_STRING_FULL " schema=2 privacy=no_keys_no_input_values_no_serials_no_paths; support absence is not proof of an unsupported keyboard");
         for (;;) {
 #if defined(HALLJOY_INPUT_PATH_DIAGNOSTIC)
             const bool continuous = true;
@@ -144,21 +160,23 @@ DWORD WINAPI Run(void*) noexcept {
                 Enqueue(pathLine);
             }
             Backend_InputPathStatus(pathLine,sizeof(pathLine));Enqueue(pathLine);
-            if(ticks%5==0)Snapshot(true);
+            if(ticks%5==0)Snapshot();
 #else
             const bool continuous = Settings_GetDiagnosticLogging();
 #endif
             const auto s = halljoy::keyboard_support::GetStatusSnapshot();
-            const bool incident = s.searchCompleted && !s.analogSourceConnected;
-            const bool requested = incidentPending.exchange(false);
+            const bool incident = halljoy::keyboard_support::ShouldAutoSaveSupportLog(s);
+            const auto snapshotRequest = requestedSnapshot.load();
+            const bool bannerRequested = incidentPending.exchange(false);
+            const bool requested = bannerRequested || snapshotRequest != completedSnapshot.load();
             const bool failure = failurePending.exchange(false);
             const bool trigger = failure || requested || (incident && !previousIncident) || (continuous && !previousContinuous);
             if (requested) Enqueue("support.banner_shown incident_latched=1");
             if (incident != previousIncident) SupportLog_Event("support.banner", incident);
             if (continuous != previousContinuous) SupportLog_Event("logging.continuous", continuous);
             const bool changed = inventoryDirty.exchange(false);
-            if (trigger || changed) { Inventory(); Snapshot(true); }
-            else if (ticks % 30 == 0) Snapshot(continuous || incident);
+            if (trigger || changed) { Inventory(); Snapshot(); }
+            else if (ticks % 30 == 0) Snapshot();
             const bool shouldWrite = failure || requested || continuous || incident || (previousIncident && !incident) || (previousContinuous && !continuous);
             const bool mirrorEnabled = continuous || previousContinuous;
             previousIncident = incident; previousContinuous = continuous;
@@ -205,7 +223,7 @@ DWORD WINAPI Run(void*) noexcept {
                                 fileBytes=0;
                                 Line header{};
                                 SYSTEMTIME utc{}; GetSystemTime(&utc);
-                                sprintf_s(header.data(),header.size(),"HallJoy " HALLJOY_VERSION_STRING_FULL " support report schema=1 utc=%04u-%02u-%02uT%02u:%02u:%02uZ bounded_history=512 no_keyboard_text=1",utc.wYear,utc.wMonth,utc.wDay,utc.wHour,utc.wMinute,utc.wSecond);
+                                sprintf_s(header.data(),header.size(),"HallJoy " HALLJOY_VERSION_STRING_FULL " support report schema=2 utc=%04u-%02u-%02uT%02u:%02u:%02uZ bounded_history=512 no_keyboard_text=1",utc.wYear,utc.wMonth,utc.wDay,utc.wHour,utc.wMinute,utc.wSecond);
                                 ok=WriteLine(file,header); fileBytes=DWORD(strlen(header.data())+2);
                                 for (const auto& line : history) { if (!ok || !(ok=WriteLine(file,line))) break; fileBytes += DWORD(strlen(line.data())+2); }
                             } else {
@@ -219,7 +237,9 @@ DWORD WINAPI Run(void*) noexcept {
                             }
                             if(reset && !ok) DeleteFileW(destination.c_str()); // Only our exact transient file.
                             opened=ok;
-                            if(ok) { retryPending=false; retryAfter=0; }
+                            if(ok) { retryPending=false; retryAfter=0;
+                                if (sink == 0) completedSnapshot.store(snapshotRequest);
+                            }
                             state.error = ok ? 0 : (error ? error : ERROR_WRITE_FAULT);
                         }
                     }
@@ -269,8 +289,12 @@ bool SupportLog_Stop() noexcept {
     if(WaitForSingleObject(worker,5000)!=WAIT_OBJECT_0) return false;
     CloseHandle(worker); CloseHandle(stopEvent); worker=nullptr; stopEvent=nullptr; return true;
 }
-void SupportLog_Event(const char* category, std::uint64_t value, std::uint64_t error) noexcept {
-    char line[256]{}; _snprintf_s(line,sizeof(line),_TRUNCATE,"%s value=%llu error=%llu",category,value,error); Enqueue(line);
+void SupportLog_Event(const char* category, std::uint64_t value, SupportLogDetail detail) noexcept {
+    const bool failure=detail.kind==SupportLogDetailKind::Win32 || detail.kind==SupportLogDetailKind::Protocol;
+    const char* kind=detail.kind==SupportLogDetailKind::Win32?"win32":detail.kind==SupportLogDetailKind::Protocol?"protocol":detail.kind==SupportLogDetailKind::Data?"data":"none";
+    char line[256]{};
+    _snprintf_s(line,sizeof(line),_TRUNCATE,"%s value=%llu error=%llu detail=%llu detail_kind=%s",category,value,failure?detail.value:0,detail.value,kind);
+    Enqueue(line);
 }
 void SupportLog_OverlaySummary(const wchar_t* aggregate) noexcept {
     if(!Settings_GetDiagnosticLogging()) return;
@@ -280,7 +304,9 @@ void SupportLog_OverlaySummary(const wchar_t* aggregate) noexcept {
 void SupportLog_InventoryChanged() noexcept { inventoryDirty=true; }
 void SupportLog_ReportMissingSource() noexcept { incidentPending=true; }
 void SupportLog_ReportFailure(const char* category, std::uint64_t error) noexcept {
-    SupportLog_Event(category,0,error); failurePending=true;
+    SupportLog_Event(category,0,SupportLog_Win32(error)); failurePending=true;
 }
 void SupportLog_SetWindow(HWND window) noexcept { uiWindow=window; }
 DWORD SupportLog_LastError() noexcept { return lastError.load(); }
+std::uint64_t SupportLog_RequestSnapshot() noexcept { return ++requestedSnapshot; }
+std::uint64_t SupportLog_CompletedSnapshot() noexcept { return completedSnapshot.load(); }

@@ -94,10 +94,16 @@ BackendStatus Backend_GetStatus();
 
 
 
-static constexpr int kBackendMaxNativeProtocols = 16;
+#include "native_analog_catalog_size.h"
+static constexpr int kBackendMaxNativeProtocols = static_cast<int>(kNativeAnalogCatalogSize);
 
 struct BackendNativeProtocolTelemetry
 {
+    std::uint32_t catalogIndex = 0;
+    bool telemetryAvailable = false;
+    bool lifecycleAvailable = false;
+    std::uint32_t lifecycleState = 0, lifecycleError = 0, lifecycleOperation = 0, nativeError = 0;
+    std::uint64_t generation = 0;
     std::uint64_t verifiedLayoutToken = 0;
     bool present = false;
     bool connected = false;
@@ -172,6 +178,9 @@ struct BackendAnalogDeviceTelemetry
 
 struct BackendAnalogTelemetry
 {
+    std::uint32_t nativeCatalogCount = 0, nativeVisitedCount = 0, nativeTelemetryFailures = 0;
+    std::uint32_t nativeConnectedCount = 0, sdkDeviceCount = 0;
+    bool nativeTelemetryComplete = false;
     int nativeProtocolCount = 0;
     BackendNativeProtocolTelemetry nativeProtocols[kBackendMaxNativeProtocols]{};
     bool sdkInitialised = false;         // true when Wooting SDK or any native HID path is active
@@ -315,6 +324,9 @@ struct BackendAnalogTelemetry
 };
 
 void Backend_GetAnalogTelemetry(BackendAnalogTelemetry* out);
+// All catalog entries, including absent/unavailable, plus lifecycle evidence.
+// Background diagnostics only. No HID calls or realtime-thread instrumentation.
+void Backend_GetAnalogDiagnosticTelemetry(BackendAnalogTelemetry* out);
 
 struct BackendMouseStickDebug
 {

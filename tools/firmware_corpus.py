@@ -407,6 +407,7 @@ class Corpus:
                   'known_research': {sha: refs for sha, refs in KNOWN_RESEARCH.items()
                                      if self.db.execute('SELECT 1 FROM objects WHERE hash=?', (sha,)).fetchone()},
                   'brand_queue': list(self.db.execute('SELECT brand,COUNT(*) FROM models GROUP BY brand ORDER BY brand')),
+                  'behavior_policy': 'Execution receipts do not assess suitability. Require a validated firmware_behavior assessment with candidate comparison before integration; absent assessment means NOT ASSESSED.',
                   'support_policy': 'No automatic support status changes; no protocol claims from fingerprints.'}
         target = self.root / 'report.json'
         # Generated report: single writer only, refuse an unexpected concurrent edit.

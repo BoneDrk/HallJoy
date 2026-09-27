@@ -94,3 +94,11 @@ Source-reference receipts, imported evidence and locally executed emulator recei
 remain distinguishable. Stored assertions are not automatically independent proof.
 The existing emulator's expected known defects remain defects even when its suite
 passes. No new hardware test, RGB inference, runtime build or support change occurred.
+
+## Behavior review addition — 2026-09-27
+
+Use [the mandatory behavior review](../development/FIRMWARE_BEHAVIOR_REVIEW.md)
+above execution receipts. New validator separates limited candidates, unknowns
+and failed execution from readiness. MAD68 all-index replay found upper-range
+saturation previously missed by sparse samples. Existing suites are not silently
+converted into suitability evidence.

@@ -21,7 +21,7 @@ def palette(status):
     elif status.startswith('Supported'): key = 'green'
     elif status.startswith(('Implemented;', 'Known protocol;')): key = 'yellow'
     elif status in ('Not investigated', 'Research incomplete', 'Research frozen; tester needed'): key = 'gray'
-    elif status.startswith(('Support impossible', 'No usable analog found', 'Research blocked:')): key = 'red'
+    elif status.startswith(('Support impossible', 'No usable analog found', 'Research blocked:', 'Analog available; low quality')): key = 'red'
     else: raise ValueError('Unknown support status: '+status)
     return [dict(zip(('red', 'green', 'blue'), c)) for c in PALETTES[key]]
 

@@ -12,7 +12,10 @@ assert build.index('& $msbuild') < build.index('foreach ($check') < build.index(
 assert install.index('Candidate matches installed EXE') < install.index('-InspectOnly')
 assert '[IO.File]::Replace($pending, $target, $backup)' in install
 assert 'finally {' in install and '$state.WasRunning' in install
-assert '$_.Path.Equals($target' in close and '[Parameter(Mandatory = $true)][string]$TargetPath' in close
+assert '[HallJoyBuild.ProcessIdentity]::ImagePath' in close and '[Parameter(Mandatory = $true)][string]$TargetPath' in close
+identity = (root / 'tools/halljoy_process_identity.ps1').read_text(encoding='utf-8-sig')
+assert 'OpenProcess(0x1000' in identity and 'QueryFullProcessImageName' in identity
+assert 'replacement stopped' in close and '$restored.WaitForExit' in install
 assert '#if defined(HALLJOY_ANALOG_SIMULATOR)' in guard
 assert 'forbiddenBackend && fileOnly && !root.empty()' in guard and '.FileOnly.%016llx' in guard
 print('BUILD_REPLACEMENT_LIFECYCLE=PASS staged exact_target conditional_restart isolated_file_tests')

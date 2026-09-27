@@ -1,3 +1,4 @@
+#include "ui_activity.h"
 // remap_panel.cpp
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -2524,6 +2525,7 @@ static LRESULT CALLBACK RemapPanelProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
         return 0;
 
     case WM_TIMER:
+        if (!HallJoyUiVisible(hWnd)) return 0;
         if (wParam == BIND_HINT_TIMER_ID)
         {
             Remap_TickBindingHint(hWnd, st);

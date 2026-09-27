@@ -111,6 +111,10 @@
     <TargetName>HallJoy-Madlions-Titan68-Turbo-Diagnostic</TargetName>
     <HallJoyBuildVariant>Titan68TurboDiagnostic</HallJoyBuildVariant>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(HallJoyMad68DualTrial)'=='true'">
+    <TargetName>HallJoy-MAD68-V2-Dual-Trial</TargetName>
+    <HallJoyBuildVariant>Mad68DualTrial</HallJoyBuildVariant>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(HallJoyTitan68TurboExperimental)'=='true'">
     <TargetName>HallJoy-Madlions-Titan68-Turbo-Experimental</TargetName>
     <HallJoyBuildVariant>Titan68TurboExperimental</HallJoyBuildVariant>
@@ -328,6 +332,11 @@
       <MapFileName>$(OutDir)$(TargetName).map</MapFileName>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(HallJoyMad68DualTrial)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>HALLJOY_MAD68_DUAL_TRIAL;HALLJOY_PRODUCTION;HALLJOY_STABILITY_TRACE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(HallJoyTitan68TurboExperimental)'=='true'">
     <ClCompile>
       <PreprocessorDefinitions>HALLJOY_TITAN68_TURBO_EXPERIMENTAL;HALLJOY_PRODUCTION;HALLJOY_STABILITY_TRACE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -519,7 +528,7 @@
     <ClInclude Include="worker_primitives.h" />
     <ClInclude Include="worker_exception_barrier.h" />
     <ClInclude Include="windows_command_line.h" />
-  <ClInclude Include="analog_provider_v2.h" /><ClInclude Include="native_analog_snapshot_adapter.h" /><ClInclude Include="provider_v2_data_plane_layout.h" /><ClInclude Include="provider_v2_data_plane_windows.h" /><ClInclude Include="provider_v2_snapshot_broker.h" /><ClInclude Include="uap_parent_snapshot.h" /><ClInclude Include="provider_v2_controller_shadow.h" /><ClInclude Include="provider_v2_qualification_report.h" /><ClInclude Include="configured_xusb_builder.h" /><ClInclude Include="virtual_controller_frame.h" /><ClInclude Include="xusb_output_adapter.h" /><ClInclude Include="native_analog_backend.h" /><ClInclude Include="native_analog_backend_registry.h" /><ClInclude Include="native_analog_backends.def" /><ClInclude Include="rog_azoth96he_diagnostic_backend.h" /><ClInclude Include="runtime_supervisor.h" /><ClInclude Include="engine_runtime_owner.h" /><ClInclude Include="engine_runtime_ui_bridge.h" /><ClInclude Include="engine_runtime_transaction.h" /><ClInclude Include="runtime_command_state.h" /><ClInclude Include="instance_guard.h" /></ItemGroup>
+  <ClInclude Include="analog_provider_v2.h" /><ClInclude Include="native_analog_snapshot_adapter.h" /><ClInclude Include="provider_v2_data_plane_layout.h" /><ClInclude Include="provider_v2_data_plane_windows.h" /><ClInclude Include="provider_v2_snapshot_broker.h" /><ClInclude Include="uap_parent_snapshot.h" /><ClInclude Include="provider_v2_controller_shadow.h" /><ClInclude Include="provider_v2_qualification_report.h" /><ClInclude Include="configured_xusb_builder.h" /><ClInclude Include="virtual_controller_frame.h" /><ClInclude Include="xusb_output_adapter.h" /><ClInclude Include="native_analog_backend.h" /><ClInclude Include="native_analog_catalog_size.h" /><ClInclude Include="native_analog_telemetry_collect.h" /><ClInclude Include="native_analog_backend_registry.h" /><ClInclude Include="native_analog_backends.def" /><ClInclude Include="rog_azoth96he_diagnostic_backend.h" /><ClInclude Include="runtime_supervisor.h" /><ClInclude Include="engine_runtime_owner.h" /><ClInclude Include="engine_runtime_ui_bridge.h" /><ClInclude Include="engine_runtime_transaction.h" /><ClInclude Include="runtime_command_state.h" /><ClInclude Include="instance_guard.h" /></ItemGroup>
   <ItemGroup>
     <ClInclude Include="provider_v2_qualification_model.h" />
   </ItemGroup>
@@ -629,6 +638,9 @@
     <ClCompile Include="rongyuan_stream_backend.cpp" />
     <ClCompile Include="tartarus_backend.cpp" />
     <ClCompile Include="neo65_backend.cpp" />
+    <ClCompile Include="mchose_mix87_backend.cpp" />
+    <ClInclude Include="mchose_mix87_backend.h" />
+    <ClInclude Include="mchose_mix87_protocol.h" />
     <ClCompile Include="steelseries_apex_backend.cpp" />
     <ClInclude Include="steelseries_apex_backend.h" />
     <ClInclude Include="steelseries_apex_protocol.h" />
@@ -643,6 +655,9 @@
       <ExcludedFromBuild Condition="'$(HallJoyAulaHero84HeDiagnostic)'!='true'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="aula_hero84he_diagnostic_protocol.cpp" />
+    <ClCompile Include="mad68_dual_trial_backend.cpp">
+      <ExcludedFromBuild Condition="'$(HallJoyMad68DualTrial)'!='true'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="titan68_turbo_diagnostic_backend.cpp">
       <ExcludedFromBuild Condition="'$(HallJoyTitan68TurboDiagnostic)'!='true' and '$(HallJoyTitan68TurboExperimental)'!='true'">true</ExcludedFromBuild>
     </ClCompile>

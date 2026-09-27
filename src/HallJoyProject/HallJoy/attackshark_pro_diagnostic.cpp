@@ -371,29 +371,29 @@ void ReceiveLine(const std::string& line){
  auto number=[&](const char* key){auto pos=line.find(key);return pos==std::string::npos?0ull:std::strtoull(line.c_str()+pos+strlen(key),nullptr,10);};
  if(line.rfind("inventory eligible=",0)==0) {
   SupportLog_Event("shark.eligible",number("eligible="));
-  SupportLog_Event("shark.vendor_collections",number("vendor_collections="),number("metadata_errors="));
+  SupportLog_Event("shark.vendor_collections",number("vendor_collections="),SupportLog_Data(number("metadata_errors=")));
  }
  if(line.rfind("descriptor ",0)==0) {
   unsigned pid=0,bcd=0,page=0,usage=0,in=0,out=0,feature=0,receiver=0;
   if(sscanf_s(line.c_str(),"descriptor vid=3151 pid=%x bcd=%x usage=%x:%x in=%u out=%u feature=%u receiver=%u",
       &pid,&bcd,&page,&usage,&in,&out,&feature,&receiver)==8) {
-   SupportLog_Event("shark.collection_pid",pid,bcd);
-   SupportLog_Event("shark.collection_usage",page,usage);
-   SupportLog_Event("shark.collection_feature",feature,receiver);
+   SupportLog_Event("shark.collection_pid",pid,SupportLog_Data(bcd));
+   SupportLog_Event("shark.collection_usage",page,SupportLog_Data(usage));
+   SupportLog_Event("shark.collection_feature",feature,SupportLog_Data(receiver));
   }
  }
  if(line.rfind("identity_attempt ",0)==0) {
-  SupportLog_Event("shark.probe_identity",number(" id="),number("repeated_id="));
-  SupportLog_Event("shark.probe_command",number("reply_command="),number("repeated_command="));
+  SupportLog_Event("shark.probe_identity",number(" id="),SupportLog_Data(number("repeated_id=")));
+  SupportLog_Event("shark.probe_command",number("reply_command="),SupportLog_Data(number("repeated_command=")));
  }
- if(line.rfind("identity_pair_rejected ",0)==0)SupportLog_Event("shark.identity_pair_rejected",number("board="),number("pid="));
+ if(line.rfind("identity_pair_rejected ",0)==0)SupportLog_Event("shark.identity_pair_rejected",number("board="),SupportLog_Data(number("pid=")));
  if(line.rfind("identity_rejected ",0)==0)SupportLog_Event("shark.identity_rejected",1);
  const char* failures[]={"inventory_failed","metadata_open_failed","attributes_failed",
   "preparsed_data_failed","caps_failed","exclusive_open_failed","set_feature_failed","get_feature_failed"};
  for(const auto* name:failures) if(line.rfind(std::string(name)+" error=",0)==0) {
   const auto category=std::string("shark.")+name;
   const auto error=number("error=");
-  SupportLog_Event(category.c_str(),1,error);
+  SupportLog_Event(category.c_str(),1,SupportLog_Win32(error));
    if(std::strcmp(name,"exclusive_open_failed")==0 && error<=MAXDWORD)
     halljoy::keyboard_support::ReportCommunicationAccessFailure(21,static_cast<unsigned>(error));
   break;
@@ -550,9 +550,9 @@ void TestOrdinaryFailureLog(){
  Require(text.find("shark.eligible value=0")!=std::string::npos);
  Require(text.find("shark.exclusive_open_failed value=1 error=32")!=std::string::npos);
  Require(text.find("shark.get_feature_failed value=1 error=5")!=std::string::npos);
- Require(text.find("shark.probe_identity value=3123 error=9999")!=std::string::npos);
+ Require(text.find("shark.probe_identity value=3123 error=0 detail=9999 detail_kind=data")!=std::string::npos);
  Require(text.find("shark.identity_rejected value=1")!=std::string::npos);
- Require(text.find("shark.collection_usage value=65535 error=2")!=std::string::npos);
+ Require(text.find("shark.collection_usage value=65535 error=0 detail=2 detail_kind=data")!=std::string::npos);
  Require(text.find("PRIVATE_")==std::string::npos && text.find("PRIVACY_SENTINEL")==std::string::npos);
  Line("SHARK_ORDINARY_FAILURE_LOG=PASS actual_file=1 failure_reasons=1 private_payload_excluded=1");
 }

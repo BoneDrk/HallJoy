@@ -6,7 +6,11 @@ ini = (root / 'settings_ini.cpp').read_text(encoding='utf-8-sig')
 ui = (root / 'keyboard_subpages.cpp').read_text(encoding='utf-8-sig')
 overlay = (root / 'overlay_server.cpp').read_text(encoding='utf-8-sig')
 assert 'g_diagnosticLogging{ false }' in settings
-assert 's.searchCompleted && !s.analogSourceConnected' in log
+policy = (root / 'keyboard_support_status.h').read_text(encoding='utf-8-sig')
+assert 'halljoy::keyboard_support::ShouldAutoSaveSupportLog(s)' in log
+assert 'if (!s.searchCompleted || s.communicationWarning) return false;' in policy
+assert 'if ((s.frozenModels & LimitedModels) && !other) return false;' in policy
+assert 'return !s.analogSourceConnected || s.frozenModels != 0;' in policy
 assert 'TryAcquireSRWLockExclusive' in log and 'kQueueLines = 512' in log
 assert 'kHistoryLines = 512' in log and '4 * 1024 * 1024' in log
 assert 'MOVEFILE_REPLACE_EXISTING' in log

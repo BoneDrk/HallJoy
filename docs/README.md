@@ -1,4 +1,26 @@
-> Distribution: [research publication cleanup and preserved releases](legal/HISTORY_CLEANUP_2026-09-27.md); [licensing audit](legal/DISTRIBUTION_AUDIT_2026-09-27.md).
+> Current diagnostics: [schema2, complete catalog and typed events](development/SUPPORT_DIAGNOSTICS_CONTRACT.md). [Validation record](current/SUPPORT_DIAGNOSTICS_2026-09-27.md).
+
+> Local dependencies: [verified ABI1/ViGEm source provenance and ABI0 retirement](legal/DEPENDENCY_PROVENANCE_2026-09-27.md).
+
+> Published: [historical research cleanup and preserved release downloads](legal/HISTORY_CLEANUP_2026-09-27.md).
+
+> Distribution rights: [repository/runtime licensing audit and unresolved items](legal/DISTRIBUTION_AUDIT_2026-09-27.md).
+
+> Firmware protocol decisions: [behavior matrix, candidate comparison and limited fallback](development/FIRMWARE_BEHAVIOR_REVIEW.md).
+
+> Current: [MAD68 V2 Dual: firmware acquired, exact protocol and ARM replay findings](current/MAD68_V2_DUAL_REVIEW_2026-09-27.md).
+
+> Local game profiles (temporarily hidden): [behaviour and validation](current/GAME_PROFILES_2026-09-27.md).
+
+> Editor performance: [measured renderer improvements](current/LAYOUT_EDITOR_RENDER_2026-09-27.md).
+
+> UI spacing and editor navigation: [2026-09-27 changes](current/UI_SPACING_AND_RMB_PAN_2026-09-27.md).
+
+> Current local feature: [tray window behavior and validation](current/TRAY_WINDOW_BEHAVIOR_2026-09-27.md).
+
+> Build lifecycle: [reliable identity and automatic restoration](current/BUILD_LIFECYCLE_2026-09-27.md).
+
+> Current local UI simplification: [fixed timing and hidden UI](current/FIXED_TIMING_AND_HIDDEN_UI_2026-09-27.md).
 
 > EPOMAKER: [HE108 confirmed, startup contention warning and seven layouts](current/EPOMAKER_HE108_2026-09-26.md). Included in 1.6.4.
 

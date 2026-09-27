@@ -9,6 +9,9 @@ class PublicationTests(unittest.TestCase):
     def test_known_payload_and_renamed_vendor_payload_blocked(self):
         self.assertEqual(len(violations(['docs/research/known.c', 'docs/new/FIRMWARE.BIN'], {'docs/research/known.c'})), 2)
 
+    def test_new_archives_and_copied_source_require_review(self):
+        self.assertEqual(len(violations(['docs/research/new.rs', 'docs/firmware/new.zip'], set())), 2)
+
     def test_private_and_traversal_blocked(self):
         self.assertEqual(len(violations(['.local/evidence.json', '../secret', 'docs\\secret'], set())), 3)
 

@@ -17,6 +17,10 @@ def violations(names, denied):
             findings.append((name, 'redistribution permission not established'))
         elif name.startswith(('.local/', '.cache/', '.analysis/', 'outputs/')):
             findings.append((name, 'private/generated content'))
+        elif name.startswith('docs/research/') and path.suffix.lower() in {'.c', '.h', '.cpp', '.hpp', '.cs', '.rs', '.py'}:
+            findings.append((name, 'new acquired source requires review'))
+        elif name.startswith('docs/') and path.suffix.lower() == '.zip' and name != 'docs/archive/legacy-addressed-analog-v5.zip':
+            findings.append((name, 'archive requires member-level redistribution review'))
         elif name.startswith('docs/') and path.suffix.lower() in payloads:
             findings.append((name, 'new vendor/research payload requires review'))
     return findings

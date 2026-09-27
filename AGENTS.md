@@ -24,3 +24,14 @@ Keep versioned patch notes in `docs/releases/`, detailed compatibility in
 `docs/SUPPORTED_HARDWARE.md`, commercial terms in `docs/legal/`, and contribution
 guidance in `.github/CONTRIBUTING.md`. Read `docs/current/PROJECT_LAYOUT.md` before
 adding root files. Keep correspondence marked local-only out of publication.
+
+## Publication after the 2026-09-27 history cleanup
+
+Vendor firmware/configurator/art/manual/copied-code files with unestablished
+redistribution rights remain local. Run tools/check_publication_inputs.py against
+the publication Git index before every push; adding a source-specific permission
+record requires review, not just a download URL or the root project license.
+Old local mirrors/backups contain removed history. Base future publication on
+the cleaned remote main; never force-push stale mirrors or reintroduce old tags.
+Preserve existing release asset IDs and download counters; do not delete/reupload
+historical EXEs for source-history or legal-document cleanup.

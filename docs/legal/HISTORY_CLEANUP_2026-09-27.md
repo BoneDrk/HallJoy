@@ -43,3 +43,17 @@ Windows application's license has not changed. Keychron attribution is retained.
 This cleanup does not certify complete legal clearance. Remaining audit items
 include exact legacy ABI0 binary/source provenance and complete dependency
 closure for old shipped binaries. See DISTRIBUTION_AUDIT_2026-09-27.md.
+
+## Published result
+
+Atomic leased update of main and 11 affected tags succeeded on 2026-09-27.
+Post-push readback verified all 15 release IDs and all 48 asset IDs, including
+15 EXEs. Names, sizes, available digests, download URLs, creation/update times
+of assets and release descriptions remained unchanged. Download totals were
+520 before and 520 after; every per-asset counter was checked for non-decrease.
+Four earlier tags were unchanged. No release-management write API was used.
+
+Validation:139 historical trees compared file-by-file; complete private source
+checks and layout tests; public static runner; clean publication Release build,
+six linked-image gates and embedded-license byte verification. Hosted Windows
+CI was not used. Local evidence is in .local/license-cleanup-20260927/.

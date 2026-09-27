@@ -80,9 +80,23 @@ int main() {
  aliases.Publish(1,500,100);aliases.Publish(2,700,101);aliases.Publish(2,0,102);
  assert(aliases.Read(26,60000,~std::uint64_t{0}).milli==500);
  const auto fixture=std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path()/"docs/research/rongyuan-stream/gamakay-capture.bin";
- std::ifstream file(fixture,std::ios::binary);assert(file);
- unsigned frames=0,maximum=0;while(file.read(reinterpret_cast<char*>(packet),32)) {assert(Parse(packet,32,sample));maximum=std::max(maximum,sample.raw);++frames;}
- assert(frames==4898 && maximum==385 && file.gcount()==0);
+ // Exhaustive public wire-format cases do not redistribute a device capture.
+ unsigned syntheticFrames=0;
+ for(unsigned slot=0;slot<128;++slot) for(unsigned value=0;value<65536;++value) {
+  packet[2]=static_cast<unsigned char>(value); packet[3]=static_cast<unsigned char>(value>>8);
+  packet[4]=static_cast<unsigned char>(slot);
+  assert(Parse(packet,32,sample) && sample.slot==slot && sample.raw==value);
+  ++syntheticFrames;
+ }
+ unsigned frames=0,maximum=0;
+ if(std::filesystem::exists(fixture)) {
+  std::ifstream file(fixture,std::ios::binary);assert(file);
+  while(file.read(reinterpret_cast<char*>(packet),32)) {assert(Parse(packet,32,sample));maximum=std::max(maximum,sample.raw);++frames;}
+  assert(frames==4898 && maximum==385 && file.gcount()==0);
+ } else {
+  std::cout<<"PRIVATE_CAPTURE_REPLAY=NOT_RUN (capture is not distributed)\n";
+ }
+ std::cout<<"SYNTHETIC_WIRE_CASES="<<syntheticFrames<<"\n";
  using namespace keyboard_support;
  assert(NativeNotice(22,0,true)==RongYuanStream && NativeNotice(22,0,false)==0);
  SetSearchObservation(true,true,RongYuanStream);assert(GetStatusSnapshot().frozenModels==RongYuanStream);

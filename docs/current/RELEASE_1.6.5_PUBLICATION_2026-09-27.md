@@ -21,7 +21,14 @@ Dependency provenance/ABI1-only packaging and embedded legal viewer included.
 Ordinary local Release1.6.5.0 passed diagnostic contract gates, six executable
 checks and exact embedded legal/ABI1 bytes; standard publisher installed the EXE.
 Clean publication checkout full static checks and publication input policy PASS.
-Full portable compile/test suite is recorded in the local release log.
+Public portable testing found one stale dependency on a removed private capture.
+The RongYuan test now always checks 8,388,608 synthetic wire cases and explicitly
+reports private capture replay NOT_RUN when absent. Local private replay passed
+all4,898 captured frames. This changes tests only, not the released EXE.
+Earlier tests passed in the initial run; the runner resumed at the corrected
+RongYuan test and covers all remaining tests without repeating passed binaries.
+Logs: .local/release165-public-portable.log, release165-public-resumed.log and
+release165-ry-private.log.
 No visual evaluation or local physical Mix87 testing claimed.
 
 Fresh native Sheet read: Main/id0,1277 rows; Mix87 III C532 Supported, green

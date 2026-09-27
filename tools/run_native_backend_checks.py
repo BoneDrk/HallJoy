@@ -233,6 +233,7 @@ def main() -> int:
             ("mg75_pro_protocol", [tests / "mg75_pro_protocol_test.cpp"]),
             ("tartarus_protocol", [tests / "tartarus_protocol_test.cpp", hall / "keyboard_support_status.cpp"]),
             ("mchose_mix87_protocol", [tests / "mchose_mix87_protocol_test.cpp"]),
+            ("mad68_dual_trial_protocol", [tests / "mad68_dual_trial_protocol_test.cpp"]),
             ("neo65_protocol", [tests / "neo65_protocol_test.cpp"]),
             ("steelseries_apex_protocol", [tests / "steelseries_apex_protocol_test.cpp"]),
             ("uap_discovery_policy", [tests / "uap_discovery_policy_test.cpp"]),

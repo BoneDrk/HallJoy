@@ -27,6 +27,9 @@ reports private capture replay NOT_RUN when absent. Local private replay passed
 all4,898 captured frames. This changes tests only, not the released EXE.
 Earlier tests passed in the initial run; the runner resumed at the corrected
 RongYuan test and covers all remaining tests without repeating passed binaries.
+A second runner issue was fixed: the header-only MAD68 trial parser test needed
+explicit registration rather than automatic .cpp lookup. Its test and the
+remaining automatically discovered protocols were resumed in release165-public-final.log.
 Logs: .local/release165-public-portable.log, release165-public-resumed.log and
 release165-ry-private.log.
 No visual evaluation or local physical Mix87 testing claimed.

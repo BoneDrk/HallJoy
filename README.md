@@ -165,7 +165,7 @@ gamepad output are implemented. HallJoy shows a yellow notice for these models.
 **SARU:** KX69HE, KX78HE  
 **SAVIO:** ASTRAL  
 **Skyloong:** GK61 HE, GK68 HE, GK75 HE  
-**SteelSeries:** Apex Pro Gen 3 (full-size), Apex Pro TKL (original) — firmware 4.16.8; analog keys only.  
+**SteelSeries:** Apex Pro Gen 3, Apex Pro TKL
 **Sunsonny:** N-J100  
 **Syntech:** Chronos 68  
 **Titan Nation:** Storm68, TITAN60 PCB, TITAN68HE  

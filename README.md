@@ -80,7 +80,7 @@ See the [full keyboard list and support statuses](https://docs.google.com/spread
 **Razer:** Huntsman V2 Analog, Huntsman Mini Analog, Huntsman V3 Pro, Huntsman V3 Pro Mini, Huntsman V3 Pro Tenkeyless  
 **Redragon:** K673RGB-M  
 **SayoDevice:** O3C  
-**SteelSeries:** Apex Pro (original full-size, firmware 4.16.8; analog keys only)  
+**SteelSeries:** Apex Pro  
 **Wooting:** 60HE, 60HE+, 60HE v2 (including Split), 80HE, 80HE+ (including Split), One, Two, Two HE, UwU, UwU RGB
 
 ### Experimental support

@@ -1,3 +1,5 @@
+> Release1.6.5 published: [publication and validation record](current/RELEASE_1.6.5_PUBLICATION_2026-09-27.md).
+
 > Current diagnostics: [schema2, complete catalog and typed events](development/SUPPORT_DIAGNOSTICS_CONTRACT.md). [Validation record](current/SUPPORT_DIAGNOSTICS_2026-09-27.md).
 
 > Local dependencies: [verified ABI1/ViGEm source provenance and ABI0 retirement](legal/DEPENDENCY_PROVENANCE_2026-09-27.md).

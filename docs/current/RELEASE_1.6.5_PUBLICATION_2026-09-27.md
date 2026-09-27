@@ -44,4 +44,14 @@ Assets: HallJoy.exe, LICENSE, THIRD_PARTY_NOTICES.md, SHA256SUMS.txt.
 Private corpus/captures/correspondence and three retired binaries excluded.
 Hosted Windows remains workflow_dispatch-only; no dispatch will be made.
 
-Publication result will be recorded after uploading and downloading assets.
+## Published and verified
+
+Stable/latest release published2026-09-27T16:33:34Z:
+https://github.com/PashOK7/HallJoy/releases/tag/v1.6.5
+Tag source:3bf755042dd021d5ba0eae06caacc3e43b3f6d0b.
+All four downloaded assets match the prepared package byte for byte.
+All48 prior assets retain IDs/names/sizes/creation dates and nondecreasing
+ download counts. No previous assets were replaced or deleted.
+All local static/portable tests passed across initial and resumed runs.
+Hosted run36333682191 Windows job SKIPPED; portable job running at readback.
+Release does not depend on hosted Windows. No firmware corpus was published.

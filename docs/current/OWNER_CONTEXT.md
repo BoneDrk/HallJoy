@@ -1,3 +1,5 @@
+> 2026-09-27 OWNER authorized historical corpus cleanup with existing release assets and download counts preserved. 553 paths excluded;139 commit trees verified, all retained historical file objects identical. Public/private source audits separated with fail-closed reference hashes. License resources and scoped firmware grants added; full legal clearance not claimed. See docs/legal/HISTORY_CLEANUP_2026-09-27.md.
+
 > 2026-09-26 PUBLISHED stable/latest1.6.4: https://github.com/PashOK7/HallJoy/releases/tag/v1.6.4 . Source3af768e949f6aef4fd8ddad58694fe3368f74da3; downloaded EXE SHA2565948c5286b684437c247aae0cb6db483c75aa0c65df4497f7272ea729b36bbd5 matches local. SteelSeries/EPOMAKER, detection/conflict fixes and accumulated local work included; K4 intentionally absent from public patch notes. Sheet252 yellow/65 supported synchronized, ordinary Release+6 gates and clean-source static PASS. Hosted Windows SKIPPED. See RELEASE_1.6.4_PUBLICATION_2026-09-26.md.
 
 > 2026-09-26 release1.6.4 owner clarification: omit K4 custom onboard changes from the public patch notes; only the owner uses this firmware so far. Keep implementation and internal technical documentation.

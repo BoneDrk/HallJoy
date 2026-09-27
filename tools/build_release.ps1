@@ -23,4 +23,6 @@ foreach ($check in @('--halljoy-require-k4-onboard', '--halljoy-support-self-tes
     if (-not $process.WaitForExit(30000)) { Stop-Process -InputObject $process -Force; throw "Candidate check timed out: $check" }
     if ($process.ExitCode -ne 0) { throw "Candidate check failed: $check ($($process.ExitCode)); running HallJoy was not touched." }
 }
+& python (Join-Path $root 'tools/verify_embedded_licenses.py') $candidate
+if ($LASTEXITCODE -ne 0) { throw 'Embedded legal resources verification failed.' }
 & (Join-Path $PSScriptRoot 'publish_halljoy_build.ps1') -CandidatePath $candidate -TargetPath $target

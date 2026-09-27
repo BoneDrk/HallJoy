@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include "legal_notices.h"
 #include "support_log.h"
 #include "community_links.h"
 #include "overlay_text_edit.h"
@@ -7219,7 +7220,7 @@ struct GlobalSettingsPageState
     RECT rcUiRefreshSlider{};
     RECT rcUiRefreshChip{};
     RECT rcEngineRuntime{};
-    RECT rcDiagnosticLogging{}, rcHallJoyFolder{}, rcLoggingError{};
+    RECT rcDiagnosticLogging{}, rcHallJoyFolder{}, rcLicenses{}, rcLoggingError{};
     RECT rcCommunity{}, rcDiscord{};
     DWORD loggingError = ERROR_SUCCESS;
     bool pausePulseTimer = false;
@@ -7249,6 +7250,7 @@ static constexpr int GLOB_ID_GLOBAL_PROFILE_SAVE = 7610;
 static constexpr int GLOB_ID_ENGINE_RUNTIME = 7611;
 static constexpr int GLOB_ID_DIAGNOSTIC_LOGGING = 7612;
 static constexpr int GLOB_ID_HALLJOY_FOLDER = 7613;
+static constexpr int GLOB_ID_LICENSES = 7617;
 static constexpr int GLOB_ID_DISCORD = 7614;
 static constexpr int GLOB_ID_FACTORY_RESET = 7607;
 
@@ -7785,6 +7787,7 @@ static void Global_Layout(HWND hWnd, GlobalSettingsPageState* st)
     st->rcLayoutEditor = RECT{ x, y, x + S(hWnd, 210), y + S(hWnd, 28) };
     y += S(hWnd, 28) + S(hWnd, 14);
     st->rcHallJoyFolder = RECT{ x, y, x + S(hWnd, 210), y + S(hWnd, 28) };
+    st->rcLicenses = RECT{ x + S(hWnd, 220), y, x + S(hWnd, 320), y + S(hWnd, 28) };
     y += S(hWnd, 28) + S(hWnd, 14);
     y += labelH + S(hWnd, 6);
     st->rcPollSlider = RECT{ x, y, x + sliderW, y + sliderH };
@@ -7977,6 +7980,7 @@ static void Global_RenderContent(HWND hWnd, HDC hdc, const RECT&, void* user)
 #endif
     CustomPage_DrawButton(g, hdc, st->rcHallJoyFolder, L"Open HallJoy folder",
         st->hotId == GLOB_ID_HALLJOY_FOLDER, st->pressedId == GLOB_ID_HALLJOY_FOLDER, true);
+    CustomPage_DrawButton(g, hdc, st->rcLicenses, L"Licenses", st->hotId == GLOB_ID_LICENSES, st->pressedId == GLOB_ID_LICENSES, true);
     if (st->loggingError != ERROR_SUCCESS) {
         wchar_t errorText[128]{};
         swprintf_s(errorText, L"Could not write the support log. Windows error: %lu", st->loggingError);
@@ -8059,6 +8063,7 @@ static int Global_HitTest(GlobalSettingsPageState* st, POINT clientPoint)
         { GLOB_ID_ENGINE_RUNTIME, &st->rcEngineRuntime },
         { GLOB_ID_DIAGNOSTIC_LOGGING, &st->rcDiagnosticLogging },
         { GLOB_ID_HALLJOY_FOLDER, &st->rcHallJoyFolder },
+        { GLOB_ID_LICENSES, &st->rcLicenses },
         { GLOB_ID_DISCORD, &st->rcDiscord },
         { GLOB_ID_FACTORY_RESET, &st->rcFactoryReset }
     };
@@ -8750,6 +8755,8 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
             CustomPageSurface_MarkDirty(hWnd, &st->surface);
             return 0;
         }
+        if (LOWORD(wParam) == GLOB_ID_LICENSES && HIWORD(wParam) == BN_CLICKED)
+        { HallJoyShowLicenses(hWnd); return 0; }
         if (LOWORD(wParam) == GLOB_ID_HALLJOY_FOLDER && HIWORD(wParam) == BN_CLICKED)
         {
             const auto directory = AppPaths_DataRoot();

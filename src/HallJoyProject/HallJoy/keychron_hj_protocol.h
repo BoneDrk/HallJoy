@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR GPL-2.0-or-later
+// Copyright (c) 2026 PashOK7
+// Shared firmware interface; see firmware/keychron_k4_he/LICENSING.md.
 // Experimental K4 protocol core. Shared by firmware C and HallJoy C++.
 // No device admission or transport is enabled merely by including this file.
 #pragma once

@@ -696,9 +696,12 @@ $preservedRuntimeNames = @(
     'GlobalProfiles', 'Layouts', 'CurvePresets', 'HallJoy.portable'
 )
 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+& python (Join-Path $root 'tools/verify_embedded_licenses.py') $exe
+if ($LASTEXITCODE -ne 0) { throw 'Embedded legal resources verification failed.' }
 & (Join-Path $PSScriptRoot 'publish_halljoy_build.ps1') -CandidatePath $exe -TargetPath (Join-Path $releaseDir 'HallJoy.exe')
 Copy-Item -LiteralPath $dependencyLockPath -Destination $releaseDir -Force
 Copy-Item -LiteralPath $thirdPartyNoticesPath -Destination $releaseDir -Force
+Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination $releaseDir -Force
 $releaseHash = Get-FileHash -LiteralPath (Join-Path $releaseDir 'HallJoy.exe') -Algorithm SHA256
 "$($releaseHash.Hash)  HallJoy.exe" | Set-Content -LiteralPath (Join-Path $releaseDir 'SHA256SUMS.txt') -Encoding ASCII
 # PDB/MAP stay beside their matching compiler output; no second symbol copy.

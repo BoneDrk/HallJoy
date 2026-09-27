@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR GPL-2.0-or-later
+// Copyright (c) 2026 PashOK7
+// Shared firmware interface; see firmware/keychron_k4_he/LICENSING.md.
 // Calibrated K4 travel before uint8 rounding. No temporal filtering/deadband.
 #pragma once
 #include <stdint.h>

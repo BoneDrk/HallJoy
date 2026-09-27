@@ -1,3 +1,5 @@
+> Distribution: [research publication cleanup and preserved releases](legal/HISTORY_CLEANUP_2026-09-27.md); [licensing audit](legal/DISTRIBUTION_AUDIT_2026-09-27.md).
+
 > EPOMAKER: [HE108 confirmed, startup contention warning and seven layouts](current/EPOMAKER_HE108_2026-09-26.md). Included in 1.6.4.
 
 > SteelSeries: [confirmed Apex Pro and neighboring firmware review](current/STEELSERIES_FAMILY_REVIEW_2026-09-25.md).

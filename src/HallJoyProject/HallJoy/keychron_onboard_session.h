@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR GPL-2.0-or-later
+// Copyright (c) 2026 PashOK7
+// Shared firmware interface; see firmware/keychron_k4_he/LICENSING.md.
 // Experimental onboard lifecycle core, shared by firmware C and host tests.
 // Single owner: firmware control/scan task. No I/O, allocation or persistence.
 #pragma once

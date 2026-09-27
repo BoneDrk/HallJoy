@@ -93,21 +93,7 @@ def main() -> int:
     ET.parse(hall / "HallJoy.vcxproj.filters")
 
     run([sys.executable, str(root / "tools" / "test_block_keys_group.py")])
-    run([sys.executable, str(root / "tools" / "check_rongyuan_stream_profiles.py")])
-    run([sys.executable, str(root / "tools" / "check_atk_hex80_native_map.py")])
-    run([sys.executable, "-m", "unittest", "discover", "-s", str(root / "tools" / "tests"), "-p", "test_layout_pipeline.py"])
-    run([sys.executable, str(root / "tools" / "build_irok_mg75_layouts.py")])
-    run([sys.executable, str(root / "tools" / "check_jingtai_v1_profiles.py")])
-    run([sys.executable, str(root / "tools" / "build_jingtai_layouts.py")])
-    run([sys.executable, str(root / "tools" / "build_rongyuan_layouts.py")])
-    run([sys.executable, str(root / "tools" / "build_epomaker_layouts.py")])
-    run([sys.executable, str(root / "tools" / "build_neo_k617_layouts.py")])
-    run([sys.executable, str(root / "tools" / "prepare_madlions_layouts.py")])
-    run([sys.executable, str(root / "tools" / "prepare_atk_hex80_layout.py")])
-    run([sys.executable, str(root / "tools" / "prepare_ipi_layouts.py")])
-    run([sys.executable, str(root / "tools" / "build_ipi_native_catalog.py")])
-    for brand in ("Keychron", "Lemokey", "DrunkDeer", "Aula", "Redragon", "Razer", "NuPhy", "Wooting", "IROK", "MADLIONS", "ATK", "IPI", "SayoDevice", "MonsGeek", "EPOMAKER", "Chilkey"):
-        run([sys.executable, str(root / "tools" / "layout_pipeline.py"), "check", brand])
+    run([sys.executable, str(root / "tools" / "research_reference_checks.py")])
     run([sys.executable, str(project_root / "tools" / "validate_addressed_protocol_backend.py")])
 
     for script in sorted(tests.glob("*audit.py")):

@@ -62,3 +62,5 @@ Up to23 pages, frozen sequence/session, sorted unique slots, atomic host commit.
 Prepared after native gamepad output, using fresh precise calibrated depth;
 old commands remain. No descriptor change. Measured162.667 snapshots/s vs48.1463
 legacy on the installed r6; actual display FPS remains owner-evaluated.
+
+Licensing: see [scope and shared-header grant](LICENSING.md) and [GPL text](COPYING).

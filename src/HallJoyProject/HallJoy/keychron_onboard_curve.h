@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR GPL-2.0-or-later
+// Copyright (c) 2026 PashOK7
+// Shared firmware interface; see firmware/keychron_k4_he/LICENSING.md.
 // Prepared HallJoy curve for Cortex-M4. Configuration-time weight conversion;
 // no powf, allocation or host dependency in the sample path.
 #pragma once

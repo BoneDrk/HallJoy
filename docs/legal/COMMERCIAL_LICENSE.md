@@ -23,3 +23,9 @@ For commercial licensing terms, contact:
 
 - A commercial license is granted only by explicit written agreement.
 - Without such agreement, use is governed by `AGPL-3.0`.
+
+- Commercial terms cover only rights the project owner owns or is authorized to
+  license. Third-party components retain their own licenses and notices; this
+  agreement does not waive their source-disclosure or other requirements.
+- Separate QMK/Keychron firmware and copied vendor research materials are not
+  automatically covered by a HallJoy commercial license.

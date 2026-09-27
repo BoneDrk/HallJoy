@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only OR GPL-2.0-or-later
+// Copyright (c) 2026 PashOK7
+// Shared firmware interface; see firmware/keychron_k4_he/LICENSING.md.
 // Explicit little-endian wire profile; no compiler structure packing on USB.
 #pragma once
 #include "keychron_hj_protocol.h"

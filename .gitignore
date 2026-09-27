@@ -90,3 +90,29 @@ third_party/UniversalAnalogPluginFixed/build/
 /outputs/
 node_modules/
 /docs/current/PWNAGE_SUPPORT_CORRESPONDENCE_2026-09-22.md
+
+# Acquired research stays local unless source-specific redistribution rights are reviewed.
+# Tracked history needs explicit cleanup; ignore rules alone do not remove it.
+/docs/**/*.bin
+/docs/**/*.hex
+/docs/**/*.dfu
+/docs/**/*.uf2
+/docs/**/*.elf
+/docs/**/*.asm
+/docs/**/*.gz
+/docs/**/*.js
+/docs/**/*.css
+/docs/**/*.html
+/docs/**/*.pdf
+/docs/**/*.png
+/docs/**/*.jpg
+/docs/**/*.jpeg
+/docs/**/*.svg
+/docs/research/**/*.c
+/docs/research/**/*.h
+/docs/research/**/*.cpp
+/docs/research/**/*.hpp
+/docs/research/**/*.cs
+/docs/research/**/*.rs
+/docs/research/**/*.py
+/docs/firmware/**/*.zip

@@ -76,12 +76,12 @@ See the [full keyboard list and support statuses](https://docs.google.com/spread
 **Keychron:** Q1 HE, Q2 HE (ANSI), Q3 HE, Q4 HE (ANSI), Q5 HE, Q6 HE, Q12 HE, Q1 HE 8K, Q3 HE 8K, Q5 HE 8K, Q6 HE 8K, K2 HE, K3 HE, K4 HE, K6 HE (ANSI), K8 HE, K10 HE — requires compatible [custom firmware](https://analogsense.org/firmware/).  
 **Lemokey:** P1 HE  
 **MADLIONS:** MAD 68 Pro R, MAD60HE, MAD68HE, MAD68R  
-**MCHOSE:** Mix 87 (III revision, firmware 1.22; very shallow presses are omitted)  
+**MCHOSE:** Mix 87 III  
 **NuPhy:** Air60 HE, Air75 HE, Field75 HE  
 **Razer:** Huntsman V2 Analog, Huntsman Mini Analog, Huntsman V3 Pro, Huntsman V3 Pro Mini, Huntsman V3 Pro Tenkeyless  
 **Redragon:** K673RGB-M  
 **SayoDevice:** O3C  
-**SteelSeries:** Apex Pro (original full-size, firmware 4.16.8; analog keys only)  
+**SteelSeries:** Apex Pro  
 **Wooting:** 60HE, 60HE+, 60HE v2 (including Split), 80HE, 80HE+ (including Split), One, Two, Two HE, UwU, UwU RGB
 
 ### Experimental support
@@ -166,7 +166,7 @@ gamepad output are implemented. HallJoy shows a yellow notice for these models.
 **SARU:** KX69HE, KX78HE  
 **SAVIO:** ASTRAL  
 **Skyloong:** GK61 HE, GK68 HE, GK75 HE  
-**SteelSeries:** Apex Pro Gen 3 (full-size), Apex Pro TKL (original) — firmware 4.16.8; analog keys only.  
+**SteelSeries:** Apex Pro Gen 3, Apex Pro TKL  
 **Sunsonny:** N-J100  
 **Syntech:** Chronos 68  
 **Titan Nation:** Storm68, TITAN60 PCB, TITAN68HE  

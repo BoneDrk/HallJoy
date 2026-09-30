@@ -28,7 +28,7 @@ find one that matched what I needed. So I built HallJoy with heavy ChatGPT assis
 then kept improving it feature by feature.
 
 I didn't write a single line of code, I'm not a programmer, even this readme
-file was written by chatgpt completely except for this paragraph 🙂
+file was written by chatgpt and claude completely except for this paragraph 🙂
 
 ## Requirements
 

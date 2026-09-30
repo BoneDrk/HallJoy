@@ -1,3 +1,4 @@
+> Published: [HallJoy 1.6.6 publication record](current/RELEASE_1.6.6_PUBLICATION_2026-09-30.md).
 > Fix: [keyboards lost after Pause/Resume (Hex80, Addressed, W669 re-claim)](current/RESUME_RECLAIM_FIX_2026-09-30.md).
 
 > MADLIONS: [MAD68 HE V2 Flagship experimental native support](current/MAD68_HE_V2_FLAGSHIP_2026-09-30.md) — Hex80-family model table, 373B:1125, yellow; Sheet row inserted.

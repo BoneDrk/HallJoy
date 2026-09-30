@@ -1,3 +1,11 @@
+> 2026-09-30 PUBLISHED stable/latest 1.6.6: https://github.com/PashOK7/HallJoy/releases/tag/v1.6.6 .
+> - Source: 66fe695049bda8edd62c403d0874eeb307a45b7e.
+> - EXE SHA256 4c5887c5…e846; the downloaded assets match.
+> - Contents: MAD68 HE V2 Flagship Supported, shortcuts, Pause/Resume fixes.
+>   There is no K4 in the notes.
+> - Sheet structure and 252 yellow rows PASS on a fresh full read.
+> - All 52 prior assets are preserved.
+> - See RELEASE_1.6.6_PUBLICATION_2026-09-30.md.
 > 2026-09-30 AJAZZ name correction (owner): the supported keyboard is AK820 MAX HE wired RGB (SG8994HERGB), not a retail "AK820 MAX RGB" (that was the driver file name). The Sheet row was renamed "AK820 MAX HE (wired, RGB)" Supported. The broad "AK820 MAX HE" row became "AK820 MAX HE (tri-mode, screen)" Not investigated. A new "AK820 MAX HE (wired, no light)" row is Research incomplete. The runtime name, README and hardware doc were updated; published 1.6.2 notes were kept. See AJAZZ_AK820MAX_REVIEW_2026-09-20.md latest section.
 > 2026-09-30 OWNER requested a tester build with full MADLIONS MAD68 HE V2 Flagship support.
 >

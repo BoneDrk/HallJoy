@@ -1,5 +1,8 @@
 #include "input_shortcuts.h"
+#ifdef _WIN32
+// Windows hook scan-code mapping; the shortcut engine itself is portable.
 #include "keyboard_scan_hid.h"
+#endif
 #include <cassert>
 #include <iostream>
 #include <vector>
@@ -166,6 +169,7 @@ int main() {
         assert(h.Digital(96, true)); assert(h.Take() == Action::PauseToggle);
         assert(h.Digital(96, false));
     }
+#ifdef _WIN32
     {   // Num Lock on: Ctrl+Shift+Numpad8 as the hook sees it while paused
         // (digital only). Windows inserts a synthesized E0 2A Shift release
         // before the numpad key; the hook must ignore it or Shift looks released.
@@ -190,6 +194,7 @@ int main() {
         assert(!IsSyntheticNumpadShift(0x2A, false) && !IsSyntheticNumpadShift(0x36, false) &&
                IsSyntheticNumpadShift(0x36, true) && !IsSyntheticNumpadShift(0x1D, true));
     }
+#endif
     std::cout << "INPUT_SHORTCUTS=PASS synthetic numpad Shift ignored, digital/analog dedup, mixed chords, bound modifiers, applicability, pause reset, seeding, capture\n";
     return 0;
 }

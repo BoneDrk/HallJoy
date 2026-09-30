@@ -65,3 +65,14 @@ v1.6.6: MAD68 HE V2 Flagship support and shortcut fixes.
 - All 52 prior assets keep their IDs, names, sizes and creation dates, and
   their download counts did not decrease. There are now 56 assets.
 - No visual or physical testing is claimed by the agent.
+
+## Post-release CI fix (tests only)
+
+- Hosted Linux portable CI failed on the release commit: `input_shortcuts_test`
+  includes `keyboard_scan_hid.h`, which needs `windows.h` for `MapVirtualKeyW`.
+  Local runs are on Windows, so this was not visible.
+- Fix: the scan-code include and the hook-mapping block are under
+  `#ifdef _WIN32`; the portable shortcut engine cases still run on Linux.
+- Windows run: `INPUT_SHORTCUTS=PASS`.
+- The released EXE and the v1.6.6 tag are unchanged. This matches the 1.6.5
+  test-only follow-up.

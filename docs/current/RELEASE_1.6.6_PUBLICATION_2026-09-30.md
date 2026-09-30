@@ -97,4 +97,4 @@ v1.6.6: MAD68 HE V2 Flagship support and shortcut fixes.
   - the four downloaded assets are byte-identical;
   - all 56 assets keep their IDs, sizes, dates and download counts.
 - Backup of the old history: `.local/release166-before-trailer-rewrite.bundle`.
-- The owner's temporary permission rules were removed afterwards.
+- The owner kept the permission rules in place; they want lasting access.

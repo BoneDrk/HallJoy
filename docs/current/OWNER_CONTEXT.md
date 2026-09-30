@@ -1,5 +1,5 @@
 > 2026-09-30 PUBLISHED stable/latest 1.6.6: https://github.com/PashOK7/HallJoy/releases/tag/v1.6.6 .
-> - Source: 66fe695049bda8edd62c403d0874eeb307a45b7e.
+> - Source: a3ec1db306ac731a4ac4f567e596b17ed9dba080.
 > - EXE SHA256 4c5887c5…e846; the downloaded assets match.
 > - Contents: MAD68 HE V2 Flagship Supported, shortcuts, Pause/Resume fixes.
 >   There is no K4 in the notes.

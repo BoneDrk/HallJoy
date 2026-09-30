@@ -15,7 +15,7 @@ v1.6.6: MAD68 HE V2 Flagship support and shortcut fixes.
 - Scan for private data: no new private data. The K4 serial and the
   `C:/Users/PC/Downloads` paths already appear in published docs.
 - `check_publication_inputs.py`: PASS.
-- Release commit: 66fe695049bda8edd62c403d0874eeb307a45b7e; tag v1.6.6.
+- Release commit: a3ec1db306ac731a4ac4f567e596b17ed9dba080; tag v1.6.6.
 
 ## Scope
 
@@ -76,3 +76,25 @@ v1.6.6: MAD68 HE V2 Flagship support and shortcut fixes.
 - Windows run: `INPUT_SHORTCUTS=PASS`.
 - The released EXE and the v1.6.6 tag are unchanged. This matches the 1.6.5
   test-only follow-up.
+- Hosted CI on main 30a33d3: success (run 36742610806).
+
+## Commit trailer removal (owner request)
+
+- The owner asked that the commits carry no Claude attribution. The three
+  commits were rewritten to remove the `Co-Authored-By: Claude` trailer, with
+  identical trees:
+
+  | Commit | Old | New |
+  |---|---|---|
+  | release | 66fe695 | a3ec1db |
+  | record | 383717f | 02d42f2 |
+  | test fix | 30a33d3 | e922677 |
+
+- `main` was force-pushed with a lease on 30a33d3. Tag v1.6.6 was moved to
+  a3ec1db.
+- Checks after the move:
+  - the release is still stable and latest;
+  - the four downloaded assets are byte-identical;
+  - all 56 assets keep their IDs, sizes, dates and download counts.
+- Backup of the old history: `.local/release166-before-trailer-rewrite.bundle`.
+- The owner's temporary permission rules were removed afterwards.

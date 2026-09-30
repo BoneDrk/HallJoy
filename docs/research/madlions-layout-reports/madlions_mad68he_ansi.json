@@ -554,8 +554,10 @@
     }
   ],
   "identity": {
-    "protocol": "madlions",
-    "products": []
+    "protocol": "hex80",
+    "products": [
+      "MAD68HEV2-1125"
+    ]
   },
   "sources": [
     {
@@ -582,7 +584,7 @@
   "notes": [
     "Official Windows base layer, ANSI; original MAD60/68 HE revisions.",
     "Official absolute coordinates and size multipliers; 50 px base normalized to 42 px.",
-    "Manual selection; no guessed VID/PID or regional autoselection.",
+    "Automatic selection only for the session-proven Hex80-family MAD68 HE V2 Flagship (373B:1125, 02 96 1C proof); its 68-key firmware matrix equals this key set. Other revisions: manual selection, no guessed VID/PID or regional autoselection.",
     "Existing analog protocols and mappings are unchanged."
   ]
 }

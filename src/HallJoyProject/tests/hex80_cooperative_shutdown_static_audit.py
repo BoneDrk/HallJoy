@@ -55,8 +55,9 @@ def main() -> int:
     require("HidIoOperation operation(handle);" in timed_io and
             "operation.CancelAndDrain" in timed_io,
             "each pending HID operation remains owned through terminal reap")
-    require("g_stop.load(std::memory_order_acquire)" in request,
-            "the request loop observes cooperative stop before issuing another read")
+    require("cancel_ && cancel_->load(std::memory_order_acquire)" in request and
+            "Session session(candidate, &g_stop);" in session,
+            "the worker request loop observes cooperative stop before issuing another read")
     request_call = session.index("const bool received = session.Request(")
     post_request_stop = session.index(
         "if (g_stop.load(std::memory_order_acquire)) return true;", request_call
@@ -64,9 +65,9 @@ def main() -> int:
     publish = session.index("g_milli[entry.hid].exchange", request_call)
     require(request_call < post_request_stop < publish,
             "a completed request cannot publish input after stop begins")
-    require("Session session(candidate);" in session and
+    require("Session session(candidate, &g_stop);" in session and
             "ScopedActiveSessionHandle activeSession(session.Handle());" in session and
-            session.index("Session session(candidate);") <
+            session.index("Session session(candidate, &g_stop);") <
             session.index("ScopedActiveSessionHandle activeSession(session.Handle());"),
             "active registration unwinds before the worker-owned Session closes HID")
     require("CloseHandle" not in active_scope and "CloseHandle" not in cancel and

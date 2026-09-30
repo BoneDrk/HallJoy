@@ -19,6 +19,9 @@ static hjo_session session;
 static hjo_profile profile;
 static hjo_mapper_state mapper;
 static bool profile_ready, uploading;
+// r8: staging holds exactly the last committed wire (profile_crc). Cleared by
+// anything that writes staging or the capture buffer sharing it.
+static bool staging_committed;
 static uint32_t profile_crc;
 typedef struct {uint16_t raw,depth,scan_us,zero,full;uint8_t travel,valid;} hj_capture_sample;
 // Capture is allowed only OFF; OPEN invalidates it before profile staging.
@@ -88,9 +91,10 @@ static bool physical(unsigned slot) {
 }
 
 bool halljoy_onboard_suppressed(uint8_t row, uint8_t col) {
+    // Shared host/firmware rule: bound keys are removed from keyboard output,
+    // except Tab/Alt when the host requests HJO_KEEP_ALT_TAB (r7).
     return session.phase == HJO_ACTIVE && profile_ready &&
-           (profile.mapping.flags & HJO_SUPPRESS) &&
-           hjo_bound(&profile.mapping, row * MATRIX_COLS + col);
+           hjo_suppressed(&profile.mapping, row * MATRIX_COLS + col);
 }
 
 static bool all_received(void) {
@@ -136,7 +140,7 @@ bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
             sparse_requested=true;return true;
         case 0x7C: // RAM-only raw capture, requires exact explicit marker
             if(session.phase!=HJO_OFF || memcmp(data+8,"RAW1",4) || !physical(data[2])) {status=7;break;}
-            capture_slot=data[2];capture_count=0;capture_first_scan=0;capture_running=true;
+            capture_slot=data[2];capture_count=0;capture_first_scan=0;capture_running=true;staging_committed=false;
             break;
         case 0x7D:
             if(session.phase!=HJO_OFF || hjk4_u16(data+12)>=512)status=7;
@@ -152,17 +156,21 @@ bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
         }
 
         case 0x7A: break; // last submitted native gamepad report, read-only
-        case 0x71: // OPEN and expose native XInput by re-enumerating
+        case 0x71: // OPEN and expose native XInput by re-enumerating (already native when PARKED)
             if (memcmp(data+8,"HJO1",4) || get_transport() != TRANSPORT_USB || !hjo_open(&session, timer_read32())) status = 1;
             else { capture_running=false;capture_count=0;profile_ready = false; uploading = false; schedule_mode(true); }
             break;
-        case 0x72: // BEGIN profile upload
-            if (!token || token != session.generation || session.phase == HJO_OFF) status = 2;
-            else { memset(received, 0, sizeof(received)); uploading = true; }
+        case 0x72: // BEGIN profile upload; byte8=1 delta over committed staging, crc[12:16]
+            if (!token || token != session.generation || session.phase == HJO_OFF || session.phase == HJO_PARKED) status = 2;
+            else if (data[8] == 1) {
+                if (!staging_committed || hjk4_u32(data + 12) != profile_crc) status = 2;
+                else { memset(received, 0xFF, sizeof(received)); uploading = true; staging_committed = false; }
+            }
+            else { memset(received, 0, sizeof(received)); uploading = true; staging_committed = false; }
             break;
         case 0x73: { // CHUNK: token[4:8], offset[8:10], count[10], bytes[11:32]
             const unsigned offset = hjk4_u16(data + 8), count = data[10];
-            if (!uploading || token != session.generation || session.phase == HJO_OFF ||
+            if (!uploading || token != session.generation || session.phase == HJO_OFF || session.phase == HJO_PARKED ||
                 !count || count > 21 || offset + count > HJO_PROFILE_BYTES) { status = 2; break; }
             for (unsigned i = 0; i < count; ++i) {
                 staging[offset+i] = data[11+i];
@@ -171,11 +179,11 @@ bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
             break;
         }
         case 0x74: // COMMIT: validated before changing any active profile fields
-            if (!uploading || token != session.generation || session.phase == HJO_OFF ||
+            if (!uploading || token != session.generation || session.phase == HJO_OFF || session.phase == HJO_PARKED ||
                 !all_received() || !valid_physical_bindings() ||
                 !hjo_profile_decode(&profile, staging, sizeof(staging))) { status = 3; break; }
             profile_crc = hjk4_u32(staging + HJO_PROFILE_BYTES - 4);
-            profile_ready = true; uploading = false;
+            profile_ready = true; uploading = false; staging_committed = true;
             memset(&mapper, 0, sizeof(mapper)); have_last_report = false;
             break;
         case 0x75: // START after reconnect and complete validated profile
@@ -186,8 +194,12 @@ bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
         case 0x76:
             if (!hjo_heartbeat(&session, token, hjk4_u32(data+8), timer_read32())) status = 4;
             break;
-        case 0x77:
-            if (!hjo_host_stop(&session, token)) status = 4;
+        case 0x77: // STOP; byte8=1 PARK keeps the native descriptor (r8)
+            if (data[8] == 1) {
+                if (!hjo_host_park(&session, token, timer_read32())) status = 4;
+                else { uploading = false; neutral_submitted = false; }
+            }
+            else if (!hjo_host_stop(&session, token)) status = 4;
             break;
         case 0x79: // explicit maintenance command, never sent by normal discovery
             if (memcmp(data+4,"HallJoyDFU-K4-v1",15)) status=6;
@@ -216,7 +228,9 @@ bool halljoy_onboard_rx(uint8_t *data, uint8_t length) {
         response[9]=(uint8_t)count; memcpy(response+10,telemetry+offset,count);
     } else {
         memcpy(response+8,"HJO1",4); hjk4_put32(response+12,profile_crc);
-        response[16]=native_descriptor; response[17]=(profile_ready ? 1u : 0u) | 2u | 4u | 8u | 16u;
+        response[16]=native_descriptor;
+        response[17]=(profile_ready ? 1u : 0u) | 2u | 4u | 8u | 16u | HJO_CAP_KEEP_ALT_TAB |
+                     HJO_CAP_DELTA_UPLOAD | HJO_CAP_PARK;
         hjk4_put16(response+18,HJO_PROFILE_BYTES);
         hjk4_put32(response+20,scan_sequence); hjk4_put32(response+24,last_scan_us);
         hjk4_put32(response+28,maximum_scan_us);
@@ -269,6 +283,9 @@ void halljoy_onboard_task(uint32_t scan_us) {
         report_xinput_t neutral={0}; neutral.len=0x14;
         neutral_submitted=try_packet(USB_ENDPOINT_IN_XINPUT,&neutral,sizeof(neutral));
     }
+    // OFF clears neutral_pending by re-enumeration; PARKED keeps the descriptor.
+    if (session.phase==HJO_PARKED && session.neutral_pending && neutral_submitted)
+        hjo_neutral_delivered(&session);
     if (boot_pending && timer_elapsed32(boot_at)>=50) bootloader_jump();
     // USB restart is intentionally allowed only at mode boundaries. Normal
     // scans, telemetry and gamepad reports never call the blocking restart.

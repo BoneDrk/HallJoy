@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <shellapi.h>
+#include "main_keyboard_input.h"
 #include <cstdint>
 
 namespace halljoy::tray {
@@ -127,8 +128,12 @@ public:
         if (!menu) { Restore(); return Action::None; }
         POINT point{}; GetCursorPos(&point);
         SetForegroundWindow(window_);
-        const UINT action = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON,
-            point.x, point.y, 0, window_, nullptr);
+        UINT action = 0;
+        {
+            const halljoy::main_input::ModalKeyboardBlock keyboardBlock;
+            action = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON,
+                point.x, point.y, 0, window_, nullptr);
+        }
         DestroyMenu(menu);
         PostMessageW(window_, WM_NULL, 0, 0);
         if (action == static_cast<UINT>(Action::Open)) Restore();

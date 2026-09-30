@@ -64,7 +64,7 @@ See the [full keyboard list and support statuses](https://docs.google.com/spread
 
 ## Supported
 
-**AJAZZ:** AK820 MAX RGB (USB)  
+**AJAZZ:** AK820 MAX HE (wired, RGB)  
 **ATK:** Hex80  
 **ATTACK SHARK:** R85 HE (USB), X65 Pro  
 **AULA:** WIN 60 HE MAX, WIN 60 HE, WIN 68 HE, KP-TE153, MINI 60 HE (USB), MINI 60 HE Pro, MINI 60 HE MAX (USB)  
@@ -75,7 +75,7 @@ See the [full keyboard list and support statuses](https://docs.google.com/spread
 **IROK:** MG75 Max, NA87  
 **Keychron:** Q1 HE, Q2 HE (ANSI), Q3 HE, Q4 HE (ANSI), Q5 HE, Q6 HE, Q12 HE, Q1 HE 8K, Q3 HE 8K, Q5 HE 8K, Q6 HE 8K, K2 HE, K3 HE, K4 HE, K6 HE (ANSI), K8 HE, K10 HE — requires compatible [custom firmware](https://analogsense.org/firmware/).  
 **Lemokey:** P1 HE  
-**MADLIONS:** MAD 68 Pro R, MAD60HE, MAD68HE, MAD68R  
+**MADLIONS:** MAD 68 Pro R, MAD60HE, MAD68 HE V2 Flagship, MAD68HE, MAD68R  
 **MCHOSE:** Mix 87 III  
 **NuPhy:** Air60 HE, Air75 HE, Field75 HE  
 **Razer:** Huntsman V2 Analog, Huntsman Mini Analog, Huntsman V3 Pro, Huntsman V3 Pro Mini, Huntsman V3 Pro Tenkeyless  

@@ -1,3 +1,23 @@
+> Fix: [keyboards lost after Pause/Resume (Hex80, Addressed, W669 re-claim)](current/RESUME_RECLAIM_FIX_2026-09-30.md).
+
+> MADLIONS: [MAD68 HE V2 Flagship experimental native support](current/MAD68_HE_V2_FLAGSHIP_2026-09-30.md) — Hex80-family model table, 373B:1125, yellow; Sheet row inserted.
+
+> Triage: [HERO84 V2.16, MAD68 HE V2 Flagship, Atom HE68 firmware and logs](current/FIRMWARE_TRIAGE_2026-09-30.md) — HERO84 exchange/identity hardening and log stages; MAD68 Flagship = Hex80-family option.
+
+> K4 HE onboard: [Block toggle / Pause freeze — firmware r8 delta upload and PARK](current/K4_BLOCK_PAUSE_FREEZE_2026-09-29.md) — host built; r8 flashed and hardware-probed.
+
+> K4 HE onboard: [startup fallback and false "unstable" warning](current/K4_STARTUP_FALLBACK_2026-09-29.md) — bounded onboard claim retry, planned UAP restarts excluded.
+
+> Shortcuts: [unified Block/Pause shortcuts, digital + analog](current/UNIFIED_SHORTCUTS_2026-09-29.md). Supersedes the shortcut mechanics in PAUSE_HOTKEYS_2026-09-27 and BLOCK_BOUND_KEYS_CONTROLS. K4 onboard Alt/Tab: firmware r8 (includes r7) flashed 2026-09-29.
+
+> Configuration: [curve reset button and preset Revert](current/CURVE_RESET_BUTTON_2026-09-29.md) — straight even curve, deadzones kept.
+
+> Code audit and applied fixes: [bugs and inconsistencies 2026-09-29](current/CODE_AUDIT_2026-09-29.md).
+
+> In progress: [Red Square Alumix 104 Yotei exact identity and HFD protocol](current/ALUMIX104_YOTEI_LOG37_2026-09-27.md).
+
+> Local: [Pause/Resume shortcuts and keyboard release behavior](current/PAUSE_HOTKEYS_2026-09-27.md).
+
 > Release1.6.5 published: [publication and validation record](current/RELEASE_1.6.5_PUBLICATION_2026-09-27.md).
 
 > Current diagnostics: [schema2, complete catalog and typed events](development/SUPPORT_DIAGNOSTICS_CONTRACT.md). [Validation record](current/SUPPORT_DIAGNOSTICS_2026-09-27.md).
@@ -130,7 +150,7 @@ required. Optional continuous logging and mandatory incident reports are distinc
 
 ## Current integrations and layouts
 
-- [AJAZZ AK820 MAX RGB ordinary support](current/AJAZZ_AK820MAX_REVIEW_2026-09-20.md): tester confirmation, local production integration and Sheet readback.
+- [AJAZZ AK820 MAX HE (wired, RGB) ordinary support](current/AJAZZ_AK820MAX_REVIEW_2026-09-20.md): tester confirmation, local production integration and Sheet readback.
 
 
 - [MonsGeek / Akko protocol research, Slice75 and EPOMAKER G84 HE references](current/MONSGEEK_AKKO_PROTOCOL_2026-09-22.md): local native integration; validation and support-status evidence.

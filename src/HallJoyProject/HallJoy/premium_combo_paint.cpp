@@ -234,6 +234,39 @@ static void DrawIconSave(HDC hdc, const RECT& rr, COLORREF /*colorOverride*/)
     g.DrawPath(&penBorder, &pathBody);
 }
 
+// Revert ("undo") icon: counter-clockwise arc ending in an arrowhead.
+static void DrawIconRevert(HDC hdc, const RECT& rr, COLORREF color)
+{
+    const int w = rr.right - rr.left, h = rr.bottom - rr.top;
+    if (w < 6 || h < 6) return;
+    const float s = (float)std::min(w, h);
+    const float cx = rr.left + w * 0.5f, cy = rr.top + h * 0.5f + s * 0.06f;
+    const float r = s * 0.34f;
+
+    Graphics g(hdc);
+    g.SetSmoothingMode(SmoothingModeHighQuality);
+    g.SetPixelOffsetMode(PixelOffsetModeHighQuality);
+    const Color c = GpFromColorRef(color);
+    Pen pen(c, std::max(1.2f, s * 0.13f));
+    pen.SetStartCap(LineCapRound);
+    pen.SetEndCap(LineCapFlat);
+    constexpr float kStart = 30.0f, kSweep = -250.0f; // through the top, ends upper-left
+    g.DrawArc(&pen, cx - r, cy - r, r * 2.0f, r * 2.0f, kStart, kSweep);
+
+    const float end = (kStart + kSweep) * 3.14159265f / 180.0f;
+    const float ex = cx + r * std::cos(end), ey = cy + r * std::sin(end);
+    const float tx = std::sin(end), ty = -std::cos(end); // counter-clockwise tangent
+    const float nx = std::cos(end), ny = std::sin(end);
+    const float head = s * 0.30f;
+    PointF tri[3] = {
+        PointF(ex + tx * head * 0.8f, ey + ty * head * 0.8f),
+        PointF(ex - tx * head * 0.2f + nx * head * 0.6f, ey - ty * head * 0.2f + ny * head * 0.6f),
+        PointF(ex - tx * head * 0.2f - nx * head * 0.6f, ey - ty * head * 0.2f - ny * head * 0.6f),
+    };
+    SolidBrush brush(c);
+    g.FillPolygon(&brush, tri, 3);
+}
+
 static void DrawRoundBorder(HDC hdc, const RECT& rc, int radiusPx, COLORREF color, int penW)
 {
     HPEN pen = CreatePen(PS_SOLID, std::max(1, penW), color);
@@ -418,6 +451,19 @@ static RECT ComputeExtraIconRectForPaint(HWND hwndCombo, State* st, const RECT& 
     return r;
 }
 
+// Revert sits left of Save, same size, separated by the text/icon gap.
+static RECT ComputeRevertIconRectForPaint(HWND hwndCombo, State* st, const RECT& rcCombo)
+{
+    RECT empty{};
+    if (!st || st->extraIconDraw != PremiumCombo::ExtraIconKind::SaveAndRevert) return empty;
+    const RECT save = ComputeExtraIconRectForPaint(hwndCombo, st, rcCombo);
+    if (save.right <= save.left) return empty;
+    const int size = save.right - save.left;
+    const int right = save.left - S(hwndCombo, PC_EXTRAICON_GAP);
+    if (right - size < rcCombo.left + 2) return empty;
+    return RECT{ right - size, save.top, right, save.bottom };
+}
+
 static RECT ScaleRectFromCenter(const RECT& r, float t01)
 {
     RECT out{};
@@ -483,10 +529,18 @@ static void PaintCombo_Impl(HWND hwndCombo, State* st, HDC hdc, const RECT* targ
 
             RECT rIconDraw = ScaleRectFromCenter(rIconFull, st->extraIconT);
 
-            if (st->extraIconDraw == PremiumCombo::ExtraIconKind::Save)
+            if (st->extraIconDraw == PremiumCombo::ExtraIconKind::Save ||
+                st->extraIconDraw == PremiumCombo::ExtraIconKind::SaveAndRevert)
             {
                 COLORREF c = st->extraIconHot ? UiTheme::Color_Accent() : UiTheme::Color_TextMuted();
                 DrawIconSave(hdc, rIconDraw, c);
+            }
+            const RECT rRevertFull = ComputeRevertIconRectForPaint(hwndCombo, st, rc);
+            if (rRevertFull.right > rRevertFull.left)
+            {
+                rcText.right = rRevertFull.left - S(hwndCombo, PC_EXTRAICON_GAP);
+                DrawIconRevert(hdc, ScaleRectFromCenter(rRevertFull, st->extraIconT),
+                    st->revertIconHot ? UiTheme::Color_Accent() : UiTheme::Color_TextMuted());
             }
         }
     }
@@ -845,7 +899,8 @@ void PremiumComboInternal::PaintPopup(HWND hwndPopup, State* st, HDC hdc)
     buf.End(hdc, 0, 0);
 }
 
-void PremiumCombo::PaintRetainedFace(HWND hCombo, HDC hdc, const RECT& rect, bool hovered)
+void PremiumCombo::PaintRetainedFace(HWND hCombo, HDC hdc, const RECT& rect, bool hovered,
+    ExtraIconKind hotIcon)
 {
     State* st = PremiumComboInternal::Get(hCombo);
     if (!st || !hdc || rect.right <= rect.left || rect.bottom <= rect.top)
@@ -861,6 +916,8 @@ void PremiumCombo::PaintRetainedFace(HWND hCombo, HDC hdc, const RECT& rect, boo
     const float oldArrowT = st->arrowT;
     const ExtraIconKind oldExtraIconDraw = st->extraIconDraw;
     const float oldExtraIconT = st->extraIconT;
+    const bool oldExtraHot = st->extraIconHot;
+    const bool oldRevertHot = st->revertIconHot;
 
     st->hovered = hovered;
     st->arrowHot = false;
@@ -869,6 +926,8 @@ void PremiumCombo::PaintRetainedFace(HWND hCombo, HDC hdc, const RECT& rect, boo
     st->arrowT = 0.0f;
     st->extraIconDraw = st->extraIcon;
     st->extraIconT = st->extraIcon == ExtraIconKind::None ? 0.0f : 1.0f;
+    st->extraIconHot = hotIcon == ExtraIconKind::Save;
+    st->revertIconHot = hotIcon == ExtraIconKind::Revert;
 
     PaintCombo_Impl(hCombo, st, hdc, &rect);
 
@@ -879,6 +938,29 @@ void PremiumCombo::PaintRetainedFace(HWND hCombo, HDC hdc, const RECT& rect, boo
     st->arrowT = oldArrowT;
     st->extraIconDraw = oldExtraIconDraw;
     st->extraIconT = oldExtraIconT;
+    st->extraIconHot = oldExtraHot;
+    st->revertIconHot = oldRevertHot;
+}
+
+PremiumCombo::ExtraIconKind PremiumCombo::HitTestRetainedExtraIcon(HWND hCombo, const RECT& comboRect, POINT pt)
+{
+    State* st = PremiumComboInternal::Get(hCombo);
+    if (!st || st->extraIcon == ExtraIconKind::None)
+        return ExtraIconKind::None;
+    const ExtraIconKind oldDraw = st->extraIconDraw;
+    const float oldT = st->extraIconT;
+    st->extraIconDraw = st->extraIcon;
+    st->extraIconT = 1.0f;
+    const RECT save = ComputeExtraIconRectForPaint(hCombo, st, comboRect);
+    const RECT revert = ComputeRevertIconRectForPaint(hCombo, st, comboRect);
+    st->extraIconDraw = oldDraw;
+    st->extraIconT = oldT;
+    auto inside = [&](const RECT& r) {
+        return r.right > r.left && pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom;
+    };
+    if (inside(save)) return ExtraIconKind::Save;
+    if (inside(revert)) return ExtraIconKind::Revert;
+    return ExtraIconKind::None;
 }
 
 bool PremiumCombo::GetRetainedExtraIconRect(HWND hCombo, const RECT& comboRect, RECT* outRect)

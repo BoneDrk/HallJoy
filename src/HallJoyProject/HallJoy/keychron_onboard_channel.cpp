@@ -8,6 +8,7 @@
 #include "hid_io_operation.h"
 #include <array>
 #include <cwchar>
+#include <cwctype>
 #include <utility>
 namespace halljoy::k4_onboard {
 namespace {
@@ -57,6 +58,23 @@ std::vector<Device> EnumerateDevices() {
         result.push_back({detail->DevicePath,serial,attributes.VersionNumber});
     }
     return result;
+}
+bool K4UsbDevicePresent() {
+    const auto set=SetupDiGetClassDevsW(nullptr,L"USB",nullptr,DIGCF_PRESENT|DIGCF_ALLCLASSES);
+    if (set==INVALID_HANDLE_VALUE) return false;
+    struct Guard { HDEVINFO set; ~Guard(){SetupDiDestroyDeviceInfoList(set);} } guard{set};
+    for (DWORD i=0;i<1024;++i) {
+        SP_DEVINFO_DATA info{}; info.cbSize=sizeof(info);
+        if (!SetupDiEnumDeviceInfo(set,i,&info)) {
+            if (GetLastError()==ERROR_NO_MORE_ITEMS) break;
+            continue;
+        }
+        wchar_t id[512]{};
+        if (!SetupDiGetDeviceInstanceIdW(set,&info,id,512,nullptr)) continue;
+        for (auto& c:id) { if (!c) break; c=static_cast<wchar_t>(towupper(c)); }
+        if (std::wcsstr(id,L"VID_3434&PID_0E40")) return true;
+    }
+    return false;
 }
 WindowsChannel::~WindowsChannel() { if(handle_!=INVALID_HANDLE_VALUE) CloseHandle(handle_); }
 bool WindowsChannel::Connect() {

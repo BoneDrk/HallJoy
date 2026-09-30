@@ -29,7 +29,8 @@ checks = {
     "Hex80 extended Fn and per-key freshness reach publication": (
         "hex80::kHidCount> g_milli" in hex_backend
         and "hex80::EncodeOutputReport(payload" in hex_backend
-        and "!hex80::IsKnownProductId(candidate.attributes.ProductID)" in hex_backend
+        and "candidate.model = hex80::FindModel(candidate.attributes.ProductID);" in hex_backend
+        and "if (!candidate.model)" in hex_backend
         and "InputReportByteLength >= hex80::kMinPayloadBytes + 1u" in hex_backend
         and "g_sampleMs[entry.hid].store" in hex_backend
         and "!hex80::IsFresh(g_sampleMs[hidUsage]" in hex_backend
@@ -97,7 +98,13 @@ checks = {
     "poller has no artificial fixed sleep": (
         "SwitchToThread();" in hex_backend
         and "Sleep(" not in hex_backend
-        and "hex80::kTotalSlots" in hex_backend
+        and "offset < model.slots;" in hex_backend
+    ),
+    "model table: fixed scale skips 02 96 24, Hex80-only calibration SET": (
+        "travelMax = model.fixedTravelMax;" in hex_backend
+        and "if (model.calibrationFinish && !session.SendOnly(hex80::BuildCalibrationFinishPayload()))" in hex_backend
+        and "OwnedFor(g_activeModel.load(std::memory_order_acquire))" in hex_backend
+        and "Token(\"hex80\",model->layoutProduct)" in hex_backend
     ),
 }
 

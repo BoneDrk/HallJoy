@@ -639,3 +639,72 @@ Only known pre-existing ViGEmClient missing-PDB linker warning. Dynamic limits
 and topology regression checks PASS. Artifact build/bin/Release/x64/HallJoy.exe
 SHA256 89aa858c6fcbb520828800fadc24e1721463175b96ab66ba36d4bb1494636ea0.
 No GUI run, keyboard flash or GitHub publication.
+
+## Retail name correction, 2026-09-30
+
+The owner noted that no retail "AK820 MAX RGB" exists. Evidence:
+
+- The AJAZZ driver page lists `AJAZZ_AK820_MAX_RGB_Installer_V2.06.01.zip` under
+  "AJAZZ AK820 Max HE Driver" as the Wired Only Version. The Wired & Wireless
+  version has a separate `AJAZZ_AK820_MAX_HE_setup_2.1.78.zip`.
+- The official store sells the AK820 MAX HE wired version (8K, RGB) plus a
+  "No light-DIY Wired Version". Retail listings also sell a tri-mode AK820 MAX
+  HE with screen and knob (1K).
+
+The supported device (`SG8994HERGB` V1.13.17, 0416:7372, tester's AJAZZ x
+NACODEX colourway) is therefore the **AK820 MAX HE, wired RGB version**. The
+earlier row name came from the driver file name. Support scope is unchanged.
+
+Changes:
+
+- Runtime model name is now "AJAZZ AK820 MAX HE (wired, RGB)"
+  (`irok_na87_backend.cpp`).
+- README and SUPPORTED_HARDWARE are renamed. Published 1.6.2 notes and
+  historical records are kept.
+
+Live Sheet, one revision-pinned batchUpdate:
+
+| Row | Before | After |
+| --- | --- | --- |
+| Main!15 | "AK820 MAX HE" / Research incomplete | "AK820 MAX HE (tri-mode, screen)" / Not investigated (never researched) |
+| Main!16 | new row | "AK820 MAX HE (wired, no light)" / Research incomplete (SG8994HE V1.13.02 analysed, not admitted) |
+| Main!17 | "AK820 MAX RGB" / Supported | "AK820 MAX HE (wired, RGB)" / Supported (unchanged) |
+
+The new row has height 32, interior borders, white-on-white brand, grey B:C
+base colors and copied strict validation. Readback of A14:C18 confirms the
+values, the full validation list on every row, heights, borders and base and
+effective colors. There are no notes, AK680MC and Ultra HE are unchanged, and
+rowCount is 1279. No yellow status changed. The full-sheet structure audit is
+still pending, for the same connector export limitation noted in OWNER_CONTEXT.
+
+## AK820 MAX HE tri-mode (screen) — first look, 2026-09-30 (no implementation)
+
+Source: the official "Wired & Wireless" driver
+`AJAZZ_AK820_MAX_HE_setup_2.1.78.zip` (SHA256 a8f1b5f3…ddad9). It is kept
+locally in `.local/research/ajazz-ak820max-he-trimode`, extracted but not
+executed. It is an Electron app plus the Rust bridge `iot_driver.exe`, and it
+contains no firmware image.
+
+- Registry: "AK820 max" = `yc3121_sg8996_hall` (board 1694) and
+  `yc3121_sg8996b_hall` (board 2230). VID 0x3151, wired PID 0x4015, receiver
+  PID 0x4011, YiChip YC3121, `magnetism:true`, group `rongyuan_k_rgb`.
+- Class chain: `Vsr` (data only) → `sYe`, the same magnetism base that the
+  RY5088 stream family uses (`Wna` → `bta` → `Zea` → `sYe`).
+- `sYe.setKeyMagnetismReport` sends `FEA_CMD_SET_MAGNETISM_REPOR` = 27 (0x1B).
+  This is the command our supported RY5088 stream backend uses. The UI
+  receives the parsed travel as "磁轴行程" events from `iot_driver`.
+- The driver's "模拟演示" toggle warns that the keyboard cannot be used while
+  the analog test is on. Typing loss during 0x1B is probable for this model.
+  The same shared UI text raises an unverified question for the admitted
+  RY5088 stream family too: HE108 was confirmed for analog, but typing during
+  the stream was not recorded.
+- `sYe` magnetism modes also expose a `gamepadKey` option with depth/analog
+  arrays. This hints at an onboard gamepad feature, which is unexplored.
+- Firmware acquisition failed:
+  - RongYuan `api2 get_fw_version` returns "Record not found" for 1694, 2230
+    and even AJAZZ AK680MAX 2255;
+  - api3 gives 404;
+  - MechLands/ajazzstore pages returned HTTP 429.
+- Next step: fetch the MechLands "AK820 Max Tri-Mode Upgrade Tool" later and
+  confirm that it is the HE model, not the mechanical AK820 Max. Then check
+  the YC3121 0x1B report format and typing behaviour in the firmware.

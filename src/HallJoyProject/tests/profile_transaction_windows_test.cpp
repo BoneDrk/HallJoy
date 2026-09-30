@@ -226,7 +226,7 @@ bool HallJoy_RunProfileTransactionTests() {
         Check(WritePrivateProfileStringW(L"Main",L"DiagnosticLogging",L"invalid",loggingSettings.c_str()) != 0, "invalid preference fixture failed");
         Check(!SettingsIni_Load(loggingSettings.c_str()), "invalid optional preference accepted");
         const auto blockSettings = (root / L"block-shortcut-settings.ini").wstring();
-        const UINT shortcut = ((MOD_CONTROL | MOD_SHIFT) << 8) | VK_F8;
+        const UINT shortcut = ((MOD_CONTROL | MOD_SHIFT) << 8) | 65u; // Ctrl+Shift+F8 (HID usage)
         Settings_SetBlockKeysAllowAltTab(false); Settings_SetBlockKeysHotkey(shortcut);
         Check(GlobalProfiles_Load(L"A"), "block preference profile fixture failed");
         Check(!Settings_GetBlockKeysAllowAltTab() && Settings_GetBlockKeysHotkey() == shortcut,
@@ -236,11 +236,19 @@ bool HallJoy_RunProfileTransactionTests() {
         Check(SettingsIni_Load(blockSettings.c_str()) && !Settings_GetBlockKeysAllowAltTab() &&
             Settings_GetBlockKeysHotkey() == shortcut, "block preferences failed roundtrip");
         Check(WritePrivateProfileStringW(L"Main", L"BlockKeysAllowAltTab", nullptr, blockSettings.c_str()) != 0, "remove Alt preference failed");
-        Check(WritePrivateProfileStringW(L"Main", L"BlockKeysHotkey", nullptr, blockSettings.c_str()) != 0, "remove shortcut preference failed");
+        Check(WritePrivateProfileStringW(L"Main", L"BlockKeysShortcut", nullptr, blockSettings.c_str()) != 0, "remove shortcut preference failed");
         Check(SettingsIni_Load(blockSettings.c_str()) && Settings_GetBlockKeysAllowAltTab() &&
             !Settings_GetBlockKeysHotkey(), "legacy block defaults failed");
-        for (const wchar_t* invalid : {L"16", L"4096", L"invalid"}) {
-            Check(WritePrivateProfileStringW(L"Main", L"BlockKeysHotkey", invalid, blockSettings.c_str()) != 0, "invalid shortcut fixture failed");
+        // Pre-update settings stored a virtual-key chord; it migrates to the
+        // same physical key (VK_F8 -> HID F8) with the same modifiers.
+        Check(WritePrivateProfileStringW(L"Main", L"BlockKeysHotkey",
+            std::to_wstring(((MOD_CONTROL | MOD_SHIFT) << 8) | VK_F8).c_str(), blockSettings.c_str()) != 0,
+            "legacy shortcut fixture failed");
+        Check(SettingsIni_Load(blockSettings.c_str()) && Settings_GetBlockKeysHotkey() == shortcut,
+            "legacy virtual-key shortcut did not migrate");
+        Check(WritePrivateProfileStringW(L"Main", L"BlockKeysHotkey", nullptr, blockSettings.c_str()) != 0, "remove legacy shortcut failed");
+        for (const wchar_t* invalid : {L"3", L"4096", L"invalid", L"1248"}) {
+            Check(WritePrivateProfileStringW(L"Main", L"BlockKeysShortcut", invalid, blockSettings.c_str()) != 0, "invalid shortcut fixture failed");
             Settings_SetBlockKeysHotkey(shortcut);
             Check(!SettingsIni_Load(blockSettings.c_str()) && Settings_GetBlockKeysHotkey() == shortcut,
                 "invalid shortcut accepted or changed settings");
@@ -294,13 +302,32 @@ bool HallJoy_RunProfileTransactionTests() {
         Settings_SetMainWindowPosXPx(-1400); Settings_SetMainWindowPosYPx(-750);
         Settings_SetMainWindowPlacementMeta(2, 144, true);
         Settings_SetMinimizeToTray(true); Settings_SetCloseToTray(true);
+        const unsigned pauseChord = (MOD_CONTROL << 8) | 26u;
+        Settings_SetPauseSeparate(true); Settings_SetPauseShortcut(1, pauseChord); Settings_SetPauseShortcut(2, 27);
         Check(SettingsIni_SaveWindow(windowFile.c_str()), "window-only save failed");
         Check(nonWindow() == unrelated, "window-only update changed profile/layout/logging sections");
         Settings_SetMainWindowPlacementMeta(0, 0, false);
         Settings_SetMinimizeToTray(false); Settings_SetCloseToTray(false);
         Settings_SetMainWindowPosXPx(0);
+        Settings_SetPauseSeparate(false); Settings_SetPauseShortcut(1, 0); Settings_SetPauseShortcut(2, 0);
         Check(SettingsIni_Load(windowFile.c_str()), "window roundtrip load failed");
         Check(Settings_GetMinimizeToTray() && Settings_GetCloseToTray(), "tray preferences did not roundtrip");
+        Check(Settings_GetPauseSeparate() && Settings_GetPauseShortcut(1) == pauseChord &&
+            Settings_GetPauseShortcut(2) == 27, "pause shortcuts did not roundtrip");
+        // Pre-update single-key value (three bytes + separate flag) migrates.
+        {
+            const auto legacyFile = root / "pause-legacy.ini";
+            Check(SettingsIni_Save(legacyFile.c_str()), "legacy pause fixture failed");
+            for (const wchar_t* key : {L"PauseShortcutToggle", L"PauseShortcutPause", L"PauseShortcutResume", L"PauseSeparate"})
+                Check(WritePrivateProfileStringW(L"Window", key, nullptr, legacyFile.c_str()) != 0, "remove pause key failed");
+            Check(WritePrivateProfileStringW(L"Window", L"PauseHotkeys",
+                std::to_wstring((1u<<24)|(26u<<8)|(27u<<16)).c_str(), legacyFile.c_str()) != 0, "legacy pause value failed");
+            Check(SettingsIni_Load(legacyFile.c_str()) && Settings_GetPauseSeparate() &&
+                Settings_GetPauseShortcut(1) == 26 && Settings_GetPauseShortcut(2) == 27 &&
+                Settings_GetPauseShortcut(0) == 0, "legacy pause shortcuts did not migrate");
+            Check(SettingsIni_Load(windowFile.c_str()), "window reload failed");
+        }
+        Settings_SetPauseShortcut(1, 30);
         Settings_SetMinimizeToTray(false); Settings_SetCloseToTray(false);
         Check(Settings_GetMainWindowWidthPx() == 920 && Settings_GetMainWindowHeightPx() == 710 &&
             Settings_GetMainWindowPosXPx() == -1400 && Settings_GetMainWindowPosYPx() == -750 &&
@@ -309,6 +336,7 @@ bool HallJoy_RunProfileTransactionTests() {
         Check(SettingsIni_LoadProfile(windowFile.c_str()) && Settings_GetMainWindowPosXPx() == -1400 &&
             Settings_GetMainWindowMaximized(), "profile load changed global window geometry");
         Check(!Settings_GetMinimizeToTray() && !Settings_GetCloseToTray(), "input profile changed application tray preferences");
+        Check(Settings_GetPauseShortcut(1)==30, "input profile changed global pause shortcuts");
         const auto windowBeforeFault = Bytes(windowFile);
         Settings_SetMainWindowPosXPx(-1300);
         IniUtil_TestSetFailureStage(HallJoyPersistence::SaveStage::Replace);

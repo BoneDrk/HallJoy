@@ -1,6 +1,7 @@
 // settings.cpp
 #define NOMINMAX
 #include "settings.h"
+#include "input_shortcuts.h"
 #include "backend_curve.h"
 #include "stability_trace.h"
 
@@ -29,6 +30,15 @@ static int ClampM01(int m) { return std::clamp(m, 0, 1000); }
 static std::atomic<uint32_t> g_inDzPacked{ PackDz(80, 900) };
 
 // Polling/UI
+static std::atomic<unsigned> g_pauseShortcuts[3]{};
+static std::atomic<bool> g_pauseSeparate{false};
+unsigned Settings_GetPauseShortcut(unsigned slot) { return slot < 3 ? g_pauseShortcuts[slot].load() : 0u; }
+void Settings_SetPauseShortcut(unsigned slot, unsigned shortcut)
+{
+    if (slot < 3) g_pauseShortcuts[slot].store(halljoy::shortcuts::Valid(shortcut) ? shortcut : 0u);
+}
+bool Settings_GetPauseSeparate() { return g_pauseSeparate.load(); }
+void Settings_SetPauseSeparate(bool separate) { g_pauseSeparate.store(separate); }
 static std::atomic<bool> g_minimizeToTray{ false }, g_closeToTray{ false };
 bool Settings_GetMinimizeToTray() { return g_minimizeToTray.load(); }
 void Settings_SetMinimizeToTray(bool enabled) { g_minimizeToTray.store(enabled); }
@@ -194,6 +204,17 @@ void Settings_SetInputAntiDeadzone(float v01)
     BackendCurve_Invalidate();
 }
 
+void Settings_SetInputEndpoints(float antiDeadzone01, float outputCap01)
+{
+    const int cap = std::clamp(
+        (int)lroundf(std::clamp(outputCap01, 0.01f, 1.0f) * 1000.0f), 10, 1000);
+    int adz = (int)lroundf(std::clamp(antiDeadzone01, 0.0f, 0.99f) * 1000.0f);
+    if (adz > cap - 10) adz = std::max(0, cap - 10);
+    g_globalAntiDzM.store(std::clamp(adz, 0, 990), std::memory_order_release);
+    g_globalOutCapM.store(cap, std::memory_order_release);
+    BackendCurve_Invalidate();
+}
+
 float Settings_GetInputAntiDeadzone()
 {
     int m = g_globalAntiDzM.load(std::memory_order_acquire);
@@ -354,7 +375,10 @@ void Settings_SetBlockBoundKeys(bool on)
 bool Settings_GetBlockKeysAllowAltTab() { return g_blockKeysAllowAltTab.load(std::memory_order_acquire); }
 void Settings_SetBlockKeysAllowAltTab(bool on) { g_blockKeysAllowAltTab.store(on, std::memory_order_release); }
 UINT Settings_GetBlockKeysHotkey() { return g_blockKeysHotkey.load(std::memory_order_acquire); }
-void Settings_SetBlockKeysHotkey(UINT chord) { g_blockKeysHotkey.store(chord, std::memory_order_release); }
+void Settings_SetBlockKeysHotkey(UINT shortcut)
+{
+    g_blockKeysHotkey.store(halljoy::shortcuts::Valid(shortcut) ? shortcut : 0u, std::memory_order_release);
+}
 
 bool Settings_GetBlockBoundKeys()
 {

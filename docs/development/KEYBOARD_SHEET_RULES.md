@@ -37,6 +37,18 @@ merged brand cells. Do not merge or blank repeated brand values.
 - Copy status validation only to model rows. Separators/unused rows have no
   dropdowns. Preserve model values, validation choices, conditional colors,
   column widths, fonts, wrapping and unrelated layout.
+- How to get a full snapshot (2026-09-30):
+  - Call `get_spreadsheet` with `includeGridData=true`, range
+    `Main!A1:C<rowCount>` and fields `sheets.properties`, `sheets.merges`,
+    `sheets.data.startRow`, `sheets.data.startColumn`, `sheets.data.rowMetadata`,
+    and `sheets.data.rowData.values` with `formattedValue`, `userEnteredFormat`,
+    `effectiveFormat` and `dataValidation`.
+  - The result (about 3.8 MB) is saved by the client to a tool-results file;
+    copy it to `.local/`.
+  - For `support_notice_catalog.py --sheet`, derive
+    `[{brand, model, status, color}]` rows from it, where `color` is the
+    effective background of column C.
+  - Never report the audit as impossible because of the connector.
 - Run `python tools/check_keyboard_sheet_structure.py <native-snapshot.json>`
   on a fresh full bounded native read after EVERY insertion, even for one model.
   The input is updatedSpreadsheet (or wrapper) with row metadata. Packed backups

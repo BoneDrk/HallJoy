@@ -1254,7 +1254,7 @@
       },
       {
         "path": "tools/layout_catalog.json",
-        "sha256": "b412811abf80a7fdc8c8f0001cbff68155f6a1e5cad9e0a52f7cfdd49e503ebc",
+        "sha256": "d9310d11a3e2c371539cfe872e1ac4c7fa33441071afde7c0d8f60d85d723831",
         "private": false
       }
     ],
@@ -1271,7 +1271,7 @@
       },
       {
         "path": "src/HallJoyProject/HallJoy/hex80_protocol.h",
-        "sha256": "ede5479e1f57424c24ec0ce2da710e13db9296af0fc182ed1d193304a02cfbe9",
+        "sha256": "a9147406cba10f8d57cc32d04f03794500e4a2f1bffadc02406f551ed1cea586",
         "private": false
       },
       {
@@ -1809,7 +1809,7 @@
       },
       {
         "path": "tools/layout_catalog.json",
-        "sha256": "b412811abf80a7fdc8c8f0001cbff68155f6a1e5cad9e0a52f7cfdd49e503ebc",
+        "sha256": "d9310d11a3e2c371539cfe872e1ac4c7fa33441071afde7c0d8f60d85d723831",
         "private": false
       },
       {
@@ -2015,7 +2015,7 @@
       },
       {
         "path": "docs/research/madlions-layout-reports/madlions_mad68he_ansi.json",
-        "sha256": "967b01af1a245968cd0605cd806130a5bff77bf148f3c5c971761a6f1a44615a",
+        "sha256": "d5eb560c0f190cab6bd66e6138e4a04a36ddce8a88e451c72142a69bb6d0c1fe",
         "private": false
       },
       {
@@ -2065,7 +2065,7 @@
       },
       {
         "path": "tools/prepare_madlions_layouts.py",
-        "sha256": "f81e0bdaefeddb6477a5ac1a59ffb1a2ee0174e0e5ffa483310411606cedd9f2",
+        "sha256": "e208063cce23bc519aa245f67d80f9db401ffb5880e073c2c4a2570605a9e7ad",
         "private": false
       }
     ],
@@ -3408,7 +3408,7 @@
       },
       {
         "path": "docs/exports/layout-pipeline/madlions_mad68he_ansi-review.json",
-        "sha256": "967b01af1a245968cd0605cd806130a5bff77bf148f3c5c971761a6f1a44615a",
+        "sha256": "d5eb560c0f190cab6bd66e6138e4a04a36ddce8a88e451c72142a69bb6d0c1fe",
         "private": false
       },
       {
@@ -5288,7 +5288,7 @@
       },
       {
         "path": "docs/research/madlions-layout-reports/madlions_mad68he_ansi.json",
-        "sha256": "967b01af1a245968cd0605cd806130a5bff77bf148f3c5c971761a6f1a44615a",
+        "sha256": "d5eb560c0f190cab6bd66e6138e4a04a36ddce8a88e451c72142a69bb6d0c1fe",
         "private": false
       },
       {
@@ -5998,12 +5998,12 @@
       },
       {
         "path": "src/HallJoyProject/HallJoy/generated/layout_pipeline/identities.h",
-        "sha256": "a218d749086153078cda2b3d1a753fa4cd90316f97261fb93801fac61d72e28b",
+        "sha256": "8c5f43a5e3a7df802aa9b40c28a0acb800d5aecad1cc050dd94e666be73a9ef1",
         "private": false
       },
       {
         "path": "src/HallJoyProject/HallJoy/generated/layout_pipeline/identities.inc",
-        "sha256": "a0b2a94a78e1a1673f5c71890a2d8263b815653794100a884e956c27e0ebf484",
+        "sha256": "94ecd42bc1e0d8458b8c0e476c7c1796d344ce88d5a326e6618b5cd44b9d551d",
         "private": false
       },
       {
@@ -6093,7 +6093,7 @@
       },
       {
         "path": "tools/layout_catalog.json",
-        "sha256": "b412811abf80a7fdc8c8f0001cbff68155f6a1e5cad9e0a52f7cfdd49e503ebc",
+        "sha256": "d9310d11a3e2c371539cfe872e1ac4c7fa33441071afde7c0d8f60d85d723831",
         "private": false
       },
       {

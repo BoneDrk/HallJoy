@@ -9,6 +9,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include "support_log.h"
+#include "redsquare_code_probe.h"
 #include "irok_na87_diagnostic.h"
 #include "aula_mini60_diagnostic.h"
 #include "attackshark_pro_diagnostic.h"
@@ -65,7 +66,10 @@ static halljoy::tray::Window g_tray;
 #include "digital_keyboard_state.h"
 #include "input_privilege_warning.h"
 #include "input_privilege_windows.h"
-#include "block_keys_hotkey.h"
+#include "block_keys_policy.h"
+#include "pause_hotkeys.h"
+#include "input_shortcuts_runtime.h"
+#include "keyboard_scan_hid.h"
 #include "keyboard_hook_thread.h"
 #include "keyboard_ui_state.h"
 #include "addressed_analog_backend.h"
@@ -274,39 +278,106 @@ static void App_ParseCommandLine()
 }
 
 static halljoy::block_keys::PressRoutes g_blockPressRoutes;
-static halljoy::block_keys::HotkeyRegistration g_blockHotkey;
-static std::atomic<bool> g_blockHotkeyCapture{false};
-static std::atomic<UINT> g_hookShortcut{0};
-static halljoy::block_keys::ShortcutPress g_shortcutPress;
 static std::array<std::atomic<ULONGLONG>, 256> g_hookDigital{};
 static constexpr UINT WM_APP_BLOCK_TOGGLED = WM_APP + 368;
-static DWORD g_blockHotkeyError = ERROR_SUCCESS;
 static DWORD g_keyboardHookError = ERROR_SUCCESS;
-static UINT g_blockHotkeyAttempt = UINT_MAX;
 static void SeedBlockPressRoutes();
 
-DWORD App_SetBlockKeysHotkey(UINT chord)
+// Every command shortcut (Block toggle, Pause/Resume) is one shortcut system.
+// A shortcut may not be shared by two commands of the active configuration.
+static bool ShortcutUsedByOtherCommand(unsigned shortcut, int exceptAction)
 {
-    const DWORD error = g_blockHotkey.Apply(g_hMainWnd, chord);
-    if (!error) {
-        g_hookShortcut.store(chord, std::memory_order_release);
-        Settings_SetBlockKeysHotkey(chord);
-        g_blockHotkeyAttempt = chord;
-        g_blockHotkeyError = ERROR_SUCCESS;
-    }
-    return error;
+    if (!shortcut) return false;
+    const auto bindings = halljoy::shortcuts::CurrentBindings();
+    for (unsigned i = 0; i < bindings.size(); ++i)
+        if (static_cast<int>(i + 1) != exceptAction && bindings[i] == shortcut) return true;
+    return false;
 }
-DWORD App_BlockKeysHotkeyError() { return g_keyboardHookError ? g_keyboardHookError : g_blockHotkeyError; }
-void App_SetBlockKeysHotkeyCapture(bool capturing) { g_blockHotkeyCapture = capturing; }
 
-static void RefreshBlockKeysHotkey()
+DWORD App_SetBlockKeysHotkey(UINT shortcut)
 {
-    const UINT chord = Settings_GetBlockKeysHotkey();
-    if (chord == g_blockHotkeyAttempt || !g_hMainWnd) return;
-    g_blockHotkeyAttempt = chord;
-    g_blockHotkeyError = g_blockHotkey.Apply(g_hMainWnd, chord);
-    g_hookShortcut.store(g_blockHotkey.Chord(), std::memory_order_release);
-    if (g_hPageConfig) PostMessageW(g_hPageConfig, WM_APP_BLOCK_KEYS_CHANGED, 0, 0);
+    if (!halljoy::shortcuts::Valid(shortcut)) return ERROR_INVALID_PARAMETER;
+    if (ShortcutUsedByOtherCommand(shortcut, static_cast<int>(halljoy::shortcuts::Action::BlockToggle)))
+        return ERROR_ALREADY_ASSIGNED;
+    Settings_SetBlockKeysHotkey(shortcut);
+    return ERROR_SUCCESS;
+}
+DWORD App_ValidatePauseShortcut(unsigned slot, unsigned shortcut)
+{
+    if (slot > 2 || !halljoy::shortcuts::Valid(shortcut)) return ERROR_INVALID_PARAMETER;
+    if (!shortcut) return ERROR_SUCCESS;
+    if (shortcut == Settings_GetBlockKeysHotkey()) return ERROR_ALREADY_ASSIGNED;
+    if (slot != 0 && Settings_GetPauseShortcut(slot == 1 ? 2 : 1) == shortcut) return ERROR_ALREADY_ASSIGNED;
+    return ERROR_SUCCESS;
+}
+DWORD App_BlockKeysHotkeyError() { return g_keyboardHookError; }
+
+static std::atomic<HWND> g_shortcutCaptureOwner{nullptr};
+void App_BeginShortcutCapture(HWND owner)
+{
+    // Only one capture at a time: a capture started elsewhere is cancelled.
+    const HWND previous = g_shortcutCaptureOwner.exchange(owner);
+    if (previous && previous != owner)
+        PostMessageW(previous, halljoy::shortcuts::kCaptureMessage, 0,
+            static_cast<LPARAM>(halljoy::shortcuts::kCaptureCancelled));
+    halljoy::shortcuts::BeginCapture(owner);
+}
+void App_CancelShortcutCapture(bool notifyOwner)
+{
+    const HWND owner = g_shortcutCaptureOwner.exchange(nullptr);
+    halljoy::shortcuts::CancelCapture();
+    if (notifyOwner && owner)
+        PostMessageW(owner, halljoy::shortcuts::kCaptureMessage, 0,
+            static_cast<LPARAM>(halljoy::shortcuts::kCaptureCancelled));
+}
+void App_EndShortcutCapture(HWND owner)
+{
+    HWND expected = owner;
+    if (g_shortcutCaptureOwner.compare_exchange_strong(expected, nullptr))
+        halljoy::shortcuts::CancelCapture();
+}
+
+// Called on the hook thread or the realtime thread, outside the engine lock.
+static bool ShortcutApplicable(halljoy::shortcuts::Action action)
+{
+    using halljoy::shortcuts::Action;
+    const auto state = halljoy::pause_hotkey::state.load();
+    switch (action)
+    {
+    case Action::BlockToggle:
+        return !g_engineUiInputPassThrough.load(std::memory_order_acquire);
+    case Action::PauseToggle:
+        return state != halljoy::pause_hotkey::State::Transition;
+    case Action::Pause:
+        return state == halljoy::pause_hotkey::State::Active;
+    case Action::Resume:
+        return state == halljoy::pause_hotkey::State::Paused;
+    default:
+        return false;
+    }
+}
+
+static void ShortcutDispatch(halljoy::shortcuts::Action action)
+{
+    using halljoy::shortcuts::Action;
+    if (action == Action::BlockToggle)
+    {
+        // Applied immediately so the very next keyboard event sees it; UI
+        // refresh, dirty marking and saving follow on the UI thread.
+        Settings_SetBlockBoundKeys(!Settings_GetBlockBoundKeys());
+        if (g_hMainWnd) PostMessageW(g_hMainWnd, WM_APP_BLOCK_TOGGLED, 0, 0);
+        return;
+    }
+    auto pauseAction = halljoy::pause_hotkey::Action::None;
+    if (action == Action::Pause) pauseAction = halljoy::pause_hotkey::Action::Pause;
+    else if (action == Action::Resume) pauseAction = halljoy::pause_hotkey::Action::Resume;
+    else if (action == Action::PauseToggle)
+        pauseAction = halljoy::pause_hotkey::state.load() == halljoy::pause_hotkey::State::Active
+            ? halljoy::pause_hotkey::Action::Pause : halljoy::pause_hotkey::Action::Resume;
+    const HWND target = halljoy::pause_hotkey::window.load();
+    if (target && pauseAction != halljoy::pause_hotkey::Action::None)
+        PostMessageW(target, halljoy::pause_hotkey::Message, static_cast<WPARAM>(pauseAction),
+            static_cast<LPARAM>(halljoy::pause_hotkey::generation.load()));
 }
 
 static bool NeedMouseHookNow()
@@ -586,137 +657,6 @@ static bool EngineRuntimeUiOperationHandler(
     return false;
 }
 
-static uint16_t HidFromKeyboardScanCode(DWORD scanCode, bool extended, DWORD vkCode)
-{
-    if (vkCode == VK_PAUSE) return 72;
-    if (vkCode >= VK_F13 && vkCode <= VK_F24)
-        return static_cast<uint16_t>(104 + vkCode - VK_F13);
-    switch (scanCode & 0xFFu)
-    {
-    case 0x01: return 41; // Esc
-    case 0x02: return 30; // 1
-    case 0x03: return 31; // 2
-    case 0x04: return 32; // 3
-    case 0x05: return 33; // 4
-    case 0x06: return 34; // 5
-    case 0x07: return 35; // 6
-    case 0x08: return 36; // 7
-    case 0x09: return 37; // 8
-    case 0x0A: return 38; // 9
-    case 0x0B: return 39; // 0
-    case 0x0C: return 45; // -
-    case 0x0D: return 46; // =
-    case 0x0E: return 42; // Backspace
-    case 0x0F: return 43; // Tab
-    case 0x10: return 20; // Q
-    case 0x11: return 26; // W
-    case 0x12: return 8;  // E
-    case 0x13: return 21; // R
-    case 0x14: return 23; // T
-    case 0x15: return 28; // Y
-    case 0x16: return 24; // U
-    case 0x17: return 12; // I
-    case 0x18: return 18; // O
-    case 0x19: return 19; // P
-    case 0x1A: return 47; // [
-    case 0x1B: return 48; // ]
-    case 0x1C: return extended ? 88 : 40; // Enter / Numpad Enter
-    case 0x1D: return extended ? 228 : 224; // RCtrl / LCtrl
-    case 0x1E: return 4;  // A
-    case 0x1F: return 22; // S
-    case 0x20: return 7;  // D
-    case 0x21: return 9;  // F
-    case 0x22: return 10; // G
-    case 0x23: return 11; // H
-    case 0x24: return 13; // J
-    case 0x25: return 14; // K
-    case 0x26: return 15; // L
-    case 0x27: return 51; // ;
-    case 0x28: return 52; // '
-    case 0x29: return 53; // `
-    case 0x2A: return 225; // LShift
-    case 0x2B: return 49; // Backslash
-    case 0x2C: return 29; // Z
-    case 0x2D: return 27; // X
-    case 0x2E: return 6;  // C
-    case 0x2F: return 25; // V
-    case 0x30: return 5;  // B
-    case 0x31: return 17; // N
-    case 0x32: return 16; // M
-    case 0x33: return 54; // ,
-    case 0x34: return 55; // .
-    case 0x35: return extended ? 84 : 56; // Numpad / or /
-    case 0x36: return 229; // RShift
-    case 0x37: return extended ? 70 : 85; // PrintScreen / Numpad *
-    case 0x38: return extended ? 230 : 226; // RAlt / LAlt
-    case 0x39: return 44; // Space
-    case 0x3A: return 57; // CapsLock
-    case 0x3B: return 58; // F1
-    case 0x3C: return 59; // F2
-    case 0x3D: return 60; // F3
-    case 0x3E: return 61; // F4
-    case 0x3F: return 62; // F5
-    case 0x40: return 63; // F6
-    case 0x41: return 64; // F7
-    case 0x42: return 65; // F8
-    case 0x43: return 66; // F9
-    case 0x44: return 67; // F10
-    case 0x45: return 83; // NumLock
-    case 0x46: return 71; // ScrollLock
-    case 0x47: return extended ? 74 : 95; // Home / Numpad 7
-    case 0x48: return extended ? 82 : 96; // Up / Numpad 8
-    case 0x49: return extended ? 75 : 97; // PgUp / Numpad 9
-    case 0x4A: return 86; // Numpad -
-    case 0x4B: return extended ? 80 : 92; // Left / Numpad 4
-    case 0x4C: return 93; // Numpad 5
-    case 0x4D: return extended ? 79 : 94; // Right / Numpad 6
-    case 0x4E: return 87; // Numpad +
-    case 0x4F: return extended ? 77 : 89; // End / Numpad 1
-    case 0x50: return extended ? 81 : 90; // Down / Numpad 2
-    case 0x51: return extended ? 78 : 91; // PgDn / Numpad 3
-    case 0x52: return extended ? 73 : 98; // Insert / Numpad 0
-    case 0x53: return extended ? 76 : 99; // Delete / Numpad .
-    case 0x56: return 100; // ISO extra key (non-US backslash)
-    case 0x57: return 68; // F11
-    case 0x58: return 69; // F12
-    case 0x5B: return 227; // LWin
-    case 0x5C: return 231; // RWin
-    case 0x5D: return 101; // Menu/App
-    default:
-        break;
-    }
-
-    // Fallback for rare events with zero/unknown scan code.
-    switch (vkCode)
-    {
-    case 'A': return 4; case 'B': return 5; case 'C': return 6; case 'D': return 7; case 'E': return 8;
-    case 'F': return 9; case 'G': return 10; case 'H': return 11; case 'I': return 12; case 'J': return 13;
-    case 'K': return 14; case 'L': return 15; case 'M': return 16; case 'N': return 17; case 'O': return 18;
-    case 'P': return 19; case 'Q': return 20; case 'R': return 21; case 'S': return 22; case 'T': return 23;
-    case 'U': return 24; case 'V': return 25; case 'W': return 26; case 'X': return 27; case 'Y': return 28;
-    case 'Z': return 29;
-    case '1': return 30; case '2': return 31; case '3': return 32; case '4': return 33; case '5': return 34;
-    case '6': return 35; case '7': return 36; case '8': return 37; case '9': return 38; case '0': return 39;
-    case VK_SPACE: return 44;
-    case VK_TAB: return 43;
-    case VK_RETURN: return extended ? 88 : 40;
-    case VK_BACK: return 42;
-    case VK_ESCAPE: return 41;
-    case VK_LEFT: return 80;
-    case VK_RIGHT: return 79;
-    case VK_UP: return 82;
-    case VK_DOWN: return 81;
-    case VK_HOME: return 74;
-    case VK_END: return 77;
-    case VK_PRIOR: return 75;
-    case VK_NEXT: return 78;
-    case VK_INSERT: return 73;
-    case VK_DELETE: return 76;
-    default:
-        return 0;
-    }
-}
-
 static void SeedBlockPressRoutes()
 {
     g_blockPressRoutes.Reset();
@@ -725,8 +665,8 @@ static void SeedBlockPressRoutes()
         if (!(GetAsyncKeyState(vk) & 0x8000)) continue;
         const UINT scan = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX);
         const auto hid = HidFromKeyboardScanCode(scan & 255, (scan & 0xff00) == 0xe000, vk);
+        halljoy::shortcuts::SeedDigital(hid);
         g_blockPressRoutes.SeedPassed(hid);
-        g_shortcutPress.SeedDown(hid);
     }
 }
 
@@ -817,10 +757,13 @@ static LRESULT CALLBACK KeyboardBlockHookProc(int nCode, WPARAM wParam, LPARAM l
         {
             const KBDLLHOOKSTRUCT* k = (const KBDLLHOOKSTRUCT*)lParam;
             const bool ext = (k->flags & LLKHF_EXTENDED) != 0;
+            if (IsSyntheticNumpadShift(k->scanCode, ext))
+                return CallNextHookEx(nullptr, nCode, wParam, lParam);
             const bool isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
             const bool paused = g_engineUiInputPassThrough.load(std::memory_order_acquire);
-            uint16_t hid = HidFromKeyboardScanCode(k->scanCode, ext, k->vkCode);
-            if (isDown && !(k->flags & LLKHF_INJECTED))
+            const bool injected = (k->flags & LLKHF_INJECTED) != 0;
+            uint16_t hid = HidFromHookKey(k->scanCode, ext, k->vkCode);
+            if (isDown && !injected)
                 if (hid < g_hookDigital.size()) g_hookDigital[hid].store(GetTickCount64(), std::memory_order_release);
             Backend_NotifyKeyboardEvent(
                 hid,
@@ -847,33 +790,19 @@ static LRESULT CALLBACK KeyboardBlockHookProc(int nCode, WPARAM wParam, LPARAM l
                 }
             }
 
-            if ((k->flags & LLKHF_INJECTED) == 0)
+            // Shortcuts see every keyboard: physical ones, and injected input from
+            // remote-desktop/automation tools (HallJoy itself never injects keys).
+            // On the realtime side they also see analog depth of the same keys.
+            // The press that issued a command (Block toggle, Pause/Resume) never
+            // reaches other applications.
+            if (halljoy::shortcuts::Digital(hid, isDown))
+                return 1;
+            // Block Bound Keys applies only to physical keyboard input.
+            if (!injected)
             {
-                const UINT chord = g_hookShortcut.load(std::memory_order_acquire);
-                UINT mods = 0;
-                if (GetAsyncKeyState(VK_CONTROL) & 0x8000) mods |= MOD_CONTROL;
-                if (GetAsyncKeyState(VK_MENU) & 0x8000) mods |= MOD_ALT;
-                if (GetAsyncKeyState(VK_SHIFT) & 0x8000) mods |= MOD_SHIFT;
-                if ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) mods |= MOD_WIN;
-                bool toggle = false;
-                if (g_shortcutPress.Filter(hid, isDown,
-                    halljoy::block_keys::ShortcutKey(k->vkCode, k->scanCode, ext), mods,
-                    chord, !paused && !g_blockHotkeyCapture.load(), toggle)) {
-                    if (toggle) {
-                        Settings_SetBlockBoundKeys(!Settings_GetBlockBoundKeys());
-                        PostMessageW(g_hMainWnd, WM_APP_BLOCK_TOGGLED, 0, 0);
-                    }
-                    return 1;
-                }
                 const bool rescueShift = hid == 229 && Settings_GetBlockMouseInput() && Settings_GetMouseToStickEnabled();
-                const unsigned shortcutMods = chord >> 8;
-                const bool modifierReserved =
-                    ((shortcutMods & MOD_ALT) && (hid == 226 || hid == 230)) ||
-                    ((shortcutMods & MOD_CONTROL) && (hid == 224 || hid == 228)) ||
-                    ((shortcutMods & MOD_SHIFT) && (hid == 225 || hid == 229)) ||
-                    ((shortcutMods & MOD_WIN) && (hid == 227 || hid == 231));
-                const bool reserved = modifierReserved ||
-                    (Settings_GetBlockKeysAllowAltTab() && halljoy::block_keys::IsAltOrTab(hid));
+                const bool reserved =
+                    Settings_GetBlockKeysAllowAltTab() && halljoy::block_keys::IsAltOrTab(hid);
                 const bool enabled = Settings_GetBlockBoundKeys();
                 const bool bound = halljoy::block_keys::IsWindowsKeyBound(hid, Bindings_IsHidBound);
                 const bool block = halljoy::block_keys::ShouldBlock(paused, enabled,
@@ -1330,6 +1259,14 @@ static bool EngineRuntimeReleaseFailedResume(void*, std::uint32_t& nativeError) 
 static void EngineRuntimeStateChanged(void* context) noexcept
 {
     const auto state = halljoy::engine_runtime::EngineRuntimeOwner_Snapshot();
+    halljoy::pause_hotkey::window.store(static_cast<HWND>(context));
+    halljoy::pause_hotkey::generation.store(state.commandGeneration);
+    halljoy::pause_hotkey::state.store(state.state==halljoy::runtime_command::State::Active ? halljoy::pause_hotkey::State::Active :
+        state.state==halljoy::runtime_command::State::Paused ? halljoy::pause_hotkey::State::Paused : halljoy::pause_hotkey::State::Transition);
+    // Analog readers are stopped while paused. A last "held" sample must not
+    // hide the next ordinary press, e.g. the Resume key.
+    if (state.state == halljoy::runtime_command::State::Paused)
+        halljoy::shortcuts::ResetAnalog();
     SupportLog_Event("engine.state", static_cast<unsigned>(state.state),SupportLog_Win32(state.lastNativeError));
     if (state.state == halljoy::runtime_command::State::PauseFaulted)
         SupportLog_ReportFailure("engine.fault", state.lastNativeError);
@@ -1363,6 +1300,8 @@ static void AppShutdownNoThrow(HWND hwnd) noexcept
 {
     if (g_shutdownStarted.exchange(true, std::memory_order_acq_rel))
         return;
+    // Exit closes the K4 onboard session fully; only pause parks it.
+    KeychronOnboard_SetParkOnStop(false);
 
     // Arm before the first cleanup/logging call. Even a broken HID driver or a
     // poisoned dependency lock cannot leave HallJoy requiring Task Manager.
@@ -1508,6 +1447,8 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     case WM_CREATE:
     {
         DebugLog_Write(L"[app] WM_CREATE");
+        halljoy::shortcuts::applicable.store(&ShortcutApplicable);
+        halljoy::shortcuts::dispatch.store(&ShortcutDispatch);
         g_tray.Attach(hwnd, reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICON)));
         SetPropW(hwnd, L"HallJoy.TrayLifecycle.v1", reinterpret_cast<HANDLE>(1));
         ChangeWindowMessageFilterEx(hwnd, halljoy::tray::ShowMessage(), MSGFLT_ALLOW, nullptr);
@@ -1565,6 +1506,7 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         }
 
         g_rawInputRegistered.store(rawInputRegistered, std::memory_order_release);
+        halljoy::redsquare_probe::SetRawInputAvailable(rawInputRegistered);
 #if defined(HALLJOY_AULA_HERO84HE_DIAGNOSTIC)
         AulaHero84HeDiagnostic_NotifyRawInputReady(rawInputRegistered);
 #endif
@@ -1677,11 +1619,13 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                     sizeof(RAWKEYBOARD)))
                 return 0;
             const RAWKEYBOARD& rk = ri->data.keyboard;
-            if (rk.VKey != 0xFFu)
+            if (rk.VKey != 0xFFu &&
+                !IsSyntheticNumpadShift(rk.MakeCode, (rk.Flags & RI_KEY_E0) != 0))
             {
                 const bool extended = (rk.Flags & (RI_KEY_E0 | RI_KEY_E1)) != 0;
                 const bool isDown = (rk.Flags & RI_KEY_BREAK) == 0;
                 const uint16_t hid = HidFromKeyboardScanCode(rk.MakeCode, extended, rk.VKey);
+                halljoy::redsquare_probe::ObserveRawKeyboard(ri->header.hDevice, hid, isDown);
                 if (isDown)
                     halljoy::input_privilege::detector.Digital(hid, false, GetTickCount64());
                 // Preview observes physical identity before Num Lock/VK aliases
@@ -1735,6 +1679,8 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     case WM_INPUT_DEVICE_CHANGE:
     {
         const HANDLE changed = reinterpret_cast<HANDLE>(lParam);
+        if (wParam == GIDC_REMOVAL)
+            halljoy::redsquare_probe::RawKeyboardRemoved(changed);
         Mini60Diagnostic_DeviceChanged(changed);
         SharkDiagnostic_DeviceChanged(changed);
         if (wParam == GIDC_REMOVAL)
@@ -1852,7 +1798,6 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             }
             bool traceTick = (tick <= 20u) || ((tick % 120u) == 0u);
             if (traceTick) DebugLog_Write(L"[app.timer] step hooks begin");
-            RefreshBlockKeysHotkey();
             RefreshLowLevelHooks();
             UpdateInputPrivilegeWarning();
             if (traceTick) DebugLog_Write(L"[app.timer] step hooks done");
@@ -1891,15 +1836,6 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         RequestSettingsSave(hwnd);
         return 0;
 
-    case WM_HOTKEY:
-        if (g_blockHotkey.Matches(wParam, lParam) && g_blockHotkeyCapture) {
-            if (g_hPageConfig) PostMessageW(g_hPageConfig, WM_APP_BLOCK_KEYS_CAPTURED, 0, lParam);
-            return 0;
-        }
-        // Actual toggles happen synchronously in the keyboard hook. Never
-        // replay queued/injected WM_HOTKEY messages as a second toggle.
-        return 0;
-
     case WM_APP_BLOCK_TOGGLED:
         {
             GlobalProfiles_SetDirty(true);
@@ -1920,10 +1856,8 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
 
     case WM_ACTIVATEAPP:
-        if (!wParam && g_blockHotkeyCapture && g_hPageConfig) {
-            g_blockHotkeyCapture = false;
-            PostMessageW(g_hPageConfig, WM_APP_BLOCK_KEYS_CANCEL_CAPTURE, 0, 0);
-        }
+        // Shortcut capture belongs to the focused HallJoy window only.
+        if (!wParam) App_CancelShortcutCapture(true);
         break;
 
     case WM_APP_FACTORY_RESET_RESTART:
@@ -1949,9 +1883,31 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
     }
 
+    case halljoy::redsquare_probe::StatusMessage:
+        if(wParam<=static_cast<WPARAM>(halljoy::redsquare_probe::Status::Fault))
+            SetWindowTextW(hwnd,halljoy::redsquare_probe::StatusTitle(
+                static_cast<halljoy::redsquare_probe::Status>(wParam)));
+        return 0;
+
     case WM_APP + 363: // Preview Resume is one-way: delayed/double clicks cannot pause again.
         (void)halljoy::engine_runtime::EngineRuntimeOwner_RequestResume();
         return 0;
+
+    case halljoy::pause_hotkey::Message:
+    {
+        using halljoy::pause_hotkey::Action;
+        if(g_shutdownStarted.load(std::memory_order_acquire)) return 0;
+        const auto snapshot=halljoy::engine_runtime::EngineRuntimeOwner_Snapshot();
+        if(snapshot.commandGeneration!=static_cast<std::uint64_t>(lParam) || halljoy::shortcuts::Capturing()) return 0;
+        const auto current=snapshot.state;
+        if(wParam==static_cast<WPARAM>(Action::Pause) && current==halljoy::runtime_command::State::Active) {
+            g_enginePauseWasExplicit.store(true,std::memory_order_release);
+            (void)halljoy::engine_runtime::EngineRuntimeOwner_RequestPause();
+        } else if(wParam==static_cast<WPARAM>(Action::Resume) && current==halljoy::runtime_command::State::Paused) {
+            (void)halljoy::engine_runtime::EngineRuntimeOwner_RequestResume();
+        }
+        return 0;
+    }
 
     case WM_APP_ENGINE_RUNTIME_TOGGLE:
     {
@@ -1983,10 +1939,11 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
 
     case WM_DESTROY:
+        halljoy::redsquare_probe::BindWindow(nullptr);
         RemovePropW(hwnd, L"HallJoy.TrayLifecycle.v1");
         g_tray.Remove();
         GamepadLatency_Stop();
-        g_blockHotkey.Stop();
+        App_CancelShortcutCapture(false);
         StabilityTrace_WriteCritical(L"INFO", L"app", L"window.destroy",
             L"source=WM_DESTROY");
         DebugLog_Write(L"[app] WM_DESTROY");
@@ -2207,6 +2164,7 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
 
     if (!hwnd) { DebugLog_Write(L"[app] CreateWindowEx failed err=%lu", GetLastError()); return 2; }
     g_hMainWnd = hwnd;
+    halljoy::redsquare_probe::BindWindow(hwnd);
     BackendUI_SetPreviewWindow(hwnd);
     Na87Diagnostic_Start();
 #if !defined(HALLJOY_ATTACKSHARK_NATIVE)

@@ -6,14 +6,19 @@
 #include "jingtai_v1_profiles.h"
 namespace halljoy::keyboard_support
 {
-enum FrozenModel : unsigned { NA87 = 1, NA87Pro = 2, ND75 = 4, Hero84 = 8, Azoth96 = 16, X68 = 32, FamilyCandidate = 64, Mg75Pro = 128, AttackShark = 256, GravaStar = 512, Ipi = 1024, Redragon = 2048, NuPhy = 4096, AulaRm = 8192, Slice75 = 16384, RongYuan = 32768, RongYuanStream = 65536, TartarusPro = 131072, Neo65 = 262144, SparkLinkV2 = 524288, SteelSeriesApex = 1048576, Mad68DualLimited = 2097152, Mix87Limited = 4194304 };
+enum FrozenModel : unsigned { NA87 = 1, NA87Pro = 2, ND75 = 4, Hero84 = 8, Azoth96 = 16, X68 = 32, FamilyCandidate = 64, Mg75Pro = 128, AttackShark = 256, GravaStar = 512, Ipi = 1024, Redragon = 2048, NuPhy = 4096, AulaRm = 8192, Slice75 = 16384, RongYuan = 32768, RongYuanStream = 65536, TartarusPro = 131072, Neo65 = 262144, SparkLinkV2 = 524288, SteelSeriesApex = 1048576, Mad68DualLimited = 2097152, Mix87Limited = 4194304, Alumix104Research = 8388608 };
 inline constexpr unsigned LimitedModels = Mad68DualLimited | Mix87Limited;
+// Protocol 28 is the exact 0C45:80AC research backend. Present means the
+// physical device was found; connected would falsely imply usable analog.
+inline unsigned ResearchNotice(unsigned protocol, unsigned vid, unsigned pid,
+                               bool present, bool connected) noexcept {
+    return protocol == 28 && vid == 0x0c45 && pid == 0x80ac && present && !connected
+        ? static_cast<unsigned>(Alumix104Research) : 0u;
+}
 inline constexpr unsigned ImplementedModels = NA87 | Hero84 | Mg75Pro | AttackShark | GravaStar | Ipi | Redragon | AulaRm | Slice75 | RongYuan | RongYuanStream | TartarusPro | Neo65 | SparkLinkV2 | SteelSeriesApex;
 // Metadata-only classification. Shared USB IDs never prove the model alone.
 inline unsigned ClassifyFrozen(unsigned vid, unsigned pid, std::wstring_view name) noexcept {
-#if defined(HALLJOY_MAD68_DUAL_TRIAL)
     if (vid == 0x28e9 && pid == 0x3265) return Mad68DualLimited;
-#endif
     // Mix87 III is supported; firmware admission remains enforced by its backend.
     if (vid == 0x3837 && pid == 0x300d) return 0;
     if (halljoy::jingtai_v1::Find(vid,pid,name)) return Mg75Pro;
@@ -45,8 +50,9 @@ struct StatusSnapshot final
 // Known low-quality firmware is a permanent limitation, not an automatic log incident.
 inline bool ShouldAutoSaveSupportLog(const StatusSnapshot& s) noexcept {
     if (!s.searchCompleted || s.communicationWarning) return false;
-    const auto other = s.frozenModels & ~LimitedModels;
-    if ((s.frozenModels & LimitedModels) && !other) return false;
+    const auto advisoryOnly = LimitedModels | Alumix104Research;
+    const auto other = s.frozenModels & ~advisoryOnly;
+    if ((s.frozenModels & advisoryOnly) && !other) return false;
     return !s.analogSourceConnected || s.frozenModels != 0;
 }
 

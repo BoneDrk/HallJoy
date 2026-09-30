@@ -102,9 +102,17 @@ def prepare():
         if model == 'MAD68R': notes.append('Exact supported UAP revision 373B:10A7, official MAD68 R (LL), wt inherits yt; not Fire-family 106E/10A8.')
         if model == 'MAD60HE': notes.append('Physical bottom row has no RGUI at matrix 4,9; unused UAP map entry is not rendered.')
         if model == 'MAD 68 Pro R': notes.append('Fn is displayed as 0x409; the native backend descriptor has HID 0 and does not publish Fn analog.')
+        identity = dict(protocol='madlions',products=[])
+        if model == 'MAD68HE':
+            # MAD68 HE V2 Flagship firmware V103 default layer (5x15 matrix) is
+            # exactly this 68-key set; see hex80::kMad68V2SlotToHid.
+            identity = dict(protocol='hex80',products=['MAD68HEV2-1125'])
+            notes[2] = ('Automatic selection only for the session-proven Hex80-family MAD68 HE V2 Flagship '
+                        '(373B:1125, 02 96 1C proof); its 68-key firmware matrix equals this key set. '
+                        'Other revisions: manual selection, no guessed VID/PID or regional autoselection.')
         report = dict(schema=1,id='madlions_'+model.lower().replace(' ','_')+'_ansi',brand='MADLIONS',
                       model=model,variant='ANSI',name='MADLIONS '+model+' ANSI',status='ready',unresolved=[],
-                      keys=keys,identity=dict(protocol='madlions',products=[]),sources=sources,notes=notes)
+                      keys=keys,identity=identity,sources=sources,notes=notes)
         pipeline.validate_report(report)
         reports.append(report)
     return reports

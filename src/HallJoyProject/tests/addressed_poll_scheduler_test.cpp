@@ -60,6 +60,29 @@ Result Simulate(std::size_t boundCount, std::size_t activeBegin, std::size_t act
 
 int main()
 {
+    // The same planner can feed a seven-record transport and starts with
+    // physically bound keys even when their IDs are late in the layout.
+    {
+        const auto keys = MakeKeys();
+        addressed::PollScheduler scheduler(keys.data(), keys.size());
+        scheduler.Reset(0);
+        scheduler.SetPhysicalBound(70, true);
+        const auto first = scheduler.BuildPlan(0, 7);
+        assert(first.count == 7 && first.keyIds[0] == 70);
+        for (std::size_t i = 0; i < first.count; ++i)
+            scheduler.OnSample(first.keyIds[i], 0, 0, 1);
+        const auto second = scheduler.BuildPlan(2, 7);
+        assert(second.count == 7);
+        assert(scheduler.BuildPlan(3, 0).count == 0);
+    }
+    {
+        const addressed::PollKeyConfig key{1, 4};
+        addressed::PollScheduler scheduler(&key, 1);
+        scheduler.Reset(0);
+        scheduler.OnSample(1, 25, 500, 1000);
+        scheduler.OnQueried(1, 200000); // Echo must preserve measured activity.
+        assert(scheduler.GetStats(200000).activeCount == 1);
+    }
     // More than one packet of binds: every bound key remains serviced and the
     // background matrix still advances.
     {

@@ -692,8 +692,10 @@
           "variant": "ANSI",
           "count": 68,
           "source": "docs/research/madlions-layout-reports/madlions_mad68he_ansi.json",
-          "sha256": "967b01af1a245968cd0605cd806130a5bff77bf148f3c5c971761a6f1a44615a",
-          "products": [],
+          "sha256": "d5eb560c0f190cab6bd66e6138e4a04a36ddce8a88e451c72142a69bb6d0c1fe",
+          "products": [
+            "MAD68HEV2-1125"
+          ],
           "url": ""
         },
         {

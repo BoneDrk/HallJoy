@@ -990,16 +990,40 @@ static bool SayoStart()
     return true;
 }
 
+static void SayoTickHotplug(ULONGLONG);
+// Discovery/probe/restart run here, never on the realtime output thread.
+static halljoy::native_hotplug::Worker g_sayoHotplugWorker;
+static std::atomic<bool> g_sayoServiceRunning{ false };
+static constexpr DWORD kSayoHotplugPeriodMs = 100;
+static constexpr DWORD kSayoHotplugJoinTimeoutMs = 5000;
+
 static bool SayoStartService()
 {
     // Keep the outer registry generation alive even when no device is present
     // initially, so a later hotplug reader group always receives final stop.
+    g_sayoServiceRunning.store(true, std::memory_order_release);
     (void)SayoStart();
+    if (!g_sayoHotplugWorker.Start(&SayoTickHotplug, kSayoHotplugPeriodMs))
+        StabilityTrace_WriteCritical(L"ERROR", L"sayo", L"hotplug_worker.start_failed",
+            L"win32=%lu reconnect_disabled=1", GetLastError());
     return true;
+}
+
+static halljoy::lifecycle::StopResult SayoStopService()
+{
+    // Close the gate and join hotplug before the reader group stop, so no
+    // hotplug pass can start a new reader group after the registry stopped it.
+    g_sayoServiceRunning.store(false, std::memory_order_release);
+    if (!g_sayoHotplugWorker.Stop(kSayoHotplugJoinTimeoutMs))
+        StabilityTrace_WriteCritical(L"ERROR", L"sayo", L"hotplug_worker.stop_timeout",
+            L"wait_ms=%lu worker_retained=1", kSayoHotplugJoinTimeoutMs);
+    return SayoStop();
 }
 
 static void SayoTickHotplug(ULONGLONG nowMs)
 {
+    if (!g_sayoServiceRunning.load(std::memory_order_acquire))
+        return;
     if (g_sayoConnected.load(std::memory_order_acquire))
     {
         ULONGLONG lastPacket = g_sayoLastPacketMs.load(std::memory_order_relaxed);

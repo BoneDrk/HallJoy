@@ -11,7 +11,10 @@ assert 'WM_KEYFIRST' in policy and 'WM_KEYLAST' in policy
 assert 'GetFocus() != message.hwnd' in policy
 assert 'KeyboardLayoutEditorHost' in policy and 'GW_OWNER' in policy
 assert 'OverlayCustom_IsEdit(st->focusId) ? 1 : 0' in ui
-assert 'st && st->blockShortcutCapturing ? 1 : 0' in ui
+# Shortcut capture goes through the shared hook/analog engine; the window never
+# opts into keyboard messages for it.
+assert 'st && st->blockShortcutCapturing ? 1 : 0' not in ui
+assert 'App_BeginShortcutCapture(hWnd)' in ui
 config = ui[ui.index('LRESULT CALLBACK KeyboardSubpages_ConfigPageProc'):]
 assert 'KeySettingsPanel_HandleKey(hWnd' not in config
 assert 'Ctrl+S = save preset' not in config

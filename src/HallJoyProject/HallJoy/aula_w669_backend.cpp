@@ -166,7 +166,15 @@ bool TimedIo(HANDLE h, bool write, void* data, DWORD bytes, DWORD timeout, DWORD
         // ordinary event-stream idle period is not reported as a transport
         // failure.
         const DWORD waitError = wait == WAIT_TIMEOUT ? WAIT_TIMEOUT : GetLastError();
-        io.CancelAndDrain(transferred, &error);
+        DWORD drained = 0;
+        io.CancelAndDrain(&drained, &error);
+        // The request can complete between the wait timeout and CancelIoEx.
+        // Its data is a real report (for example a key release); keep it.
+        if (error == ERROR_SUCCESS && drained != 0)
+        {
+            if (transferred) *transferred = drained;
+            return true;
+        }
         SetLastError(waitError ? waitError : ERROR_GEN_FAILURE);
         return false;
     }
@@ -469,6 +477,16 @@ bool Run(const Candidate& c)
     if (!ReceiveTravel(s, &proof.travel) ||
         !ReceiveMap(s, proof.factoryProfile, &proof.map)) return false;
     { std::lock_guard<std::mutex> lock(g_handleMutex); g_activeHandle = s.Native(); }
+    // Unregister before `s` closes the handle on every return path, so Stop()
+    // never cancels I/O on a closed or recycled handle.
+    struct ActiveHandleRegistration
+    {
+        ~ActiveHandleRegistration()
+        {
+            std::lock_guard<std::mutex> lock(g_handleMutex);
+            g_activeHandle = INVALID_HANDLE_VALUE;
+        }
+    } activeHandleRegistration;
     g_vid.store(c.attributes.VendorID); g_pid.store(c.attributes.ProductID); g_maxTravel.store(proof.travel.maximum);
     g_inputBytes.store(c.caps.InputReportByteLength); g_outputBytes.store(c.caps.OutputReportByteLength);
     g_mapped.store(static_cast<std::uint32_t>(aula_w669::MappedKeyCount(proof.map)));
@@ -505,6 +523,7 @@ bool Run(const Candidate& c)
     const auto diagnosticStartedMs = GetTickCount64();
     const auto diagnosticStartedLive = g_liveEvents.load(std::memory_order_relaxed);
 #endif
+    unsigned consecutiveReadFailures = 0;
     while (!g_stop.load(std::memory_order_acquire))
     {
         aula_w669::Report r{};
@@ -516,10 +535,33 @@ bool Run(const Candidate& c)
                 g_stop.load(std::memory_order_acquire) &&
                 (readError == ERROR_OPERATION_ABORTED || readError == ERROR_INVALID_HANDLE);
             if (expectedStopCancellation)
+            {
                 StabilityTrace_Write(L"INFO", L"aula-w669", L"protocol.cancelled",
                     L"operation=read win32=%lu reason=stop", readError);
-            else if (readError != WAIT_TIMEOUT)
+                break;
+            }
+            if (readError != WAIT_TIMEOUT)
+            {
                 g_failures.fetch_add(1, std::memory_order_relaxed);
+                // A removed or broken device fails immediately and forever.
+                // Leave the session so published depth is cleared and the
+                // worker reconnects, instead of spinning with stale keys.
+                const bool deviceGone = readError == ERROR_DEVICE_NOT_CONNECTED ||
+                    readError == ERROR_INVALID_HANDLE || readError == ERROR_BAD_COMMAND ||
+                    readError == ERROR_GEN_FAILURE || readError == ERROR_FILE_NOT_FOUND ||
+                    readError == ERROR_OPERATION_ABORTED;
+                if (deviceGone || ++consecutiveReadFailures >= 3)
+                {
+                    StabilityTrace_Write(L"WARN", L"aula-w669", L"session.read_failed",
+                        L"win32=%lu consecutive=%u action=reconnect", readError, consecutiveReadFailures);
+                    DebugLog_Write(L"[aula.w669.session] read failed win32=%lu; reconnecting", readError);
+                    break;
+                }
+            }
+        }
+        else
+        {
+            consecutiveReadFailures = 0;
         }
         aula_w669::LiveEvent event{};
         if (received && aula_w669::DecodeLiveEvent(r.data(), r.size(), &event))
@@ -639,7 +681,11 @@ unsigned __stdcall Worker(void*) noexcept
 
 bool Prepare()
 {
-    if (g_prepared.load()) { std::lock_guard<std::mutex> lock(g_routeMutex); return !g_routedPids.empty(); }
+    // Resume resets routing claims: reuse the result only while ours remains.
+    if (g_prepared.load()) {
+        if (!Enumerate(true, false).empty()) { std::lock_guard<std::mutex> lock(g_routeMutex); return !g_routedPids.empty(); }
+        g_prepared.store(false);
+    }
     auto candidates = Enumerate(false, true); std::vector<std::uint16_t> routed;
     for (const auto& c : candidates)
     {
@@ -658,9 +704,10 @@ bool Start()
     { std::lock_guard<std::mutex> route(g_routeMutex); if (g_routedPids.empty()) return false; }
     if (g_thread) return g_running.load(); g_stop.store(false); g_running.store(true);
     g_fault.store(halljoy::worker::WorkerExceptionKind::None, std::memory_order_release);
-    g_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr); if (!g_wake) { g_running.store(false); return false; }
+    { std::lock_guard<std::mutex> signal(g_signalMutex); g_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr); }
+    if (!g_wake) { g_running.store(false); return false; }
     unsigned id = 0; g_thread = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, 0, Worker, nullptr, 0, &id));
-    if (!g_thread) { CloseHandle(g_wake); g_wake = nullptr; g_running.store(false); return false; }
+    if (!g_thread) { std::lock_guard<std::mutex> signal(g_signalMutex); CloseHandle(g_wake); g_wake = nullptr; g_running.store(false); return false; }
     StabilityTrace_Write(L"INFO", L"aula-w669", L"start.ok", L"thread_id=%u", id); return true;
 }
 
@@ -673,7 +720,8 @@ halljoy::lifecycle::StopResult Stop(halljoy::lifecycle::GenerationId generation)
     if (wait != WAIT_OBJECT_0) return halljoy::lifecycle::ObserveWorkerJoin(generation,
         wait == WAIT_TIMEOUT ? halljoy::lifecycle::JoinWaitStatus::TimedOut : halljoy::lifecycle::JoinWaitStatus::Failed,
         wait == WAIT_TIMEOUT ? WAIT_TIMEOUT : GetLastError());
-    CloseHandle(g_thread); g_thread = nullptr; if (g_wake) CloseHandle(g_wake); g_wake = nullptr;
+    CloseHandle(g_thread); g_thread = nullptr;
+    { std::lock_guard<std::mutex> signal(g_signalMutex); if (g_wake) CloseHandle(g_wake); g_wake = nullptr; }
     g_running.store(false); g_connected.store(false); Clear(); return NativeAnalogBackendStopJoined(generation);
 }
 

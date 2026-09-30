@@ -4,9 +4,6 @@
 // The AULA HERO84 diagnostic is deliberately a one-backend image: it must not
 // probe or start any unrelated native protocol while a tester has other HID
 // hardware attached.
-#if defined(HALLJOY_MAD68_DUAL_TRIAL)
-HALLJOY_NATIVE_BACKEND(Mad68DualTrial_GetNativeBackendDescriptor)
-#endif
 #if defined(HALLJOY_ROG_AZOTH96HE_DIAGNOSTIC)
 HALLJOY_NATIVE_BACKEND(RogAzoth96HeDiagnostic_GetNativeBackendDescriptor)
 #elif !defined(HALLJOY_AULA_HERO84HE_DIAGNOSTIC) && !defined(HALLJOY_TITAN68_TURBO_DIAGNOSTIC) && !defined(HALLJOY_TITAN68_TURBO_EXPERIMENTAL)
@@ -19,6 +16,8 @@ HALLJOY_NATIVE_BACKEND(Mini60_GetNativeBackendDescriptor)
 #if defined(HALLJOY_KEYCHRON_ONBOARD_EXPERIMENTAL)
 HALLJOY_NATIVE_BACKEND(KeychronOnboard_GetNativeBackendDescriptor)
 #endif
+// Retained limited stock analog is part of the ordinary image.
+HALLJOY_NATIVE_BACKEND(Mad68DualTrial_GetNativeBackendDescriptor)
 HALLJOY_NATIVE_BACKEND(Mad68ProR_GetNativeBackendDescriptor)
 HALLJOY_NATIVE_BACKEND(Hex80_GetNativeBackendDescriptor)
 // Exact HERO84 UUID admission precedes the generic Addressed route.
@@ -46,6 +45,7 @@ HALLJOY_NATIVE_BACKEND(Tartarus_GetNativeBackendDescriptor)
 HALLJOY_NATIVE_BACKEND(Neo65_GetNativeBackendDescriptor)
 HALLJOY_NATIVE_BACKEND(SteelSeriesApex_GetNativeBackendDescriptor)
 HALLJOY_NATIVE_BACKEND(MchoseMix87_GetNativeBackendDescriptor)
+HALLJOY_NATIVE_BACKEND(Alumix104_GetNativeBackendDescriptor)
 HALLJOY_NATIVE_BACKEND(BackendNative_GetSparkDescriptor)
 HALLJOY_NATIVE_BACKEND(BackendNative_GetSayoDescriptor)
 #if defined(HALLJOY_ANALOG_SIMULATOR)

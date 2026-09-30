@@ -164,3 +164,14 @@ before compact traces. Existing behavior bundles remain supported. Tampering wit
 raw evidence is rejected.93 firmware-tool tests pass, including four new USB model
 tests; the21 real-firmware scenarios have their own expectation checks. As before,
 PASS reproduces these limitations; it does not approve a protocol as unrestricted.
+
+
+## Exact partial104 stateful experiment recipe — 2026-09-28
+
+Run tools/review_redsquare_alumix104_experiments.py with the private exact104
+capture and a NEW output JSON. Reuses firmware_replay and hash-pinned capture
+constants; does not fabricate missing code or peripherals.20 same-RAM lifecycle
+scenarios/140 transitions and280 legal depth-request payloads separate mode ACKs
+from useful sensor data. Synthetic initial RAM and RGB-disabled scope are explicit.
+Use these results to choose the next bounded experiment, not claim typing or
+multikey support. See current/ALUMIX104_YOTEI_LOG37_2026-09-27.md for findings.

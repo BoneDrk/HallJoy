@@ -52,6 +52,9 @@ namespace PremiumCombo
     {
         None = 0,
         Save = 1,
+        // Shows Save and, to its left, Revert. Clicks report Save or Revert.
+        SaveAndRevert = 2,
+        Revert = 3, // notification only
     };
 
     inline UINT MsgItemButton()
@@ -129,8 +132,11 @@ namespace PremiumCombo
     // Draws the exact stable closed-face appearance into a retained page.
     // The popup remains owned by hCombo; this API prevents scroll pages from
     // maintaining a second, visually divergent combo renderer.
-    void PaintRetainedFace(HWND hCombo, HDC hdc, const RECT& rect, bool hovered = false);
+    void PaintRetainedFace(HWND hCombo, HDC hdc, const RECT& rect, bool hovered = false,
+        ExtraIconKind hotIcon = ExtraIconKind::None);
     bool GetRetainedExtraIconRect(HWND hCombo, const RECT& comboRect, RECT* outRect);
+    // Which extra icon (Save/Revert) of a retained face is under pt, or None.
+    ExtraIconKind HitTestRetainedExtraIcon(HWND hCombo, const RECT& comboRect, POINT pt);
 
     // Inline edit API
     bool IsEditingItem(HWND hCombo);

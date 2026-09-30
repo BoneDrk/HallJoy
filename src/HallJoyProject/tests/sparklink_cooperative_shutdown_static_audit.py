@@ -74,6 +74,10 @@ def main() -> int:
             "outer service gate closes before the active poller is stopped")
     require("SparkServiceAllowsStart()" in start and "SparkServiceAllowsStart()" in hotplug_tick,
             "worker start and hotplug tick both honor outer service ownership")
+    require(service_stop.index("g_sparkHotplugWorker.Stop") < service_stop.index("const auto stopped = SparkStop();"),
+            "hotplug worker joins before the active poller is stopped")
+    require("SparkTickHotplug" not in function_body(backend, "void Backend_Tick()"),
+            "realtime tick performs no SparkLink discovery")
     require("SparkTickHotplug" in service_stop and "test.service_stop_probe" in service_stop and
             "--halljoy-test-spark-service-shutdown" in worker,
             "simulator probes reconnect after poller stop while service is closed")

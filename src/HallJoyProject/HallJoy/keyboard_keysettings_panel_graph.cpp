@@ -814,6 +814,22 @@ bool Ksp_GraphHandleMouse(HWND parent, UINT msg, WPARAM wParam, LPARAM lParam)
         SetCursor(LoadCursorW(nullptr, hover ? IDC_HAND : IDC_ARROW));
         };
 
+    // Capture can be lost without WM_LBUTTONUP (Alt-Tab, a menu, another
+    // window taking capture). A drag must never survive it, or later plain
+    // mouse movement would keep editing and saving the curve.
+    if (g_drag != DragTarget::None && msg != WM_LBUTTONDOWN && msg != WM_LBUTTONUP &&
+        GetCapture() != parent)
+    {
+        const DragTarget old = g_drag;
+        g_drag = DragTarget::None;
+        if (old == DragTarget::C1 || old == DragTarget::C2)
+            InvalidateCpHint(parent);
+        UpdateInfoLabelIfNeeded(true);
+        Ksp_SyncUI();
+        InvalidateRect(parent, nullptr, FALSE);
+        Ksp_RequestSave(parent);
+    }
+
     switch (msg)
     {
     case WM_LBUTTONDOWN:
@@ -858,6 +874,8 @@ bool Ksp_GraphHandleMouse(HWND parent, UINT msg, WPARAM wParam, LPARAM lParam)
             return false;
         }
 
+        if (gr.Width <= 1.0f || gr.Height <= 1.0f)
+            return true; // Collapsed graph: no finite position to store.
         float nx = (float)(pt.x - gr.X) / gr.Width;
         float ny = (float)(gr.GetBottom() - pt.y) / gr.Height;
         nx = std::clamp(nx, 0.0f, 1.0f);

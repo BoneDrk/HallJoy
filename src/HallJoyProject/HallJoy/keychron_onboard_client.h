@@ -1,5 +1,6 @@
 #pragma once
 #include "keychron_onboard_profile.h"
+#include "keychron_onboard_session.h"
 #include "keychron_onboard_compact.h"
 #include "keychron_onboard_sparse.h"
 #include <array>
@@ -18,11 +19,20 @@ struct Channel {
     virtual std::uint64_t NowMs() const = 0;
     virtual bool Cancelled() const = 0;
 };
+// Last profile wire committed to the firmware staging buffer. Kept outside a
+// single Client so a session reopened after pause can send only the delta.
+struct CommittedProfile {
+    bool valid=false;
+    std::uint32_t crc=0;
+    std::array<std::uint8_t,HJO_PROFILE_BYTES> wire{};
+};
 class Client {
     Channel& channel_;
+    CommittedProfile own_;
+    CommittedProfile* committed_;
     std::uint32_t token_=0, sequence_=0, crc_=0;
     std::uint64_t heartbeatAt_=0;
-    bool active_=false, burst_=false, sparse_=false;
+    bool active_=false, burst_=false, sparse_=false, keepAltTab_=false, delta_=false, park_=false;
     hjk4_receiver receiver_{};
     bool Query(Packet request, Packet& reply, bool tokenRequired=true) {
         if (channel_.Cancelled()) return false;
@@ -34,13 +44,20 @@ class Client {
         if (request[1]!=0x78 && request[1]!=0x7B && std::memcmp(reply.data()+8,"HJO1",4)) return false;
         return true;
     }
-    bool Upload(const std::uint8_t* wire) {
+    // Delta (r8): the firmware keeps the committed wire in staging, so only
+    // changed chunks are sent (a Block toggle is one chunk instead of ~240).
+    // It refuses a delta whose base CRC is not its committed staging.
+    bool Send(const std::uint8_t* wire, bool delta) {
+        const auto base=*committed_;
+        committed_->valid=false;
         Packet request{},reply{}; request[1]=0x72;
+        if (delta) { request[8]=1; hjk4_put32(request.data()+12,base.crc); }
         if (!KeepAlive() || !Query(request,reply)) return false;
         for (unsigned offset=0;offset<HJO_PROFILE_BYTES;offset+=21) {
+            const unsigned count=HJO_PROFILE_BYTES-offset<21?HJO_PROFILE_BYTES-offset:21;
+            if (delta && !std::memcmp(base.wire.data()+offset,wire+offset,count)) continue;
             if (!KeepAlive()) return false;
             request={}; request[1]=0x73;
-            const unsigned count=HJO_PROFILE_BYTES-offset<21?HJO_PROFILE_BYTES-offset:21;
             hjk4_put16(request.data()+8,static_cast<uint16_t>(offset));
             request[10]=static_cast<uint8_t>(count);
             std::memcpy(request.data()+11,wire+offset,count);
@@ -51,28 +68,43 @@ class Client {
         if (!KeepAlive() || !Query(request,reply) || !(reply[17]&1) ||
             hjk4_u32(reply.data()+12)!=nextCrc) return false;
         crc_=nextCrc;
+        std::memcpy(committed_->wire.data(),wire,HJO_PROFILE_BYTES);
+        committed_->crc=nextCrc; committed_->valid=true;
         return true;
     }
+    bool Upload(const std::uint8_t* wire) {
+        if (delta_ && committed_->valid && Send(wire,true)) return true;
+        return Send(wire,false);
+    }
 public:
-    explicit Client(Channel& channel):channel_(channel) {}
+    explicit Client(Channel& channel, CommittedProfile* committed=nullptr)
+        :channel_(channel), committed_(committed?committed:&own_) {}
     bool Active() const noexcept { return active_; }
     bool PreciseTelemetry() const noexcept { return sparse_; }
+    bool SupportsKeepAltTab() const noexcept { return keepAltTab_; }
+    bool SupportsPark() const noexcept { return park_; }
     std::uint32_t Token() const noexcept { return token_; }
     bool Status(Packet& reply) {
         Packet request{}; request[1]=0x70;
         if(!Query(request,reply,false) || hjk4_u16(reply.data()+18)!=HJO_PROFILE_BYTES) return false;
-        burst_=(reply[17]&4)!=0;sparse_=(reply[17]&16)!=0;return true;
+        burst_=(reply[17]&4)!=0;sparse_=(reply[17]&16)!=0;
+        keepAltTab_=(reply[17]&HJO_CAP_KEEP_ALT_TAB)!=0;
+        delta_=(reply[17]&HJO_CAP_DELTA_UPLOAD)!=0;park_=(reply[17]&HJO_CAP_PARK)!=0;return true;
     }
     bool Open(const hjo_profile& profile) {
         if (token_) return false;
         std::array<std::uint8_t,HJO_PROFILE_BYTES> wire{};
         if (!hjo_profile_encode(wire.data(),wire.size(),&profile)) return false;
         Packet request{},reply{};
-        if (!Status(reply) || reply[3] || reply[16]) return false;
+        if (!Status(reply)) return false;
+        // A parked keyboard already exposes the native interface: reopening it
+        // needs no USB re-enumeration.
+        const bool parked=reply[3]==HJO_PARKED && reply[16];
+        if (!parked && (reply[3] || reply[16])) return false;
         request[1]=0x71; std::memcpy(request.data()+8,"HJO1",4);
         if (!Query(request,reply,false) || reply[3]!=1) return false;
         token_=hjk4_u32(reply.data()+4);
-        if (!token_ || !channel_.Reconnect(0x1213) || !Status(reply) ||
+        if (!token_ || (!parked && !channel_.Reconnect(0x1213)) || !Status(reply) ||
             hjk4_u32(reply.data()+4)!=token_ || reply[3]!=1 || !reply[16] ||
             !Upload(wire.data())) return false;
         request={}; request[1]=0x75; sequence_=1;
@@ -158,6 +190,34 @@ public:
         Packet request{},reply{};request[1]=0x7A;
         if (!Query(request,reply,active_)) return false;
         std::memcpy(report.data(),reply.data()+12,report.size());return true;
+    }
+    // Pause (r8): release the lease but keep the native controller interface,
+    // so the next Open needs no re-enumeration of the whole keyboard. The
+    // firmware sends a neutral report and stops suppressing keys.
+    bool Park() {
+        if (!park_ || !token_) return Close();
+        // Two tries: a reply left over from a cancelled request is skipped.
+        Packet request{},reply{}; request[1]=0x77; request[8]=1;
+        bool parked=false;
+        for (unsigned attempt=0;attempt<2 && !parked;++attempt)
+            parked=Query(request,reply) && reply[3]==HJO_PARKED;
+        if (!parked) return Close();
+        active_=false; token_=sequence_=crc_=0; receiver_={};
+        return true;
+    }
+    // Process exit while parked: take the ownerless parked session and stop
+    // it so the keyboard returns to ordinary mode. No wait for re-enumeration.
+    bool ReleaseParked() {
+        Packet request{},reply{};
+        if (token_ || !Status(reply)) return false;
+        if (reply[3]!=HJO_PARKED) return true;
+        request[1]=0x71; std::memcpy(request.data()+8,"HJO1",4);
+        if (!Query(request,reply,false) || reply[3]!=1) return false;
+        token_=hjk4_u32(reply.data()+4);
+        request={}; request[1]=0x77;
+        const bool stopped=token_ && Query(request,reply) && reply[3]==0;
+        token_=sequence_=crc_=0;
+        return stopped;
     }
     bool Close() {
         if (!token_) { active_=false; return true; }

@@ -45,7 +45,7 @@ void Backend_InputPathStatus(char* text,std::size_t capacity) noexcept {
     strcpy_s(text,capacity,"path.output state=2 ready=1 applied=42 published=42");
 }
 #endif
-static void Check(bool value) { if(!value) throw std::runtime_error("support log regression"); }
+#define Check(value) do { if(!(value)) throw std::runtime_error("support log regression line "+std::to_string(__LINE__)); } while(0)
 static std::string Read(const std::wstring& path) {
     std::ifstream input{std::filesystem::path(path)};
     return {std::istreambuf_iterator<char>(input),{}};
@@ -53,7 +53,7 @@ static std::string Read(const std::wstring& path) {
 static void Await(const std::wstring& path, const char* text) {
     auto end=GetTickCount64()+7000;
     do { if(Read(path).find(text)!=std::string::npos) return; Sleep(50); } while(GetTickCount64()<end);
-    Check(false);
+    throw std::runtime_error(std::string("await failed: ")+text);
 }
 int main() {
     wchar_t temp[MAX_PATH]{}, unique[MAX_PATH]{};
@@ -93,7 +93,10 @@ int main() {
         const auto deadline=GetTickCount64()+7000;
         while(SupportLog_CompletedSnapshot()<request && GetTickCount64()<deadline) Sleep(50);
         Check(SupportLog_CompletedSnapshot()>=request);
-        Check(Read(path).find("manual.snapshot value=17")!=std::string::npos);
+        const auto manualEvidence=Read(path);
+        Check(manualEvidence.find("manual.snapshot value=17")!=std::string::npos);
+        Check(manualEvidence.find("support.snapshot_requested source=api")!=std::string::npos);
+        Check(manualEvidence.find("support.banner_shown") == std::string::npos);
         Check(GetFileAttributesW(mirrorPath.c_str())==INVALID_FILE_ATTRIBUTES);
         missing=false; unstable=false; experimental=true;
         SupportLog_Event("experimental.snapshot",18);
@@ -148,6 +151,111 @@ int main() {
         Check(std::filesystem::file_size(path)<=4*1024*1024);
         Check(Read(path)==Read(mirrorPath));
         DeleteFileW(mirrorPath.c_str()); RemoveDirectoryW(mirrorDir.c_str());
+        // Reviewed research remains in the one normal log after history eviction
+        // and Open log snapshot reset; ordinary logging stays disabled.
+        enabled=false;
+        Check(SupportLog_Start(directory.c_str()));
+        Check(SupportLog_RedSquareResearch("HallJoy RedSquare code probe v1; test"));
+        for(unsigned group=0;group<3;++group) {
+            for(unsigned i=0;i<250;++i) {
+                const auto row="block "+std::to_string(group*250+i)+" aa";
+                Check(SupportLog_RedSquareResearch(row.c_str()));
+            }
+            Sleep(1200);
+        }
+        Check(SupportLog_RedSquareResearch("complete blocks=750"));
+        Await(path,"complete blocks=750");
+        auto researchRequest=SupportLog_RequestSnapshot();
+        auto researchDeadline=GetTickCount64()+7000;
+        while(SupportLog_CompletedSnapshot()<researchRequest && GetTickCount64()<researchDeadline)Sleep(50);
+        Check(SupportLog_CompletedSnapshot()>=researchRequest);
+        const auto evidence=Read(path);
+        Check(evidence.find("block 0 aa")!=std::string::npos);
+        Check(evidence.find("block 749 aa")!=std::string::npos);
+        Check(evidence.find("complete blocks=750")!=std::string::npos);
+        const auto firstBlock=evidence.find("block 0 aa");
+        Check(evidence.find("block 0 aa",firstBlock+1)==std::string::npos);
+        Check(SupportLog_RedSquareResearch("HallJoy RedSquare analog gamepad trial v1; exact Alumix104 only"));
+        Check(SupportLog_RedSquareResearch("analog_mode initial_off=1 on_write=1"));
+        Check(SupportLog_RedSquareResearch("analog_idle reads=16 samples=0 on_ack=0"));
+        Check(SupportLog_RedSquareResearch("analog_cleanup begin=1 reason=0"));
+        Check(SupportLog_RedSquareResearch("analog_pipeline published=0 consumer_reads=0"));
+        Await(path,"analog_pipeline published=0 consumer_reads=0");
+        researchRequest=SupportLog_RequestSnapshot();
+        researchDeadline=GetTickCount64()+7000;
+        while(SupportLog_CompletedSnapshot()<researchRequest && GetTickCount64()<researchDeadline)Sleep(50);
+        Check(SupportLog_CompletedSnapshot()>=researchRequest);
+        const auto streamEvidence=Read(path);
+        Check(streamEvidence.find("HallJoy RedSquare analog gamepad trial v1;")!=std::string::npos);
+        Check(streamEvidence.find("analog_mode initial_off=1")!=std::string::npos);
+        Check(streamEvidence.find("analog_idle reads=16 samples=0")!=std::string::npos);
+        Check(streamEvidence.find("analog_cleanup begin=1 reason=0")!=std::string::npos);
+        Check(streamEvidence.find("analog_pipeline published=0")!=std::string::npos);
+        Check(streamEvidence.find("block 0 aa")==std::string::npos);
+        for(unsigned group=0;group<10;++group) {
+            for(unsigned i=0;i<250;++i) {
+                const auto row="long_block "+std::to_string(group*250+i)+" end";
+                Check(SupportLog_RedSquareResearch(row.c_str()));
+            }
+            Sleep(1200);
+        }
+        Check(SupportLog_RedSquareResearch("analog_end reason=0 final_off=1 final_off_ack=1"));
+        Check(SupportLog_RedSquareResearch("analog_pipeline published=100 consumer_reads=20"));
+        Check(SupportLog_RedSquareResearch("analog_gamepad pub_while_connected=10"));
+        Await(path,"analog_gamepad pub_while_connected=10");
+        researchRequest=SupportLog_RequestSnapshot();
+        researchDeadline=GetTickCount64()+7000;
+        while(SupportLog_CompletedSnapshot()<researchRequest && GetTickCount64()<researchDeadline)Sleep(50);
+        Check(SupportLog_CompletedSnapshot()>=researchRequest);
+        const auto longEvidence=Read(path);
+        Check(longEvidence.find("HallJoy RedSquare analog gamepad trial v1;")!=std::string::npos);
+        Check(longEvidence.find("long_block 0 end")==std::string::npos);
+        Check(longEvidence.find("long_block 2499 end")!=std::string::npos);
+        Check(longEvidence.find("analog_end reason=0 final_off=1 final_off_ack=1")!=std::string::npos);
+        Check(longEvidence.find("analog_gamepad pub_while_connected=10")!=std::string::npos);
+        Check(SupportLog_RedSquareResearch("HallJoy RedSquare analog trace v2; exact Alumix104 only"));
+        Check(SupportLog_RedSquareResearch("trace_source ms=250 r=250 p=200 z=0 same=180"));
+        Check(SupportLog_RedSquareResearch("trace_final windows=1 slots=2 aa=0 other55=0 other_prefix=0"));
+        Await(path,"trace_final windows=1 slots=2");
+        researchRequest=SupportLog_RequestSnapshot();
+        researchDeadline=GetTickCount64()+7000;
+        while(SupportLog_CompletedSnapshot()<researchRequest && GetTickCount64()<researchDeadline)Sleep(50);
+        Check(SupportLog_CompletedSnapshot()>=researchRequest);
+        const auto traceEvidence=Read(path);
+        Check(traceEvidence.find("HallJoy RedSquare analog trace v2;")!=std::string::npos);
+        Check(traceEvidence.find("trace_source ms=250")!=std::string::npos);
+        Check(traceEvidence.find("trace_final windows=1")!=std::string::npos);
+        Check(traceEvidence.find("HallJoy RedSquare analog gamepad trial v1;")==std::string::npos);
+        Check(SupportLog_RedSquareResearch("HallJoy RedSquare unknown frame trace v1; exact Alumix104 only"));
+        Check(SupportLog_RedSquareResearch("trace_unknown_classes count=1 short_or_report_id=0"));
+        Check(SupportLog_RedSquareResearch("trace_unknown slot=1 reports=20 changed=3"));
+        Await(path,"trace_unknown slot=1 reports=20");
+        researchRequest=SupportLog_RequestSnapshot();
+        researchDeadline=GetTickCount64()+7000;
+        while(SupportLog_CompletedSnapshot()<researchRequest && GetTickCount64()<researchDeadline)Sleep(50);
+        Check(SupportLog_CompletedSnapshot()>=researchRequest);
+        const auto unknownEvidence=Read(path);
+        Check(unknownEvidence.find("HallJoy RedSquare unknown frame trace v1;")!=std::string::npos);
+        Check(unknownEvidence.find("raw_hid_payload=0")!=std::string::npos);
+        Check(unknownEvidence.find("trace_unknown slot=1 reports=20")!=std::string::npos);
+        Check(unknownEvidence.find("HallJoy RedSquare analog trace v2;")==std::string::npos);
+        Check(SupportLog_RedSquareResearch("HallJoy RedSquare unknown packet trace v2; exact Alumix104 only"));
+        Check(SupportLog_RedSquareResearch("unknown_packet id=1 slot=1 report_n=1 bytes=65 held_letters=2"));
+        const std::string rawLine="unknown_bytes id=1 hex="+std::string(130,'A');
+        Check(SupportLog_RedSquareResearch(rawLine.c_str()));
+        Await(path,"unknown_bytes id=1 hex=");
+        researchRequest=SupportLog_RequestSnapshot();
+        researchDeadline=GetTickCount64()+7000;
+        while(SupportLog_CompletedSnapshot()<researchRequest && GetTickCount64()<researchDeadline)Sleep(50);
+        Check(SupportLog_CompletedSnapshot()>=researchRequest);
+        const auto rawEvidence=Read(path);
+        Check(rawEvidence.find("HallJoy RedSquare unknown packet trace v2;")!=std::string::npos);
+        Check(rawEvidence.find("raw_hid_payload=1")!=std::string::npos);
+        Check(rawEvidence.find("unknown_packet id=1 slot=1")!=std::string::npos);
+        Check(rawEvidence.find(rawLine)!=std::string::npos);
+        Check(rawEvidence.find("HallJoy RedSquare unknown frame trace v1;")==std::string::npos);
+        Check(!SupportLog_RedSquareResearch("bad\tvalue"));
+        Check(SupportLog_Stop());
         // Real failed destination must report failure, not claim logging worked.
         enabled=true;
         Check(SupportLog_Start((directory+L"\\absent\\child").c_str()));

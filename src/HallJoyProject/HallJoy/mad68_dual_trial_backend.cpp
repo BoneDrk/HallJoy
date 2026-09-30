@@ -132,7 +132,10 @@ bool TimedIo(HANDLE handle, bool write, void* data, DWORD bytes, DWORD timeout, 
             const bool ok = operation.Finish(transferred, &error, false); if (!ok) SetLastError(error); return ok;
         }
         const DWORD waitError = wait == WAIT_TIMEOUT ? WAIT_TIMEOUT : GetLastError();
-        operation.CancelAndDrain(transferred, &error); SetLastError(waitError ? waitError : ERROR_GEN_FAILURE); return false;
+        DWORD drained = 0; operation.CancelAndDrain(&drained, &error);
+        // Keep a fragment that completed between the timeout and CancelIoEx.
+        if (error == ERROR_SUCCESS && drained != 0) { if (transferred) *transferred = drained; return true; }
+        SetLastError(waitError ? waitError : ERROR_GEN_FAILURE); return false;
     }
     const bool ok = operation.Finish(transferred, &error, false); if (!ok) SetLastError(error); return ok;
 }

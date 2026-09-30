@@ -6,6 +6,7 @@
 #include <windows.h>
 #include <process.h>
 #include "keychron_onboard_backend.h"
+#include "input_shortcuts_runtime.h"
 #include "keychron_onboard_channel.h"
 #include "keychron_onboard_host_profile.h"
 #include "native_analog_routing.h"
@@ -13,6 +14,7 @@
 #include "realtime_loop.h"
 #include "settings.h"
 #include "profile_runtime_gate.h"
+#include "support_log.h"
 #include "worker_exception_barrier.h"
 #include <atomic>
 #include <mutex>
@@ -24,6 +26,11 @@ Device chosen;
 std::mutex padMutex;
 std::array<uint8_t,20> padReport{};
 std::atomic<bool> reserved{false},present{false},connected{false},admitted{false},stopping{false};
+// Pause parks the session (native interface kept, no re-enumeration); process
+// exit must fully close so no idle controller outlives HallJoy.
+std::atomic<bool> parkOnStop{true},parkedSession{false};
+// Survives worker restarts: after resume only the changed profile bytes go out.
+CommittedProfile committedProfile;
 std::atomic<uint64_t> monitorUntil{0},updates{0},failures{0},lastFrame{0};
 std::atomic<unsigned> state{0},telemetryLevels{241};
 halljoy::physical_analog::Publication values;
@@ -37,18 +44,52 @@ void Bind() {
     values.Clear();
     for(unsigned i=0;i<HJO_SLOTS;++i) if(kSlotHid[i]) values.Bind(static_cast<uint8_t>(i+1),kSlotHid[i]);
 }
+// Why the onboard session could not claim the keyboard (support log only).
+enum class PrepareStage : unsigned { Claimed=0, NoDevice=1, Ambiguous=2, Open=3, Status=4, Capability=5, Routing=6 };
+PrepareStage TryPrepareOnce(Device& claimed) {
+    const auto devices=EnumerateDevices();
+    if(devices.empty()) return PrepareStage::NoDevice;
+    if(devices.size()!=1) return PrepareStage::Ambiguous;
+    WindowsChannel channel(devices[0]);
+    if(!channel.Connect()) return PrepareStage::Open;
+    Client client(channel);Packet reply{};
+    // The firmware drops a request while it is busy; one silent drop must not
+    // push the keyboard onto the fallback route for the whole session.
+    bool status=false;
+    for(unsigned attempt=0;attempt<3 && !status;++attempt) status=client.Status(reply);
+    if(!status) return PrepareStage::Status;
+    if(!(reply[17]&2)) return PrepareStage::Capability;
+    if(!NativeAnalogRouting_Claim(0x3434,0x0e40,devices[0].path.c_str(),NativeAnalogProtocol::KeychronOnboard))
+        return PrepareStage::Routing;
+    claimed=devices[0];
+    return PrepareStage::Claimed;
+}
 bool Prepare() {
     std::lock_guard<std::mutex> lock(service);
     if(thread) return reserved.load();
     reserved.store(false);present.store(false);chosen={};
-    const auto devices=EnumerateDevices();
-    if(devices.size()!=1) return false;
-    WindowsChannel channel(devices[0]);
-    if(!channel.Connect()) return false;
-    Client client(channel);Packet reply{};
-    if(!client.Status(reply) || !(reply[17]&2)) return false;
-    if(!NativeAnalogRouting_Claim(0x3434,0x0e40,devices[0].path.c_str(),NativeAnalogProtocol::KeychronOnboard)) return false;
-    chosen=devices[0];reserved.store(true);present.store(true);return true;
+    // Routing is decided once per engine generation, before UAP starts. After
+    // a previous session the K4 re-enumerates (native mode off) and its vendor
+    // interface can be briefly missing or still held. While the K4 is plugged
+    // in, wait a bounded time instead of falling back to UAP for the session.
+    const auto deadline=GetTickCount64()+3000;
+    PrepareStage stage=PrepareStage::NoDevice;
+    unsigned attempts=0;
+    Device claimed{};
+    for(;;) {
+        ++attempts;
+        stage=TryPrepareOnce(claimed);
+        if(stage==PrepareStage::Claimed || stage==PrepareStage::Capability || stage==PrepareStage::Routing) break;
+        if(GetTickCount64()>=deadline || !K4UsbDevicePresent()) break;
+        Sleep(100);
+    }
+    if(stage!=PrepareStage::Claimed) {
+        if(K4UsbDevicePresent() || stage!=PrepareStage::NoDevice)
+            SupportLog_Event("k4.onboard_prepare_failed",static_cast<unsigned>(stage),SupportLog_Data(attempts));
+        return false;
+    }
+    if(attempts>1) SupportLog_Event("k4.onboard_prepare_retried",attempts);
+    chosen=claimed;reserved.store(true);present.store(true);return true;
 }
 // Owned by the protocol worker: its join is covered by the registry's bounded
 // outer worker join. Windows gamepad reads never share the vendor HID channel.
@@ -92,8 +133,9 @@ unsigned Body() {
             Clear();state.store(1);
             if(!channel.Reconnect(0x1212)) {WaitForSingleObject(cancel,500);continue;}
         }
-        Client client(channel);Packet status{};
-        if(!client.Status(status) || status[3] || status[16]) {
+        Client client(channel,&committedProfile);Packet status{};
+        const auto parked=[&]{return status[3]==HJO_PARKED && status[16];};
+        if(!client.Status(status) || ((status[3] || status[16]) && !parked())) {
             // Never hijack an existing session. Its owner/watchdog must release it.
             Clear();state.store(1);WaitForSingleObject(cancel,500);continue;
         }
@@ -106,7 +148,9 @@ unsigned Body() {
             const auto now=GetTickCount64();
             const bool enabled=admitted.load() && Settings_GetVirtualGamepadsEnabled();
             if(!enabled && client.Active()) {
-                state.store(2);ClearPad();healthy=client.Close();
+                state.store(2);ClearPad();
+                if(client.SupportsPark()) {healthy=client.Park();parkedSession.store(true);}
+                else healthy=client.Close();
             }
             const auto revision=halljoy::profile_runtime::revision.load(std::memory_order_acquire);
             if(enabled && (now>=nextProfile || revision!=appliedRevision)) {
@@ -114,8 +158,12 @@ unsigned Body() {
                 const auto captured=CaptureProfile(profile);
                 if(captured!=ProfileResult::Busy) {nextProfile=now+100;appliedRevision=revision;}
                 if(captured==ProfileResult::Ready) {
+                    // Older firmware rejects unknown mapping flags; only send the
+                    // Alt/Tab passthrough to firmware that advertises it.
+                    if(!client.SupportsKeepAltTab()) profile.mapping.flags=static_cast<uint8_t>(profile.mapping.flags & ~HJO_KEEP_ALT_TAB);
                     state.store(client.Active()?4:3);
                     healthy=client.Active()?client.Update(profile):client.Open(profile);
+                    if(healthy) parkedSession.store(false);
                     if(healthy) state.store(4);
                 } else if(captured!=ProfileResult::Busy) {
                     if(client.Active()) {healthy=client.Close();ClearPad();}
@@ -124,7 +172,8 @@ unsigned Body() {
             }
             if(!healthy) break;
             healthy=client.KeepAlive();
-            if(healthy && now<monitorUntil.load()) {
+            const bool shortcutsNeedAnalog=halljoy::shortcuts::NeedsAnalog();
+            if(healthy && (now<monitorUntil.load() || shortcutsNeedAnalog)) {
                 std::array<uint16_t,HJO_SLOTS> depth{};
                 healthy=client.Depth(depth);
                 if(healthy) {
@@ -134,16 +183,22 @@ unsigned Body() {
                     lastFrame.store(stamp);updates.fetch_add(1);RealtimeLoop_NotifyInputChanged();
                 }
             }
-            // UI reads may run as quickly as transport permits. When hidden,
-            // only settings/lease work remains; no full matrix polling.
-            if(healthy && GetTickCount64()>=monitorUntil.load()) WaitForSingleObject(cancel,20);
+            // Hidden UI needs no matrix reads unless a configured shortcut
+            // still needs analog input. Pause/exit stop this worker entirely.
+            if(healthy && GetTickCount64()>=monitorUntil.load() && !shortcutsNeedAnalog) WaitForSingleObject(cancel,20);
         }
         Clear();
         if(!healthy) {failures.fetch_add(1);state.store(5);}
         // Cancel only the in-flight operation, then permit bounded orderly STOP.
         // stopping is a separate gate and prevents another activation.
         if(stopping.load()) ResetEvent(cancel);
-        (void)client.Close();
+        // The cancelled in-flight operation is not a device failure: Park
+        // itself falls back to the orderly STOP when the firmware refuses.
+        if(stopping.load() && parkOnStop.load() && client.SupportsPark()) {
+            const bool hadSession=client.Token()!=0;
+            if(client.Park() && hadSession) parkedSession.store(true);
+        }
+        else (void)client.Close();
         if(!stopping.load()) WaitForSingleObject(cancel,500);
     }
     state.store(0);return 0;
@@ -205,6 +260,19 @@ bool KeychronOnboard_CopyPad(std::uint8_t* destination,std::size_t size) noexcep
 std::uint64_t KeychronOnboard_MonitorGeneration() noexcept {return updates.load();}
 bool KeychronOnboard_OwnsOutput() noexcept {return reserved.load();}
 void KeychronOnboard_SetAdmission(bool on) noexcept {admitted.store(on);}
+void KeychronOnboard_SetParkOnStop(bool park) noexcept {parkOnStop.store(park);}
+void KeychronOnboard_ReleaseParked() noexcept {
+    parkOnStop.store(false);
+    if(!parkedSession.exchange(false)) return;
+    try {
+        const auto devices=EnumerateDevices();
+        if(devices.size()!=1) return;
+        WindowsChannel channel(devices[0]);
+        if(!channel.Connect()) return;
+        Client client(channel);
+        if(!client.ReleaseParked()) SupportLog_Event("k4.onboard_park_release_failed",1);
+    } catch(...) {}
+}
 void KeychronOnboard_MonitorVisible(bool visible) noexcept {if(visible) monitorUntil.store(GetTickCount64()+250);}
 const NativeAnalogBackendDescriptor& KeychronOnboard_GetNativeBackendDescriptor() {
     static const NativeAnalogBackendDescriptor d{kNativeAnalogBackendAbiVersion,sizeof(NativeAnalogBackendDescriptor),

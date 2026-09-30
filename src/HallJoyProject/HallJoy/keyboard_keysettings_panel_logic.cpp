@@ -257,8 +257,7 @@ static void ApplyToStorage_NoUndo(const KeyDeadzone& in)
         Settings_SetInputInvert(ks.invert);
         Settings_SetInputDeadzoneLow(ks.low);
         Settings_SetInputDeadzoneHigh(ks.high);
-        Settings_SetInputAntiDeadzone(ks.antiDeadzone);
-        Settings_SetInputOutputCap(ks.outputCap);
+        Settings_SetInputEndpoints(ks.antiDeadzone, ks.outputCap);
         Settings_SetInputBezierCp1X(ks.cp1_x);
         Settings_SetInputBezierCp1Y(ks.cp1_y);
         Settings_SetInputBezierCp2X(ks.cp2_x);

@@ -68,6 +68,7 @@ static const wchar_t* FrozenSupportTitle() {
     if(CommunicationWarningVisible())return L"Keyboard communication is unstable";
     using namespace halljoy::keyboard_support;
     switch(GetStatusSnapshot().frozenModels) {
+    case Alumix104Research: return L"Alumix 104 Yotei: исследование аналога";
     case FamilyCandidate: return L"Keyboard support is unverified";
     case NA87: return L"IROK NA87: testing incomplete";
     case NA87Pro: return L"IROK NA87 Pro: support frozen";
@@ -97,6 +98,8 @@ static const wchar_t* FrozenSupportBody() {
     if(Mad68LimitedVisible()) return L"This firmware has no suitable analog protocol. This is the best available method: shallow input is lost, small changes are delayed, and normal typing is blocked. Exit HallJoy to restore typing.";
     if(CommunicationWarningVisible())return L"Another app may be interfering. Close keyboard configuration apps and browser configurator tabs, then try again. Keep software required for analog input running. If this continues, check the USB connection.";
     const auto models=halljoy::keyboard_support::GetStatusSnapshot().frozenModels;
+    if(models==halljoy::keyboard_support::Alumix104Research)
+        return L"Клавиатура обнаружена. Аналоговый ввод пока не подтверждён. Нажимайте тестовые буквы; когда заголовок окна попросит лог, закройте HallJoy и отправьте HallJoy.log.";
     if(models==halljoy::keyboard_support::TartarusPro)
         return L"Support is enabled; hardware testing is incomplete. Keep Razer Synapse running. HallJoy uses factory key positions; Synapse remaps are not imported.";
     if(models==halljoy::keyboard_support::NuPhy)

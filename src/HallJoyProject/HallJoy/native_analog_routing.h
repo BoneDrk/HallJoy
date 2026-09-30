@@ -31,6 +31,7 @@ enum class NativeAnalogProtocol : std::uint8_t
     SteelSeriesApex = 25,
     Mad68DualTrial = 26,
     MchoseMix87 = 27,
+    Alumix104Yotei = 28,
     Simulator = 250,
 };
 

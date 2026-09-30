@@ -35,10 +35,12 @@
 #include <ViGEm/Client.h>
 
 #include "backend.h"
+#include "alumix104_backend.h"
 #include "native_layout_devices.h"
 #include "analog_key_codes.h"
 #include "bindings.h"
 #include "settings.h"
+#include "input_shortcuts_runtime.h"
 #include "debug_log.h"
 #include "diagnostic_rate_limit.h"
 #include "stability_trace.h"
@@ -62,6 +64,7 @@
 #include "saturating_int.h"
 #include "vigem_output_scheduler.h"
 #include "vigem_output_runtime.h"
+#include "native_hotplug_worker.h"
 #if defined(HALLJOY_ANALOG_SIMULATOR)
 #include "analog_simulator_backend.h"
 #endif
@@ -1210,6 +1213,10 @@ static void RefreshVigemOutputStatus(bool requestNewestOnGeneration) noexcept
     g_vigemLastErr.store(ready ? VIGEM_ERROR_NONE : OutputStatusError(status),
         std::memory_order_release);
 
+    // Only the supervisor consumes the generation edge. A status reader must not
+    // swallow it, or the newest held report is not resubmitted to a new child.
+    if (!requestNewestOnGeneration)
+        return;
     const std::uint64_t previous = g_vigemObservedGeneration.exchange(
         status.activeGeneration, std::memory_order_acq_rel);
     if (requestNewestOnGeneration && status.ready &&
@@ -2925,6 +2932,8 @@ bool Backend_Shutdown()
 {
     StabilityTrace_Write(L"INFO", L"backend", L"shutdown.begin");
     DebugLog_Write(L"[backend] shutdown");
+    // A K4 parked by pause must not keep an idle controller after exit.
+    KeychronOnboard_ReleaseParked();
 #if defined(HALLJOY_TITAN68_TURBO_DIAGNOSTIC) || defined(HALLJOY_ROG_AZOTH96HE_DIAGNOSTIC)
     const bool nativeStopped = NativeAnalogBackends_StopPhase(NativeAnalogStartPhase::BeforeUap);
     StabilityTrace_Write(nativeStopped ? L"INFO" : L"ERROR", L"backend", L"shutdown.end",
@@ -3086,6 +3095,7 @@ void Backend_Tick()
         if(frame==seenFrame && curve==seenCurve) return;
         seenFrame=frame;seenCurve=curve;
         const auto& source=KeychronOnboard_GetNativeBackendDescriptor();
+        halljoy::shortcuts::Analog([&](unsigned hid){return source.getMilli(static_cast<uint16_t>(hid));});
         const auto tracked=g_trackingSnapshot.load(std::memory_order_acquire);
         uint16_t maxRaw=0,maxOut=0;
         bool previewChanged=false;
@@ -3155,8 +3165,7 @@ void Backend_Tick()
         g_lastWootingStateLogMs.store(nowMs, std::memory_order_relaxed);
         LogWootingStateSnapshot(L"tick_heartbeat");
     }
-    SparkTickHotplug(nowMs);
-    SayoTickHotplug(nowMs);
+    // SparkLink/Sayo hotplug discovery runs on their own background workers.
 
     HidCache cache;
     cache.sparkConnected = g_sparkConnected.load(std::memory_order_acquire);
@@ -3328,6 +3337,9 @@ void Backend_Tick()
     uint16_t maxRawHid = 0;
     uint16_t maxOutHid = 0;
 
+    // Command shortcuts (Block toggle, Pause/Resume) also see analog presses,
+    // so keys whose digital event is blocked still work as shortcuts.
+    halljoy::shortcuts::Analog([&](unsigned hid){return static_cast<unsigned>(std::clamp(std::lround(ReadRaw01Cached(static_cast<uint16_t>(hid),cache)*1000.f),0l,1000l));});
     const auto inputEvidenceTime = GetTickCount64();
     // UI snapshot update
     for (int i = 0; i < cnt; ++i)
@@ -3635,6 +3647,21 @@ void Backend_Tick()
         // deduplicated snapshot path and its bounded slot contention.
         (void)g_vigemOutputRuntime.PublishProducerProgress(nowMs);
 
+        if (Alumix104_TrialConnected())
+        {
+            unsigned nonneutralPadMask = 0;
+            for (std::uint32_t pad = 0; pad < outputCount; ++pad)
+            {
+                const auto& report = outputReports[pad];
+                if (report.buttons || report.leftTrigger ||
+                    report.rightTrigger || report.thumbLX || report.thumbLY ||
+                    report.thumbRX || report.thumbRY)
+                    nonneutralPadMask |= 1u << pad;
+            }
+            Alumix104_ObserveGamepadCandidate(
+                nonneutralPadMask, hasChangedCandidate, publishDue);
+        }
+
         if (publishDue)
         {
             // A newest-value slot may replace an older ready slot. Marking the
@@ -3645,6 +3672,20 @@ void Backend_Tick()
             const auto publishResult = g_vigemOutputRuntime.TryPublish(
                 outputReports.data(), outputCount, validMask,
                 BackendQpcTimestampUs(publishQpc), &publicationSequence);
+            if (Alumix104_TrialConnected())
+            {
+                bool nonneutral = false;
+                for (std::uint32_t pad = 0; pad < outputCount; ++pad)
+                {
+                    const auto& report = outputReports[pad];
+                    nonneutral = nonneutral || report.buttons || report.leftTrigger ||
+                        report.rightTrigger || report.thumbLX || report.thumbLY ||
+                        report.thumbRX || report.thumbRY;
+                }
+                Alumix104_ObserveGamepadPublish(
+                    publishResult == halljoy::vigem_output::OutputPublishResult::Published,
+                    nonneutral);
+            }
 #if defined(HALLJOY_INPUT_PATH_DIAGNOSTIC)
             const bool diagnosticPublished = publishResult == halljoy::vigem_output::OutputPublishResult::Published;
             halljoy::input_path::Add(Settings_GetBlockBoundKeys(), diagnosticPublished ?
@@ -3834,8 +3875,12 @@ uint16_t BackendUI_GetRawMilli(uint16_t hid)
     return g_uiRawM[hid].load(std::memory_order_relaxed);
 }
 
-void BackendUI_SetBindCapture(bool enable)
+void BackendUI_SetBindCapture(bool enable, bool waitForRelease)
 {
+    if(enable && waitForRelease) {
+        g_bindCapturedPacked.store(0,std::memory_order_release);
+        g_bindHadDown.store(true,std::memory_order_release);
+    }
     g_bindCaptureEnabled.store(enable, std::memory_order_release);
     if (!enable)
     {
@@ -4058,6 +4103,7 @@ static void CollectAnalogTelemetry(BackendAnalogTelemetry* out, bool diagnostic)
         t.pluginHostLastError = host.lastError;
         t.pluginHostTransportError = host.transportError;
         t.pluginHostRestartCount = host.restartCount;
+        t.pluginHostUnplannedRestartCount = host.unplannedRestartCount;
         t.pluginHostInvalidSnapshots = host.invalidSnapshotCount;
         t.pluginHostActiveKeys = host.activeKeyCount;
         t.pluginHostDenseDeviceCount = host.denseDeviceCount;
@@ -4576,7 +4622,7 @@ const NativeAnalogBackendDescriptor& BackendNative_GetSayoDescriptor()
         nullptr,
         &SayoStartService,
         [](halljoy::lifecycle::GenerationId generation) {
-            const auto stopped = SayoStop();
+            const auto stopped = SayoStopService();
             if (stopped.RestartSafe())
                 return NativeAnalogBackendStopJoined(generation);
             const auto reason = stopped.error.code == halljoy::lifecycle::LifecycleErrorCode::None

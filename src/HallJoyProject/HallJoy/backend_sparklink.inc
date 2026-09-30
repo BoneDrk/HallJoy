@@ -167,7 +167,10 @@ static uint64_t SparkNowUs()
 
     LARGE_INTEGER now{};
     QueryPerformanceCounter(&now);
-    return (uint64_t)((now.QuadPart * 1000000ll) / freq.QuadPart);
+    // Divide first: counter * 1e6 overflows after days of uptime.
+    const uint64_t ticks = (uint64_t)now.QuadPart;
+    const uint64_t frequency = (uint64_t)std::max<LONGLONG>(freq.QuadPart, 1);
+    return (ticks / frequency) * 1000000ull + ((ticks % frequency) * 1000000ull) / frequency;
 }
 
 static void SparkAtomicMax(std::atomic<uint32_t>& target, uint32_t value)
@@ -905,7 +908,12 @@ static void SparkDiscoverLayout()
     for (uint8_t row = 0; row < (uint8_t)kSparkMaxRows; ++row)
     {
         std::array<uint16_t, kSparkColsPerRow> codes{};
-        if (!SparkQueryLayoutRow(row, codes))
+        // One transient timeout right after connect must not truncate the
+        // layout for the whole session; a genuinely absent row still ends it.
+        bool rowRead = false;
+        for (int attempt = 0; attempt < 3 && !rowRead; ++attempt)
+            rowRead = SparkQueryLayoutRow(row, codes);
+        if (!rowRead)
             break;
 
         bool rowHasAny = false;
@@ -1794,6 +1802,12 @@ static bool SparkStart()
     return true;
 }
 
+static void SparkTickHotplug(ULONGLONG);
+// Discovery/probe/restart run here, never on the realtime output thread.
+static halljoy::native_hotplug::Worker g_sparkHotplugWorker;
+static constexpr DWORD kSparkHotplugPeriodMs = 100;
+static constexpr DWORD kSparkHotplugJoinTimeoutMs = 5000;
+
 static bool SparkStartService()
 {
     // The registry owns the long-lived hotplug service, not only the first HID
@@ -1810,6 +1824,9 @@ static bool SparkStartService()
         g_sparkServiceRunning.store(false, std::memory_order_release);
         return false;
     }
+    if (!g_sparkHotplugWorker.Start(&SparkTickHotplug, kSparkHotplugPeriodMs))
+        StabilityTrace_WriteCritical(L"ERROR", L"spark", L"hotplug_worker.start_failed",
+            L"win32=%lu reconnect_disabled=1", GetLastError());
     StabilityTrace_Write(L"INFO", L"spark", L"service.start");
     return true;
 }
@@ -1852,6 +1869,11 @@ static halljoy::lifecycle::StopResult SparkStopService()
     StabilityTrace_Write(L"INFO", L"spark", L"service.stop.begin",
         L"was_running=%d reconnect_blocked=1", wasRunning ? 1 : 0);
 
+    // Join hotplug before the poller stop so a concurrent SparkStart() cannot
+    // hold the lifecycle lock. On timeout SparkStop() reports the poisoned state.
+    if (!g_sparkHotplugWorker.Stop(kSparkHotplugJoinTimeoutMs))
+        StabilityTrace_WriteCritical(L"ERROR", L"spark", L"hotplug_worker.stop_timeout",
+            L"wait_ms=%lu worker_retained=1", kSparkHotplugJoinTimeoutMs);
     const auto stopped = SparkStop();
 #if defined(HALLJOY_ANALOG_SIMULATOR)
     const wchar_t* commandLine = GetCommandLineW();

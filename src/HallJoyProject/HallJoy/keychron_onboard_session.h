@@ -9,8 +9,15 @@
 #define HJO_LEASE_MS 500u
 #define HJO_HEARTBEAT_MS 100u
 #define HJO_ARM_LEASE_MS 5000u
+// r8 PARKED: native descriptor kept, pad neutral, no suppression. Lets HallJoy
+// pause/resume without re-enumerating the whole keyboard. Expires so a host
+// that disappeared while parked cannot leave the controller interface forever.
+#define HJO_PARK_LEASE_MS (30u * 60u * 1000u)
+// Status byte17 capabilities added in r8.
+#define HJO_CAP_DELTA_UPLOAD 64u  // A9/72 byte8=1: keep committed staging, send changed chunks
+#define HJO_CAP_PARK 128u         // A9/77 byte8=1: PARK instead of STOP
 
-typedef enum hjo_phase { HJO_OFF, HJO_ARMED, HJO_ACTIVE } hjo_phase;
+typedef enum hjo_phase { HJO_OFF, HJO_ARMED, HJO_ACTIVE, HJO_PARKED } hjo_phase;
 typedef struct hjo_session {
     uint32_t generation;
     uint32_t sequence;
@@ -30,7 +37,8 @@ static inline void hjo_stop(hjo_session *s) {
 // handles timer wrap; the caller must run at least once per 2^32 ms.
 static inline void hjo_tick(hjo_session *s, uint32_t now_ms) {
     if (s->phase != HJO_OFF && (uint32_t)(now_ms - s->refreshed_ms) >=
-        (s->phase == HJO_ARMED ? HJO_ARM_LEASE_MS : HJO_LEASE_MS))
+        (s->phase == HJO_ARMED ? HJO_ARM_LEASE_MS :
+         s->phase == HJO_PARKED ? HJO_PARK_LEASE_MS : HJO_LEASE_MS))
         hjo_stop(s);
 }
 
@@ -39,7 +47,9 @@ static inline void hjo_tick(hjo_session *s, uint32_t now_ms) {
 // reset within this boot. A boot has a new USB connection, never old packets.
 static inline uint32_t hjo_open(hjo_session *s, uint32_t now_ms) {
     hjo_tick(s, now_ms);
-    if (s->phase != HJO_OFF || s->neutral_pending || s->generation == UINT32_MAX)
+    // PARKED has no owner: any host may reopen it (no mode change needed).
+    if ((s->phase != HJO_OFF && s->phase != HJO_PARKED) || s->neutral_pending ||
+        s->generation == UINT32_MAX)
         return 0;
     ++s->generation;
     s->sequence = 0;
@@ -82,11 +92,23 @@ static inline int hjo_host_stop(hjo_session *s, uint32_t generation) {
     return 1;
 }
 
+// PARK: the owner releases the lease but keeps the native descriptor. Only the
+// current generation may park; an active pad is neutralised first.
+static inline int hjo_host_park(hjo_session *s, uint32_t generation, uint32_t now_ms) {
+    hjo_tick(s, now_ms);
+    if (!generation || generation != s->generation ||
+        (s->phase != HJO_ACTIVE && s->phase != HJO_ARMED)) return 0;
+    if (s->phase == HJO_ACTIVE) s->neutral_pending = 1;
+    s->phase = HJO_PARKED;
+    s->refreshed_ms = now_ms;
+    return 1;
+}
+
 // Call only after successful neutral transmission. A full USB queue is not an
 // acknowledgement. While pending, adapter replaces all queued gamepad data with
 // neutral; it must not emit a previously queued active report afterwards.
 static inline void hjo_neutral_delivered(hjo_session *s) {
-    if (s->phase == HJO_OFF) s->neutral_pending = 0;
+    if (s->phase == HJO_OFF || s->phase == HJO_PARKED) s->neutral_pending = 0;
 }
 
 // Physical disconnection/reset releases host state; no packet can be delivered.

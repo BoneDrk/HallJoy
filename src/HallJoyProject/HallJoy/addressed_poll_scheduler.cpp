@@ -52,6 +52,18 @@ void PollScheduler::SetBound(std::uint16_t hidUsage, bool bound)
     }
 }
 
+void PollScheduler::OnQueried(std::uint8_t keyId, std::uint64_t nowUs)
+{
+    for (std::size_t i = 0; i < count_; ++i)
+    {
+        auto& key = keys_[i];
+        if (key.config.keyId != keyId) continue;
+        key.lastPollUs = nowUs;
+        key.initialised = true;
+        return;
+    }
+}
+
 void PollScheduler::OnSample(
     std::uint8_t keyId,
     std::uint16_t raw,
@@ -233,14 +245,21 @@ bool PollScheduler::Add(PollPlan& plan, int index, std::uint64_t nowUs)
     return true;
 }
 
-PollPlan PollScheduler::BuildPlan(std::uint64_t nowUs)
+PollPlan PollScheduler::BuildPlan(std::uint64_t nowUs, std::size_t capacity)
 {
     PollPlan plan{};
+    capacity = std::min(capacity, kMaxKeysPerPacket);
+    if (!capacity) return plan;
     for (std::size_t i = 0; i < count_; ++i) keys_[i].selected = false;
 
-    // Initialise every physical position once. This takes as many packets as the discovered profile needs
-    // and avoids publishing unknown/stale values after connect or reconnect.
-    for (std::size_t i = 0; i < count_ && plan.count < kMaxKeysPerPacket; ++i)
+    // Bound positions are sampled first on a fresh connection; all remaining
+    // positions still receive one initial sample before steady-state scheduling.
+    for (std::size_t i = 0; i < count_ && plan.count < capacity; ++i)
+    {
+        if (keys_[i].bound && !keys_[i].initialised)
+            Add(plan, static_cast<int>(i), nowUs);
+    }
+    for (std::size_t i = 0; i < count_ && plan.count < capacity; ++i)
     {
         if (!keys_[i].initialised)
             Add(plan, static_cast<int>(i), nowUs);
@@ -250,7 +269,7 @@ PollPlan PollScheduler::BuildPlan(std::uint64_t nowUs)
     // Two background slots per packet sustain about 20 Hz over the complete
     // 82-key matrix at ~850 packets/s. They are reserved before high-priority
     // work so any number of binds can never starve matrix discovery.
-    for (std::size_t i = 0; i < kBackgroundSlotsPerPacket; ++i)
+    for (std::size_t i = 0; i < kBackgroundSlotsPerPacket && plan.count < capacity; ++i)
     {
         if (!Add(plan, FindBestClass(PollClass::Background, nowUs), nowUs)) break;
     }
@@ -262,7 +281,7 @@ PollPlan PollScheduler::BuildPlan(std::uint64_t nowUs)
     std::size_t liveReserve = 0;
     if (liveCount != 0)
         liveReserve = 1 + std::min<std::size_t>(1, (liveCount - 1) / 9);
-    for (std::size_t i = 0; i < liveReserve && plan.count < kMaxKeysPerPacket; ++i)
+    for (std::size_t i = 0; i < liveReserve && plan.count < capacity; ++i)
     {
         if (!Add(plan, FindBestLive(nowUs), nowUs)) break;
     }
@@ -270,13 +289,13 @@ PollPlan PollScheduler::BuildPlan(std::uint64_t nowUs)
     // Fill the remaining high-priority capacity by weighted earliest-deadline
     // selection. Bound keys have the shortest target interval and highest
     // weight, while old active/recent keys can still overtake them before stale.
-    while (plan.count < kMaxKeysPerPacket)
+    while (plan.count < capacity)
     {
         if (!Add(plan, FindBestPriority(nowUs), nowUs)) break;
     }
 
     // Empty high-priority capacity is lent to the background sweep.
-    while (plan.count < kMaxKeysPerPacket)
+    while (plan.count < capacity)
     {
         if (!Add(plan, FindBestClass(PollClass::Background, nowUs), nowUs)) break;
     }

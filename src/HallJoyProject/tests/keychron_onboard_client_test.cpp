@@ -14,7 +14,8 @@ struct Fake : Channel {
     std::array<uint8_t,HJK4_COMPACT_BYTES> compact{};
     hjo_session session{};
     unsigned heartbeats=0,commits=0,maxHeartbeatGap=0,lastHeartbeat=0;
-    bool native=false,ready=false;
+    bool native=false,ready=false,r8=true,stagingCommitted=false;
+    unsigned chunks=0,reconnects=0,deltaRefusals=0;
     uint32_t crc=0,scan=0;
     std::array<uint8_t,HJO_PROFILE_BYTES> upload{};
     std::array<uint8_t,HJK4_FRAME_BYTES> frame{};
@@ -26,15 +27,20 @@ struct Fake : Channel {
         switch(q[1]) {
         case 0x70: case 0x7A: break;
         case 0x7E: if(!repeatScan)++scan;sparseCursor=0;nextPage=0;FillSparse(r);return true;
-        case 0x71: if(!hjo_open(&session,static_cast<uint32_t>(now))) status=1; else native=true; break;
-        case 0x72: upload.fill(0); break;
+        case 0x71: if(!hjo_open(&session,static_cast<uint32_t>(now))) status=1; else {native=true;ready=false;} break;
+        case 0x72:
+            if(q[8]==1) {
+                if(!r8 || !stagingCommitted || hjk4_u32(q.data()+12)!=crc) {status=2;++deltaRefusals;}
+                else stagingCommitted=false;
+            } else {upload.fill(0);stagingCommitted=false;}
+            break;
         case 0x73: {
             auto offset=hjk4_u16(q.data()+8); assert(offset+q[10]<=upload.size());
-            std::memcpy(upload.data()+offset,q.data()+11,q[10]); break;
+            std::memcpy(upload.data()+offset,q.data()+11,q[10]); ++chunks; break;
         }
         case 0x74: {
             hjo_profile p{}; if(!hjo_profile_decode(&p,upload.data(),upload.size())) status=3;
-            else {ready=true; crc=hjk4_u32(upload.data()+5040); ++commits;} break;
+            else {ready=true; crc=hjk4_u32(upload.data()+5040); ++commits; stagingCommitted=true;} break;
         }
         case 0x75:
             if(!hjo_start(&session,token,hjk4_u32(q.data()+8),static_cast<uint32_t>(now))) status=4;
@@ -43,7 +49,10 @@ struct Fake : Channel {
             if(!hjo_heartbeat(&session,token,hjk4_u32(q.data()+8),static_cast<uint32_t>(now))) status=4;
             maxHeartbeatGap=std::max(maxHeartbeatGap,static_cast<unsigned>(now)-lastHeartbeat);
             lastHeartbeat=static_cast<unsigned>(now); ++heartbeats; break;
-        case 0x77: if(!hjo_host_stop(&session,token)) status=4; else native=false; break;
+        case 0x77:
+            if(q[8]==1 && r8) {if(!hjo_host_park(&session,token,static_cast<uint32_t>(now))) status=4; else hjo_neutral_delivered(&session);}
+            else if(!hjo_host_stop(&session,token)) status=4; else native=false;
+            break;
         case 0x7B: {
             uint8_t travel[114]{};travel[40]=120;
             hjk4_compact_encode(compact.data(),session.generation?session.generation:1,++scan,2345,HJK4_CALIBRATED,travel);
@@ -65,7 +74,8 @@ struct Fake : Channel {
             if(corruptPage) r[10]^=1;
         } else {
             std::memcpy(r.data()+8,"HJO1",4); hjk4_put32(r.data()+12,crc);
-            r[16]=native; r[17]=static_cast<uint8_t>(ready)|(burstSupported?4:0)|(sparseSupported?16:0); hjk4_put16(r.data()+18,HJO_PROFILE_BYTES);
+            r[16]=native; r[17]=static_cast<uint8_t>(static_cast<uint8_t>(ready)|(burstSupported?4:0)|(sparseSupported?16:0)|
+                (r8?HJO_CAP_DELTA_UPLOAD|HJO_CAP_PARK:0)); hjk4_put16(r.data()+18,HJO_PROFILE_BYTES);
         }
         return true;
     }
@@ -90,7 +100,7 @@ struct Fake : Channel {
         if(sparseSupported){if(sparseCursor>=HJO_SLOTS)return false;FillSparse(r);return true;}
         if(nextPage>=6)return false;FillBurst(r);return true;
     }
-    bool Reconnect(uint16_t revision) override {now+=1000; hjo_tick(&session,static_cast<uint32_t>(now)); return native==(revision==0x1213);}
+    bool Reconnect(uint16_t revision) override {++reconnects;now+=1000; hjo_tick(&session,static_cast<uint32_t>(now)); return native==(revision==0x1213);}
     uint64_t NowMs() const override {return now;}
     bool Cancelled() const override {return cancel;}
 };
@@ -101,7 +111,31 @@ hjo_profile Profile() {
     return p;
 }
 int main() {
-    auto p=Profile(); Fake f; Client c(f);
+    {
+        // r8: toggling one mapping flag sends one chunk; pause parks without
+        // re-enumeration; resume reopens and sends only what changed.
+        auto p=Profile(); Fake f; CommittedProfile shared; Client c(f,&shared);
+        assert(c.Open(p) && f.chunks==241 && f.reconnects==1);
+        f.chunks=0; p.mapping.flags=HJO_SUPPRESS;
+        assert(c.Update(p) && f.chunks==2 && f.commits==2 && f.deltaRefusals==0); // flag chunk + CRC chunk
+        assert(c.Park() && !c.Active() && f.session.phase==HJO_PARKED && f.native && f.reconnects==1);
+        Client resumed(f,&shared); f.chunks=0;
+        assert(resumed.Open(p) && resumed.Active() && f.reconnects==1 && f.chunks==0 && f.commits==3);
+        p.mapping.flags=0; f.chunks=0;
+        assert(resumed.Update(p) && f.chunks==2);
+        assert(resumed.Park());
+        Client exiting(f); assert(exiting.ReleaseParked() && f.session.phase==HJO_OFF);
+        Client idle(f); assert(idle.ReleaseParked()); // nothing parked: no-op
+        // A delta against a base the firmware does not hold falls back to full.
+        Fake g; CommittedProfile stale; Client d(g,&stale);
+        assert(d.Open(p)); stale.crc^=1; f.chunks=0; g.chunks=0; p.mapping.flags=HJO_SNAP;
+        assert(d.Update(p) && g.deltaRefusals==1 && g.chunks==241);
+        // Firmware without r8 capabilities: full uploads, Park is an orderly STOP.
+        Fake old; old.r8=false; Client o(old);
+        assert(o.Open(p) && o.Update(Profile()) && old.chunks==482 && old.deltaRefusals==0);
+        assert(o.Park() && old.session.phase==HJO_OFF && !old.native);
+    }
+    auto p=Profile(); Fake f; f.r8=false; Client c(f); // full uploads: long-transfer lease case
     Packet capability{};assert(c.Status(capability));
     std::array<uint16_t,114> depth{};
     assert(c.Depth(depth) && depth[40]==32767); // idle monitor needs no gamepad

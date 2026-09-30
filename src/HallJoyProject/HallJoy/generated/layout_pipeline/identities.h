@@ -23,6 +23,7 @@ inline constexpr Entry entries[] = {
     {"irok-mg75-pro", "JT1-K", 0x7F3CD2457922F0A4ull, L"IROK NA87 Pro ANSI"},
     {"irok-mg75-pro", "JT1-WE", 0xF4C8824DF8798D1Aull, L"IROK ND63 ANSI"},
     {"irok-mg75-pro", "JT1-WE-CYAN", 0xF4C8824DF8798D1Aull, L"IROK ND63 ANSI"},
+    {"hex80", "MAD68HEV2-1125", 0xB8C12467F6B682BCull, L"MADLIONS MAD68HE ANSI"},
     {"hex80", "HEX80-ANSI", 0xC93945C2B6C8C51Dull, L"ATK Hex80 ANSI"},
     {"ipi-addressed", "110000000040", 0x798EDA38A47F0E95ull, L"IPI Aurora75 PRO ANSI"},
     {"ipi-addressed", "110000000006", 0x36A3739BD6AEEEF8ull, L"IPI flash68 ANSI"},

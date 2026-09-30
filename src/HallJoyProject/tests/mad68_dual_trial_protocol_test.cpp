@@ -5,12 +5,8 @@
 using namespace halljoy::mad68_dual_trial;
 int main() {
     using namespace halljoy::keyboard_support;
-#ifdef HALLJOY_MAD68_DUAL_TRIAL
     assert(ClassifyFrozen(0x28e9,0x3265,L"")==Mad68DualLimited);
     assert(!(ImplementedModels & Mad68DualLimited));
-#else
-    assert(ClassifyFrozen(0x28e9,0x3265,L"")==0);
-#endif
     assert(ClassifyFrozen(0x28e9,0x31fd,L"")==0);
     auto on=Command(0x36,0,1,1), off=Command(0x36,0,1,0);
     assert(on[0]==6 && on[5]==0x38 && on[8]==1);

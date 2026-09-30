@@ -25,6 +25,7 @@
 #include "bounded_ini.h"
 #include "profile_ini.h"
 #include "profile_runtime_gate.h"
+#include "keyboard_scan_hid.h"
 
 static float ClampF(float v, float lo, float hi)
 {
@@ -398,9 +399,19 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
             (!text.empty() && !halljoy::ini::Unsigned(text, 1, diagnosticLogging))) return false;
         if (!halljoy::ini::Read(path, L"Main", L"BlockKeysAllowAltTab", text) ||
             (!text.empty() && !halljoy::ini::Unsigned(text, 1, blockAllowAltTab))) return false;
-        if (!halljoy::ini::Read(path, L"Main", L"BlockKeysHotkey", text) ||
-            (!text.empty() && !halljoy::ini::Unsigned(text, 4095, blockHotkey)) ||
-            !halljoy::block_keys::ValidShortcut(blockHotkey)) return false;
+        // Current format: HID key + modifiers. The legacy virtual-key chord is
+        // converted once so an existing shortcut keeps working after update.
+        if (!halljoy::ini::Read(path, L"Main", L"BlockKeysShortcut", text)) return false;
+        if (!text.empty()) {
+            if (!halljoy::ini::Unsigned(text, 4095, blockHotkey) ||
+                !halljoy::shortcuts::Valid(blockHotkey)) return false;
+        } else {
+            std::uint32_t legacy = 0;
+            if (!halljoy::ini::Read(path, L"Main", L"BlockKeysHotkey", text) ||
+                (!text.empty() && !halljoy::ini::Unsigned(text, 4095, legacy)) ||
+                !halljoy::block_keys::ValidShortcut(legacy)) return false;
+            blockHotkey = ShortcutFromLegacyVkChord(legacy);
+        }
     }
 
     // For profile loading, never inherit current runtime values for missing keys.
@@ -553,6 +564,8 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     int winY = std::numeric_limits<int>::min();
     int winVersion = 0, winDpi = 0, winMaximized = 0;
     bool minimizeToTray = false, closeToTray = false;
+    unsigned pauseShortcuts[3]{};
+    bool pauseSeparate = false;
     if (loadWindow)
     {
         winW = IniReadI32(L"Window", L"Width", Settings_GetMainWindowWidthPx(), path);
@@ -562,6 +575,24 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
         winVersion = IniReadI32(L"Window", L"PlacementVersion", 0, path);
         winDpi = IniReadI32(L"Window", L"Dpi", 0, path);
         winMaximized = IniReadI32(L"Window", L"Maximized", 0, path);
+        // Current format: one packed shortcut per slot. The legacy value held
+        // three single keys (8 bits each) plus the separate-mode flag (bit 24).
+        static const wchar_t* const kPauseKeys[3] = {L"PauseShortcutToggle", L"PauseShortcutPause", L"PauseShortcutResume"};
+        if (IniReadI32(L"Window", kPauseKeys[0], -1, path) >= 0) {
+            for (unsigned i = 0; i < 3; ++i) {
+                const int value = IniReadI32(L"Window", kPauseKeys[i], 0, path);
+                pauseShortcuts[i] = value > 0 && halljoy::shortcuts::Valid(static_cast<unsigned>(value))
+                    ? static_cast<unsigned>(value) : 0u;
+            }
+            pauseSeparate = IniReadI32(L"Window", L"PauseSeparate", 0, path) == 1;
+        } else {
+            const unsigned legacy = static_cast<unsigned>(IniReadI32(L"Window", L"PauseHotkeys", 0, path));
+            for (unsigned i = 0; i < 3; ++i) {
+                const unsigned key = (legacy >> (8 * i)) & 255u;
+                pauseShortcuts[i] = halljoy::shortcuts::ValidKey(key) ? key : 0u;
+            }
+            pauseSeparate = (legacy & (1u << 24)) != 0;
+        }
         minimizeToTray = IniReadI32(L"Window", L"MinimizeToTray", 0, path) == 1;
         closeToTray = IniReadI32(L"Window", L"CloseToTray", 0, path) == 1;
     }
@@ -570,8 +601,7 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     Settings_SetInputDeadzoneLow(low);
     Settings_SetInputDeadzoneHigh(high);
 
-    Settings_SetInputAntiDeadzone(adz);
-    Settings_SetInputOutputCap(cap);
+    Settings_SetInputEndpoints(adz, cap);
 
     Settings_SetInputBezierCp1X(c1x);
     Settings_SetInputBezierCp1Y(c1y);
@@ -636,6 +666,8 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
         Settings_SetMainWindowPosXPx(winX);
         Settings_SetMainWindowPosYPx(winY);
         Settings_SetMainWindowPlacementMeta(winVersion, winDpi, winMaximized == 1);
+        for (unsigned i = 0; i < 3; ++i) Settings_SetPauseShortcut(i, pauseShortcuts[i]);
+        Settings_SetPauseSeparate(pauseSeparate);
         Settings_SetMinimizeToTray(minimizeToTray);
         Settings_SetCloseToTray(closeToTray);
     }
@@ -676,7 +708,13 @@ bool SettingsIni_LoadProfile(const wchar_t* path)
 // Curve presets are stored separately by KeyboardProfiles (CurvePresets folder).
 static bool SettingsIni_WriteWindow(const wchar_t* tmpPath)
 {
-    bool ok = IniWriteI32(L"Window", L"Width", Settings_GetMainWindowWidthPx(), tmpPath);
+    bool ok = IniWriteI32(L"Window", L"PauseShortcutToggle", static_cast<int>(Settings_GetPauseShortcut(0)), tmpPath);
+    ok &= IniWriteI32(L"Window", L"PauseShortcutPause", static_cast<int>(Settings_GetPauseShortcut(1)), tmpPath);
+    ok &= IniWriteI32(L"Window", L"PauseShortcutResume", static_cast<int>(Settings_GetPauseShortcut(2)), tmpPath);
+    ok &= IniWriteI32(L"Window", L"PauseSeparate", Settings_GetPauseSeparate() ? 1 : 0, tmpPath);
+    // The legacy single-key value is superseded; drop it so it cannot shadow.
+    ok &= halljoy::ini::WriteBatch::Put(L"Window", L"PauseHotkeys", nullptr, tmpPath) != FALSE;
+    ok &= IniWriteI32(L"Window", L"Width", Settings_GetMainWindowWidthPx(), tmpPath);
     ok &= IniWriteI32(L"Window", L"Height", Settings_GetMainWindowHeightPx(), tmpPath);
     const int x = Settings_GetMainWindowPosXPx(), y = Settings_GetMainWindowPosYPx();
     if (x != std::numeric_limits<int>::min()) ok &= IniWriteI32(L"Window", L"PosX", x, tmpPath);
@@ -751,7 +789,8 @@ static bool SettingsIni_Save_Internal(
     {
         ok &= IniWriteI32(L"Main", L"DiagnosticLogging", Settings_GetDiagnosticLogging() ? 1 : 0, tmpPath);
         ok &= IniWriteI32(L"Main", L"BlockKeysAllowAltTab", Settings_GetBlockKeysAllowAltTab() ? 1 : 0, tmpPath);
-        ok &= IniWriteI32(L"Main", L"BlockKeysHotkey", Settings_GetBlockKeysHotkey(), tmpPath);
+        ok &= IniWriteI32(L"Main", L"BlockKeysShortcut", Settings_GetBlockKeysHotkey(), tmpPath);
+        ok &= halljoy::ini::WriteBatch::Put(L"Main", L"BlockKeysHotkey", nullptr, tmpPath) != FALSE;
         ok &= SettingsIni_WriteWindow(tmpPath);
     }
 
@@ -836,11 +875,14 @@ namespace
     {
         auto* context = static_cast<SettingsTransactionContext*>(rawContext);
         if (context->kind == SettingsTransactionKind::WindowUpdate) {
-            const wchar_t* names[] = {L"Width", L"Height", L"PosX", L"PosY", L"PlacementVersion", L"Dpi", L"Maximized", L"MinimizeToTray", L"CloseToTray"};
+            const wchar_t* names[] = {L"Width", L"Height", L"PosX", L"PosY", L"PlacementVersion", L"Dpi", L"Maximized", L"MinimizeToTray", L"CloseToTray",
+                L"PauseShortcutToggle", L"PauseShortcutPause", L"PauseShortcutResume", L"PauseSeparate"};
             const int values[] = {Settings_GetMainWindowWidthPx(), Settings_GetMainWindowHeightPx(),
                 Settings_GetMainWindowPosXPx(), Settings_GetMainWindowPosYPx(), Settings_GetMainWindowPlacementVersion(),
                 Settings_GetMainWindowDpi(), Settings_GetMainWindowMaximized() ? 1 : 0,
-                Settings_GetMinimizeToTray() ? 1 : 0, Settings_GetCloseToTray() ? 1 : 0};
+                Settings_GetMinimizeToTray() ? 1 : 0, Settings_GetCloseToTray() ? 1 : 0,
+                static_cast<int>(Settings_GetPauseShortcut(0)), static_cast<int>(Settings_GetPauseShortcut(1)),
+                static_cast<int>(Settings_GetPauseShortcut(2)), Settings_GetPauseSeparate() ? 1 : 0};
             bool valid = true;
             for (size_t i = 0; i < _countof(names); ++i) {
                 wchar_t expected[32]{};

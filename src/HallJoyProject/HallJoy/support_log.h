@@ -24,3 +24,8 @@ DWORD SupportLog_LastError() noexcept;
 std::uint64_t SupportLog_RequestSnapshot() noexcept;
 std::uint64_t SupportLog_CompletedSnapshot() noexcept;
 std::wstring SupportLog_Directory();
+
+// Private RedSquare research: reviewed code-window bytes or aggregate stream
+// counters only. Never raw input, per-key values, serials, paths or arbitrary RAM.
+// Background producer only. False means queue/full or invalid record; abort capture.
+bool SupportLog_RedSquareResearch(const char* record) noexcept;

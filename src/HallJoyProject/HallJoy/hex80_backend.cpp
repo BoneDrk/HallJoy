@@ -13,6 +13,7 @@
 #include "realtime_loop.h"
 #include "debug_log.h"
 #include "stability_trace.h"
+#include "support_log.h"
 #include "worker_exception_barrier.h"
 #include "worker_join_policy.h"
 
@@ -48,6 +49,7 @@ struct Candidate
     HIDP_CAPS caps{};
     std::uint16_t usagePage = 0;
     std::uint16_t usage = 0;
+    const hex80::Model* model = nullptr;
 };
 
 struct ScopedHandle
@@ -100,6 +102,8 @@ std::atomic<std::uint16_t> g_detectedPid{ 0 };
 std::atomic<std::uint16_t> g_activePid{ 0 };
 std::atomic<std::uint16_t> g_activeVersion{ 0 };
 std::atomic<std::uint16_t> g_travelMax{ 0 };
+// Model of the connected session (matrix, scale, HID ownership, layout).
+std::atomic<const hex80::Model*> g_activeModel{ nullptr };
 std::atomic<std::uint32_t> g_inputReportBytes{ 0 };
 std::atomic<std::uint32_t> g_outputReportBytes{ 0 };
 std::atomic<ULONGLONG> g_lastPacketMs{ 0 };
@@ -162,14 +166,36 @@ bool ActiveSessionHandleIsRegistered()
     return g_activeSessionHandle && g_activeSessionHandle != INVALID_HANDLE_VALUE;
 }
 
-constexpr std::array<std::uint8_t, hex80::kHidCount> BuildOwnedHids()
+using OwnedHids = std::array<std::uint8_t, hex80::kHidCount>;
+constexpr OwnedHids BuildOwnedHids(const hex80::Model& model)
 {
-    std::array<std::uint8_t, hex80::kHidCount> owned{};
-    for (const auto hid : hex80::kSlotToHid)
-        if (hid < owned.size()) owned[hid] = hid != 0 ? 1u : 0u;
+    OwnedHids owned{};
+    for (std::size_t slot = 0; slot < model.slots; ++slot)
+    {
+        const auto hid = model.slotToHid[slot];
+        if (hid != 0 && hid < owned.size()) owned[hid] = 1u;
+    }
     return owned;
 }
-constexpr auto kOwnedHids = BuildOwnedHids();
+constexpr OwnedHids BuildOwnedAny()
+{
+    OwnedHids any{};
+    for (const auto* model : hex80::kModels)
+    {
+        const auto owned = BuildOwnedHids(*model);
+        for (std::size_t hid = 0; hid < any.size(); ++hid) any[hid] |= owned[hid];
+    }
+    return any;
+}
+constexpr auto kOwnedHex80 = BuildOwnedHids(hex80::kHex80Model);
+constexpr auto kOwnedMad68V2 = BuildOwnedHids(hex80::kMad68V2Model);
+constexpr auto kOwnedHids = BuildOwnedAny(); // cleanup covers every model
+const OwnedHids* OwnedFor(const hex80::Model* model)
+{
+    if (model == &hex80::kHex80Model) return &kOwnedHex80;
+    if (model == &hex80::kMad68V2Model) return &kOwnedMad68V2;
+    return nullptr;
+}
 
 std::uint64_t NowUs()
 {
@@ -283,8 +309,10 @@ std::vector<Candidate> EnumerateCandidates(bool routedOnly)
         candidate.path = detail->DevicePath;
         candidate.attributes.Size = sizeof(candidate.attributes);
         if (!HidD_GetAttributes(metadata.value, &candidate.attributes) ||
-            candidate.attributes.VendorID != hex80::kVendorId ||
-            !hex80::IsKnownProductId(candidate.attributes.ProductID))
+            candidate.attributes.VendorID != hex80::kVendorId)
+            continue;
+        candidate.model = hex80::FindModel(candidate.attributes.ProductID);
+        if (!candidate.model)
             continue;
 
         PHIDP_PREPARSED_DATA preparsed = nullptr;
@@ -352,8 +380,12 @@ bool RunTimedIo(HANDLE handle, bool write, void* buffer, DWORD bytes,
 class Session
 {
 public:
-    explicit Session(const Candidate& candidate)
+    // Only the worker's session follows the worker stop flag. Routing probes
+    // run between generations, while the flag from the previous Pause is
+    // still set; they must not treat it as a cancelled request.
+    Session(const Candidate& candidate, const std::atomic<bool>* cancel)
         : candidate_(candidate),
+          cancel_(cancel),
           writeBuffer_(candidate.caps.OutputReportByteLength, 0),
           readBuffer_(candidate.caps.InputReportByteLength, 0)
     {
@@ -391,7 +423,7 @@ public:
         const ULONGLONG deadline = GetTickCount64() + timeoutMs;
         while (true)
         {
-            if (g_stop.load(std::memory_order_acquire)) return false;
+            if (cancel_ && cancel_->load(std::memory_order_acquire)) return false;
             const ULONGLONG now = GetTickCount64();
             if (now >= deadline) break;
             std::fill(readBuffer_.begin(), readBuffer_.end(), std::uint8_t{ 0 });
@@ -421,33 +453,47 @@ public:
 
 private:
     Candidate candidate_{};
+    const std::atomic<bool>* cancel_ = nullptr;
     ScopedHandle handle_{};
     std::vector<std::uint8_t> writeBuffer_;
     std::vector<std::uint8_t> readBuffer_;
 };
 
-bool ProbeCandidate(const Candidate& candidate)
-{
-    Session session(candidate);
-    if (!session.Open()) return false;
+// Support-log stages for a device that is not admitted (HallJoy.log).
+enum class ProofStage : unsigned { Ok = 0, Open = 1, TravelInfo = 2, TravelBuffer = 3 };
 
+// GET-only proof: the scale (02 96 24, or the model's fixed scale) and one
+// matrix chunk (02 96 1C) must both validate.
+ProofStage ProveProtocol(Session& session, const hex80::Model& model, std::uint16_t& travelMax)
+{
     const std::uint8_t* data = nullptr;
     std::size_t bytes = 0;
-    std::uint16_t travelMax = 0;
-    if (!session.Request(hex80::BuildTravelInfoPayload(), hex80::kGetValue,
-        hex80::kTravelInfo, kProbeReadTimeoutMs, &data, &bytes) ||
-        !hex80::DecodeTravelInfo(data, bytes, travelMax))
-        return false;
+    travelMax = model.fixedTravelMax;
+    if (!travelMax &&
+        (!session.Request(hex80::BuildTravelInfoPayload(), hex80::kGetValue,
+            hex80::kTravelInfo, kProbeReadTimeoutMs, &data, &bytes) ||
+         !hex80::DecodeTravelInfo(data, bytes, travelMax)))
+        return ProofStage::TravelInfo;
 
     std::array<hex80::TravelEntry, hex80::kChunkSize> entries{};
     std::size_t count = 0;
     if (!session.Request(hex80::BuildTravelBufferPayload(0, 4), hex80::kGetValue,
         hex80::kTravelBuffer, kProbeReadTimeoutMs, &data, &bytes) ||
-        !hex80::DecodeTravelChunk(data, bytes, 0, 4, travelMax, entries, count) ||
+        !hex80::DecodeTravelChunk(model, data, bytes, 0, 4, travelMax, entries, count) ||
         count != 4)
-        return false;
+        return ProofStage::TravelBuffer;
+    return ProofStage::Ok;
+}
 
-    return true;
+bool ProbeCandidate(const Candidate& candidate)
+{
+    Session session(candidate, nullptr);
+    std::uint16_t travelMax = 0;
+    const auto stage = !session.Open() ? ProofStage::Open :
+        ProveProtocol(session, *candidate.model, travelMax);
+    SupportLog_Event("hex80.probe", candidate.attributes.ProductID,
+        SupportLog_Data(static_cast<unsigned>(stage)));
+    return stage == ProofStage::Ok;
 }
 
 void ResetTelemetry()
@@ -489,47 +535,43 @@ void ClearPublishedValues() noexcept
 
 bool RunSession(const Candidate& candidate)
 {
-    Session session(candidate);
+    Session session(candidate, &g_stop);
     if (!session.Open()) return false;
     ScopedActiveSessionHandle activeSession(session.Handle());
 
     // Re-prove the exact path with GET-only operations after every reconnect.
     // The PID may have been routed earlier, but no SET is sent to a newly opened
     // interface until both the travel scale and a matrix chunk validate again.
+    const auto& model = *candidate.model;
     const std::uint8_t* data = nullptr;
     std::size_t bytes = 0;
     std::uint16_t travelMax = 0;
-    if (!session.Request(hex80::BuildTravelInfoPayload(), hex80::kGetValue,
-        hex80::kTravelInfo, kProbeReadTimeoutMs, &data, &bytes) ||
-        !hex80::DecodeTravelInfo(data, bytes, travelMax))
+    if (ProveProtocol(session, model, travelMax) != ProofStage::Ok)
         return false;
 
-    std::array<hex80::TravelEntry, hex80::kChunkSize> proofEntries{};
-    std::size_t proofCount = 0;
-    if (!session.Request(hex80::BuildTravelBufferPayload(0, 4), hex80::kGetValue,
-        hex80::kTravelBuffer, kProbeReadTimeoutMs, &data, &bytes) ||
-        !hex80::DecodeTravelChunk(data, bytes, 0, 4, travelMax, proofEntries, proofCount) ||
-        proofCount != 4)
-        return false;
-
-    // The reference protocol defines 03 96 19 as an idempotent recovery from
-    // calibration mode. It is sent only after the currently opened path has
-    // passed both GET-only protocol proofs above.
-    if (!session.SendOnly(hex80::BuildCalibrationFinishPayload()))
+    // The Hex80 reference protocol defines 03 96 19 as an idempotent recovery
+    // from calibration mode. It is sent only after the currently opened path has
+    // passed both GET-only protocol proofs above, and never to other models:
+    // MAD68 HE V2 has a different SET table.
+    if (model.calibrationFinish && !session.SendOnly(hex80::BuildCalibrationFinishPayload()))
         return false;
 
     g_activePid.store(candidate.attributes.ProductID, std::memory_order_relaxed);
     g_activeVersion.store(candidate.attributes.VersionNumber, std::memory_order_relaxed);
     g_travelMax.store(travelMax, std::memory_order_relaxed);
+    g_activeModel.store(&model, std::memory_order_release);
     g_inputReportBytes.store(candidate.caps.InputReportByteLength, std::memory_order_relaxed);
     g_outputReportBytes.store(candidate.caps.OutputReportByteLength, std::memory_order_relaxed);
     g_connected.store(true, std::memory_order_release);
-    DebugLog_Write(L"[backend.hex80] connected vid=%04X pid=%04X version=%04X travel_max=%u slots=104 mapped=%u in=%u out=%u",
+    SupportLog_Event("hex80.session_ready", candidate.attributes.ProductID,
+        SupportLog_Data(travelMax));
+    DebugLog_Write(L"[backend.hex80] connected vid=%04X pid=%04X version=%04X travel_max=%u slots=%u mapped=%u in=%u out=%u",
         (unsigned)candidate.attributes.VendorID,
         (unsigned)candidate.attributes.ProductID,
         (unsigned)candidate.attributes.VersionNumber,
         (unsigned)travelMax,
-        (unsigned)hex80::MappedKeyCount(),
+        (unsigned)model.slots,
+        (unsigned)hex80::MappedKeyCount(model),
         (unsigned)candidate.caps.InputReportByteLength,
         (unsigned)candidate.caps.OutputReportByteLength);
 
@@ -537,12 +579,12 @@ bool RunSession(const Candidate& candidate)
     while (!g_stop.load(std::memory_order_acquire))
     {
         bool completeCycle = true;
-        for (std::uint16_t offset = 0; offset < hex80::kTotalSlots;
+        for (std::uint16_t offset = 0; offset < model.slots;
             offset = static_cast<std::uint16_t>(offset + hex80::kChunkSize))
         {
             if (g_stop.load(std::memory_order_acquire)) return true;
             const std::uint8_t size = static_cast<std::uint8_t>(
-                std::min<std::size_t>(hex80::kChunkSize, hex80::kTotalSlots - offset));
+                std::min<std::size_t>(hex80::kChunkSize, model.slots - offset));
             g_pollAttempts.fetch_add(1, std::memory_order_relaxed);
             const std::uint64_t startedUs = NowUs();
             const bool received = session.Request(
@@ -555,13 +597,17 @@ bool RunSession(const Candidate& candidate)
             std::array<hex80::TravelEntry, hex80::kChunkSize> entries{};
             std::size_t count = 0;
             const bool valid = received && hex80::DecodeTravelChunk(
-                data, bytes, offset, size, travelMax, entries, count);
+                model, data, bytes, offset, size, travelMax, entries, count);
             if (!valid)
             {
                 g_pollFail.fetch_add(1, std::memory_order_relaxed);
                 completeCycle = false;
                 if (++consecutiveFailures >= kMaxConsecutiveFailures)
+                {
+                    SupportLog_Event("hex80.session_lost", candidate.attributes.ProductID,
+                        SupportLog_Data(g_pollSuccess.load(std::memory_order_relaxed)));
                     return false;
+                }
                 continue;
             }
 
@@ -635,6 +681,7 @@ std::uint32_t Hex80WorkerBody()
         }
         (void)opened;
         g_connected.store(false, std::memory_order_release);
+        g_activeModel.store(nullptr, std::memory_order_release);
         g_activePid.store(0, std::memory_order_relaxed);
         g_activeVersion.store(0, std::memory_order_relaxed);
         ClearPublishedValues();
@@ -695,8 +742,16 @@ bool Hex80_PrepareProtocolRouting()
 {
     if (g_routingPrepared.load(std::memory_order_acquire))
     {
-        std::lock_guard<std::mutex> lock(g_routingMutex);
-        return !g_routedProductIds.empty();
+        // Each engine generation (startup, Resume after Pause) resets all
+        // routing claims before asking providers again. Reuse the earlier
+        // result only while our claim still exists; otherwise prove and claim
+        // again, or the resumed worker finds no routed interface.
+        if (!EnumerateCandidates(true).empty())
+        {
+            std::lock_guard<std::mutex> lock(g_routingMutex);
+            return !g_routedProductIds.empty();
+        }
+        g_routingPrepared.store(false, std::memory_order_release);
     }
 
     const auto candidates = EnumerateCandidates(false);
@@ -876,7 +931,9 @@ bool Hex80_IsConnected()
 
 bool Hex80_OwnsHid(std::uint16_t hidUsage)
 {
-    return hidUsage < kOwnedHids.size() && kOwnedHids[hidUsage] != 0 && Hex80_IsConnected();
+    if (!Hex80_IsConnected()) return false;
+    const auto* owned = OwnedFor(g_activeModel.load(std::memory_order_acquire));
+    return owned && hidUsage < owned->size() && (*owned)[hidUsage] != 0;
 }
 
 std::uint16_t Hex80_GetMilli(std::uint16_t hidUsage)
@@ -900,7 +957,9 @@ void Hex80_GetTelemetry(Hex80Telemetry* out)
         telemetry.productId = g_detectedPid.load(std::memory_order_relaxed);
     telemetry.firmwareVersion = g_activeVersion.load(std::memory_order_relaxed);
     telemetry.travelMax = g_travelMax.load(std::memory_order_relaxed);
-    telemetry.mappedKeys = static_cast<std::uint32_t>(hex80::MappedKeyCount());
+    const auto* model = g_activeModel.load(std::memory_order_acquire);
+    telemetry.mappedKeys = static_cast<std::uint32_t>(
+        hex80::MappedKeyCount(model ? *model : hex80::kHex80Model));
     telemetry.observedKeys = g_observedCount.load(std::memory_order_relaxed);
     telemetry.inputReportBytes = g_inputReportBytes.load(std::memory_order_relaxed);
     telemetry.outputReportBytes = g_outputReportBytes.load(std::memory_order_relaxed);
@@ -943,7 +1002,8 @@ void Hex80_FillGenericTelemetry(NativeAnalogBackendTelemetry* out)
     Hex80_GetTelemetry(&t);
     out->present = t.present;
     out->connected = t.connected;
-    if (t.connected) out->verifiedLayoutToken=halljoy::layout_identity::Token("hex80","HEX80-ANSI");
+    const auto* model = g_activeModel.load(std::memory_order_acquire);
+    if (t.connected && model) out->verifiedLayoutToken=halljoy::layout_identity::Token("hex80",model->layoutProduct);
     out->vendorId = t.vendorId;
     out->productId = t.productId;
     out->usagePage = 0xFF60;
@@ -960,7 +1020,8 @@ void Hex80_FillGenericTelemetry(NativeAnalogBackendTelemetry* out)
     out->successfulUpdates = t.pollSuccess;
     out->failedUpdates = t.pollFail;
     _snwprintf_s(out->status, kNativeAnalogBackendStatusChars, _TRUNCATE,
-        L"0x96 matrix polling, %u mapped keys, travel_max=%u",
+        L"%ls: 0x96 matrix polling, %u mapped keys, travel_max=%u",
+        model ? model->name : L"Hex80 family",
         static_cast<unsigned>(t.mappedKeys), static_cast<unsigned>(t.travelMax));
 }
 }
@@ -971,7 +1032,7 @@ const NativeAnalogBackendDescriptor& Hex80_GetNativeBackendDescriptor()
         kNativeAnalogBackendAbiVersion,
         sizeof(NativeAnalogBackendDescriptor),
         "hex80-0x96",
-        L"ATK x QK Hex80 0x96",
+        L"Hex80 family 0x96 (ATK Hex80, MADLIONS MAD68 HE V2)",
         NativeAnalogProtocol::Hex80,
         NativeAnalogStartPhase::AfterRealtime,
         NativeAnalogBackendFlag_PolledTransport |

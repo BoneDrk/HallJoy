@@ -83,3 +83,208 @@ Unknown cause must remain unknown, not an invented driver-conflict diagnosis.
 Tests must cover admission, normal samples, malformed replies and disconnects.
 Passing host tests does not prove hardware behavior or guarantee all future bugs
 are impossible. New firmware-specific gaps require extending the backend evidence.
+
+## One executable, one log — owner decision, 2026-09-27
+
+Tester workflow must use ordinary HallJoy: one HallJoy.exe and the existing
+HallJoy.log through Open log. Device-specific research diagnostics belong inside
+HallJoy's bounded background lifecycle and shared log writer. Do not ask testers
+to unpack a research archive, run scripts or command-line flags, or return a
+separate firmware/research TXT/BIN export. Internal offline tools and private
+agent artifacts are permitted but must not become user-facing prerequisites.
+
+Use one logical log through its existing normal/portable storage and mirroring
+policy; this does not remove the already authorized enabled-log mirror beside
+the executable. Preserve privacy, size bounds, cancellation and no forced logging
+for instability/limited banners. The single-log decision changes delivery and
+integration, not the evidence needed for support or permission to log arbitrary
+user memory. Any required research evidence must be scoped and reviewed.
+
+The Alumix104 ZIP/CMD/separate-export approach is rejected. The implementation
+now starts a bounded exact-device background reader in the engine lifecycle;
+Pause/Exit cancels and joins it before provider release. No export CLI remains
+(other than internal self-test). Reviewed command12 evidence goes only through
+SupportLog_RedSquareResearch and the normal HallJoy.log writer. No arbitrary
+RAM, input values, serials or paths may be passed to this scoped API.
+
+The writer retains up to2300 research records separately from512 history lines
+inside the same bounded4MiB log, so Open log snapshot resets preserve the capture.
+A research record schedules a normal log flush without enabling general logging;
+this does not change instability/limited-banner policy. Records are paced, queue
+admission is checked, and missing data causes offline validation to reject the
+capture. This is diagnostic evidence, not confirmation of analog support.
+Neighbor68 establishes the code-window interpretation; actual104 memory mapping
+remains unverified and must be checked before implementing its analog reader.
+
+## Alumix104 live stream trial — owner revision, 2026-09-28
+
+The temporary official66/67->55FB research worker has no overall capture timer,
+ACK deadline or silence failure threshold. Its Russian window-title prompts
+advance on parsed one-key depth/release and two distinct post-prompt indices;
+typing remains a tester observation. Pause/Exit ends the trial and attempts OFF.
+Finite per-operation waits and bounded final cleanup protect lifecycle shutdown;
+they are not a duration limit on the experiment. Long idle streaks are recorded
+at sparse milestones without declaring a silent device defective.
+
+Research records include admission and mode-write outcomes, stage/checkpoint
+counts, read errors, explicit missing-evidence fields, cleanup and final result,
+even when the stream never starts or the tester stops early. The v3 research
+marker replaces a prior trial's retained evidence during Open log snapshots.
+Writer regression covers a zero-frame stall and snapshot retention. No raw
+travel values, keyboard text, paths or serials enter the shared log. Aggregate
+calibration/ADC changes and range anomalies help assess stream plausibility.
+
+## Alumix104 log39 correction — 2026-09-28
+
+The first readiness build compared raw `keyStroke` and `maxStroke` as if they
+shared units; the pinned official UI uses `/100` and `/10` respectively. Its
+reported near-full, shallow and range-anomaly counts are not valid coverage
+decisions. The next build uses a tenfold scale factor and an exact synthetic
+parser test. The physical log still establishes stream, index, ADC-change and
+mode-cleanup evidence.
+
+The user requires HallJoy itself to observe whether alphabetic keyboard events
+arrive. The existing Windows Raw Input registration is used; the research
+worker counts only physical HID-letter down/up transitions from the admitted
+0C45:80AC keyboard, with device-name matching but no path or key identity in
+the log. A post-analog letter down/up automatically completes the experiment,
+sends OFF and presents the final log instruction in the Russian title. This
+proves Raw Input delivery to HallJoy, not text rendering in another app. If
+Raw Input is unavailable or no letter arrives, explicit counters and missing
+evidence remain; Exit still attempts cleanup. No Notepad or Pause step is
+required for a completed test.
+
+Unrelated full-length reports are classified by structural category and logged
+at cumulative power-of-two milestones to avoid one line per interleaved
+report. The writer retains the first research marker plus the newest2299
+records on long runs, so final OFF/quality/end records survive Open log
+snapshots. The long-run writer regression exceeds the retention limit.
+
+## Alumix104 correlated hold v4 — 2026-09-28
+
+The v3 `two_indices_after_prompt` was insufficient for simultaneous-key
+evidence. v4 joins the pinned exact-model HID-letter-to-sensor map with
+target Raw Input held-state revisions in memory. The stage advances only
+after two mapped positive sensor samples in one unchanged two-letter held
+state. The log stores aggregate witness/positive/zero/missing counts only.
+The final stage requires a full post-prompt down/up pair for the same
+physical letter. The writer resets retained research evidence on a v4
+start marker and retains the first marker and latest tail across long runs.
+Asynchronous observations are corroboration, not a synchronized device
+snapshot; no witness does not prove analog multi-key impossibility if the
+digital interface is suppressed. Closing an incomplete run still records
+its counters and attempts OFF. No experiment-wide timer was added.
+
+## Alumix104 log40 and v5 release/range diagnostic — 2026-09-28
+
+The physical v4 log showed the original held pair's release was ignored by
+the final gate, which required a new letter down/up. v5 completes after
+those same two letters are digitally released and each mapped sensor has
+subsequently reported a positive-to-zero transition. The Russian title
+separates held-pair release from waiting for sensor-zero evidence; no new
+press is required. Removal of the Raw Input device is explicitly recorded
+and cannot count as digital release. Incomplete stages still log and attempt
+OFF on close, without an experiment-wide time limit.
+
+The v4 aggregate `range_anomaly` combined zero declared maximum with travel
+above the normalized maximum. v5 logs separate counts and cumulative coarse
+excess-ratio bands, plus anonymous minimum/maximum sample and depth-change
+counts for the witnessed pair. No exact key identities, text, raw reports or
+individual travel measurements are serialized. The v5 research marker
+replaces retained earlier trial evidence in the bounded normal HallJoy.log.
+
+## Alumix104 native gamepad trial — 2026-09-28
+
+The earlier stream-probe completion stages are superseded for tester handoff
+by the exact104 native analog backend. Its session remains open while the
+device supplies data and HallJoy is active; there is no test duration or
+manual Pause requirement. The shared log carries bounded admission, ACK,
+stream, quality, keyboard Raw Input, consumer and gamepad publication counters.
+On stop or failure it records OFF cleanup and a summary even when no valid
+sample was obtained. A temporary Russian title reports active analog or a
+fault. Open log and the single ordinary HallJoy.exe remain the tester flow.
+Gamepad publication counters are correlated by connected session, not a proof
+of per-key causality or final ViGEm application. No forced continuous logging,
+key names, keyboard text, serial/path or individual depth values are added.
+
+## Alumix104 source-to-gamepad trace v2 — 2026-09-28
+
+The exact104 temporary trial records a bounded common chronology in the
+existing HallJoy.log. Each observed sensor receives an opaque session slot.
+While recently active, 250 ms windows record source reports, repeated unchanged
+positive reports, explicit zero reports, last-report age, Raw Input letter
+activity as reference only, consumer reads and coarse depth bucket, calculated
+gamepad candidate/pad mask and publication counts. Quiet windows use 1 s.
+These windows pace observation; neither interval is a release timeout or a
+test-completion deadline. The final summary includes each slot's positive and
+zero totals, exact repeats, maximum inter-report gap after a positive sample,
+positive-to-zero transitions, and its per-pad binding action mask. Action bits
+0–3 mean axis minus, 4–7 axis plus, 8–9 triggers, and 10–24 buttons. Other
+report headers are counted by family/opcode without payloads. The trace ends
+with OFF cleanup even on interruption or zero useful samples.
+
+An absent report for one slot is unknown, even while other slots update. The
+current gameplay reader can retain the last positive value for 1000 ms; this
+trace is intended to determine whether lag occurs at the source, retention,
+binding, calculation or publication stage. Digital key-up never changes analog
+depth. No raw report, exact key index, travel value, text, serial or path is
+logged. The 2300-record/4 MiB existing bounds still apply; long captures may
+lose early windows, while the retained start marker and latest final summary
+survive. Passing synthetic/Win32 tests is not physical exact104 validation.
+
+## Alumix104 unknown-frame and collection trace — 2026-09-28
+
+Log44 physically returned only echoed 0x68 payloads in OFF and ON phases.
+The next ordinary EXE therefore stops issuing 0x68 and inventories all seven
+exact-product HID collection descriptors from metadata, then observes the
+known 0x66/0x55FB session until HallJoy exits. The six previously rejected
+collections are descriptor evidence, not assumed analog sources.
+
+Non-0x55/non-0xAA reports on the admitted FF68:61 collection receive anonymous
+session class IDs. The shared log contains aggregate counts, payload-change
+counts, same-Raw-Input-state changes, two-letter-overlap counts, zero-body
+counts, nonzero-byte maxima and changed-byte-position masks. Prefix values,
+payload bytes, exact keys, keyboard text, serials and device paths are not
+logged. Per-window counts join existing 250 ms active/1 s quiet source windows.
+No digital transition supplies or zeroes analog. A varying packet is only an
+investigation lead; it is not a decoded per-key measurement.
+
+The new research start marker clears retained prior trial records. Collection
+metadata is emitted after this marker, so Open log snapshots retain the
+inventory. Final class/source counts and OFF cleanup are emitted even if no
+class changes or no useful analog arrives. No overall test timer, calibration
+commands, 0x68 replay or gamepad publication was added. The normal 2300-record
+research tail and 4 MiB writer bounds continue to apply; queue loss remains
+explicit. Production fake HID and Windows writer regressions passed. Physical
+classification and typing coexistence remain unverified.
+
+## Exact Alumix104 packet-capture exception — owner correction, 2026-09-28
+
+The earlier aggregate-only unknown-frame trace (physical log46) hid the bytes
+required to decode its single changing report class. The owner explicitly
+challenged that trade-off. For this exact support investigation, the ordinary
+HallJoy.log may contain up to 512 complete changed 65-byte vendor input
+reports from the exact 0C45:80AC product's accepted FF68:61 collection.
+Capture the first frame per class and every changed frame, including its report
+ID and prefix, with monotonic log time, event ID, class report count, Raw Input
+held-letter count/revision and the last selected 55FB sample/age. Do not
+capture standard keyboard HID reports, text transcription, paths or serials.
+The packet MAY encode key state; disclose that in the Russian title and mark
+the log header `raw_hid_payload=1`. Record cap saturation, write failures and
+normal cleanup explicitly. Retain the one EXE/one Open log workflow, 2300-line
+research tail, 4 MiB file bound and all ordinary support. Digital state is
+reference only and never computes analog. This exception supersedes the
+no-payload rule above only for this exact diagnostic; it does not authorize
+raw capture for other devices or routine HallJoy operation.
+
+## Snapshot request versus displayed banner — 2026-09-28
+
+An explicit `SupportLog_RequestSnapshot()` can be triggered by Open log or by
+backend cleanup. It now emits `support.snapshot_requested source=api`.
+`support.banner_shown incident_latched=1` is reserved for a pending
+`SupportLog_ReportMissingSource()` transition. Older logs used the latter
+line for both cases; do not infer a visible banner from that line alone.
+Physical log47 contained this false attribution at shutdown. The corrected
+writer test verifies that an explicit snapshot retains the request marker
+without manufacturing a banner event, while a real missing-source report
+still produces the banner marker.

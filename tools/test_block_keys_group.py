@@ -42,10 +42,15 @@ print("BLOCK_KEYS_GROUP_SOURCE_TEST=PASS")
 # Runtime integration: persistence/painting must not own the keyboard hook pump.
 app = (root / "src/HallJoyProject/HallJoy/app.cpp").read_text(encoding="utf-8-sig")
 hook = body("static LRESULT CALLBACK KeyboardBlockHookProc(int nCode, WPARAM wParam, LPARAM lParam)\n", app)
-assert "g_shortcutPress.Filter" in hook
-assert hook.index("Settings_SetBlockBoundKeys") < hook.index("WM_APP_BLOCK_TOGGLED")
+# One shortcut engine (digital + analog) decides before Block Bound Keys routing.
+assert "halljoy::shortcuts::Digital(hid, isDown)" in hook
+assert hook.index("halljoy::shortcuts::Digital") < hook.index("g_blockPressRoutes.Filter")
+dispatch = body("static void ShortcutDispatch(halljoy::shortcuts::Action action)", app)
+assert dispatch.index("Settings_SetBlockBoundKeys") < dispatch.index("WM_APP_BLOCK_TOGGLED")
 assert "SaveSettings" not in hook and "RequestSettingsSave" not in hook
+assert "SaveSettings" not in dispatch and "RequestSettingsSave" not in dispatch
 assert "detector.Digital" not in hook  # UI-only detector consumes atomic timestamps.
 assert "SetWindowsHookExW(WH_KEYBOARD_LL" not in app
-assert "ShortcutKey(" in page
+assert "RegisterHotKey" not in app  # Analog-capable engine replaces WM_HOTKEY.
+assert "halljoy::shortcuts::kCaptureMessage" in page and "App_BeginShortcutCapture" in page
 print("BLOCK_KEYS_INPUT_INTEGRATION_TEST=PASS")

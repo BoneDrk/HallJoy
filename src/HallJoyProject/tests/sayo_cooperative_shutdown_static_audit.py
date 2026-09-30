@@ -65,8 +65,15 @@ def main() -> int:
     require("SayoStart();" in service_start and "return true;" in service_start and
             "&SayoStartService" in backend,
             "outer registry remains running for later hotplug readers")
-    require("const auto stopped = SayoStop();" in backend and "stopped.RestartSafe()" in backend,
+    service_stop = function_body(sayo, "static halljoy::lifecycle::StopResult SayoStopService()")
+    require("const auto stopped = SayoStopService();" in backend and "stopped.RestartSafe()" in backend,
             "descriptor forwards truthful completion to the registry")
+    require("return SayoStop();" in service_stop and
+            service_stop.index("g_sayoServiceRunning.store(false") <
+            service_stop.index("g_sayoHotplugWorker.Stop") < service_stop.index("return SayoStop();"),
+            "service gate closes and hotplug joins before the reader group stops")
+    require("SayoTickHotplug" not in function_body(backend, "void Backend_Tick()"),
+            "realtime tick performs no Sayo discovery")
     require("EngineRuntimeStopNativeProviders" in app and "EngineRuntimeOwner_Stop()" in app,
             "aggregate owner blocks dependent teardown after Sayo poison")
     require("#if defined(HALLJOY_ANALOG_SIMULATOR)" in reader and

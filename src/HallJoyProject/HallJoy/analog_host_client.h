@@ -37,6 +37,7 @@ struct AnalogHostTelemetry
     int lastError = 0;
     int transportError = 0;
     int restartCount = 0;
+    int unplannedRestartCount = 0; // restarts not requested by the protocol (faults)
     int invalidSnapshotCount = 0;
     int activeKeyCount = 0;
     int denseDeviceCount = 0;

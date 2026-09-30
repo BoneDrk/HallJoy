@@ -605,13 +605,32 @@ RECT PremiumComboInternal::GetExtraIconRect(State* st)
     return r;
 }
 
+RECT PremiumComboInternal::GetRevertIconRect(State* st)
+{
+    RECT empty{};
+    if (!st || st->extraIcon != PremiumCombo::ExtraIconKind::SaveAndRevert) return empty;
+    const RECT save = GetExtraIconRect(st);
+    if (save.right <= save.left) return empty;
+    const int size = save.right - save.left;
+    const int right = save.left - S(st->hwnd, PC_EXTRAICON_GAP);
+    if (right - size < 2) return empty;
+    return RECT{ right - size, save.top, right, save.bottom };
+}
+
+PremiumCombo::ExtraIconKind PremiumComboInternal::HitTestExtraIconKind(State* st, POINT ptClient)
+{
+    auto inside = [&](const RECT& r) {
+        return r.right > r.left && ptClient.x >= r.left && ptClient.x < r.right &&
+            ptClient.y >= r.top && ptClient.y < r.bottom;
+    };
+    if (inside(GetExtraIconRect(st))) return PremiumCombo::ExtraIconKind::Save;
+    if (inside(GetRevertIconRect(st))) return PremiumCombo::ExtraIconKind::Revert;
+    return PremiumCombo::ExtraIconKind::None;
+}
+
 bool PremiumComboInternal::HitTestExtraIcon(State* st, POINT ptClient)
 {
-    RECT r = GetExtraIconRect(st);
-    if (r.right <= r.left) return false;
-
-    return (ptClient.x >= r.left && ptClient.x < r.right &&
-        ptClient.y >= r.top && ptClient.y < r.bottom);
+    return HitTestExtraIconKind(st, ptClient) != PremiumCombo::ExtraIconKind::None;
 }
 
 RECT PremiumComboInternal::GetPopupItemButtonRect(State* st, int idx, PremiumCombo::ItemButtonKind kind)
@@ -1115,18 +1134,24 @@ void PremiumComboInternal::UpdateHoverState(HWND hWnd, State* st, LPARAM lParam)
     int arrowW = std::clamp(S(hWnd, 26), 18, 34);
     bool newArrowHot = inside && (pt.x >= (rc.right - arrowW));
 
-    bool newExtraHot = false;
+    bool newExtraHot = false, newRevertHot = false;
     if (inside && st->extraIcon != PremiumCombo::ExtraIconKind::None)
-        newExtraHot = HitTestExtraIcon(st, pt);
+    {
+        const auto kind = HitTestExtraIconKind(st, pt);
+        newExtraHot = kind == PremiumCombo::ExtraIconKind::Save;
+        newRevertHot = kind == PremiumCombo::ExtraIconKind::Revert;
+    }
 
     bool changed =
         (newHovered != st->hovered) ||
         (newArrowHot != st->arrowHot) ||
-        (newExtraHot != st->extraIconHot);
+        (newExtraHot != st->extraIconHot) ||
+        (newRevertHot != st->revertIconHot);
 
     st->hovered = newHovered;
     st->arrowHot = newArrowHot;
     st->extraIconHot = newExtraHot;
+    st->revertIconHot = newRevertHot;
 
     if (newHovered)
     {

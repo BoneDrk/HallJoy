@@ -263,8 +263,11 @@ static bool ObserveCommunication(const BackendAnalogTelemetry& t,bool running) {
     static std::array<CommunicationHealth,256> health{};
     static std::array<unsigned,256> seen{};
     static int previousRestarts=0,previousInvalid=0;
+    // Planned host restarts (provider plane resize, device refresh) happen
+    // during normal startup and are not evidence of unstable communication.
+    const int unplannedRestarts=t.pluginHostUnplannedRestartCount;
     if(!running){health={};for(unsigned i=0;i<256;++i)seen[i]=CommunicationAnomalySequence(i);
-        previousRestarts=t.pluginHostRestartCount;previousInvalid=t.pluginHostInvalidSnapshots;return false;}
+        previousRestarts=unplannedRestarts;previousInvalid=t.pluginHostInvalidSnapshots;return false;}
     const auto now=GetTickCount64();bool warning=false;
     std::array<bool,256> present{},connected{};
     for(int i=0;i<std::clamp(t.nativeProtocolCount,0,kBackendMaxNativeProtocols);++i){
@@ -274,8 +277,8 @@ static bool ObserveCommunication(const BackendAnalogTelemetry& t,bool running) {
     // Aggregate fallback covers SDK routes without a native descriptor.
     connected[254]=HasSupportedAnalogSource(t);present[254]=connected[254];
     connected[255]=t.pluginHostReady && t.pluginHostDenseDeviceCount>0;present[255]=connected[255];
-    const bool hostFault=health[255].established && (t.pluginHostRestartCount>previousRestarts || t.pluginHostInvalidSnapshots>previousInvalid);
-    previousRestarts=t.pluginHostRestartCount;previousInvalid=t.pluginHostInvalidSnapshots;
+    const bool hostFault=health[255].established && (unplannedRestarts>previousRestarts || t.pluginHostInvalidSnapshots>previousInvalid);
+    previousRestarts=unplannedRestarts;previousInvalid=t.pluginHostInvalidSnapshots;
     for(unsigned i=1;i<256;++i){const unsigned seq=CommunicationAnomalySequence(i);
         const bool fault=seq!=seen[i] || (i==255 && hostFault);seen[i]=seq;
         warning=health[i].Observe(now,present[i],connected[i],fault)||warning;
@@ -339,6 +342,7 @@ void KeyboardUI_OnTimerTick(HWND)
     for (int i=0;i<std::clamp(telemetry.nativeProtocolCount,0,kBackendMaxNativeProtocols);++i) {
         const auto& device=telemetry.nativeProtocols[i];
         frozenModels |= halljoy::keyboard_support::NativeNotice(device.protocol, device.verifiedLayoutToken, device.connected, device.productId);
+        frozenModels |= halljoy::keyboard_support::ResearchNotice(device.protocol, device.vendorId, device.productId, device.present, device.connected);
     }
     // An ambiguous USB family is advisory only when no working source exists.
     // It must not mark a verified active sibling model as frozen.
@@ -351,6 +355,9 @@ void KeyboardUI_OnTimerTick(HWND)
         frozenModels != previousObservation.frozenModels ||
         communicationWarning != previousObservation.communicationWarning)
     {
+        if ((frozenModels & halljoy::keyboard_support::Alumix104Research) !=
+            (previousObservation.frozenModels & halljoy::keyboard_support::Alumix104Research))
+            SupportLog_Event("support.alumix104_research", (frozenModels & halljoy::keyboard_support::Alumix104Research) ? 1 : 0);
         if(communicationWarning!=previousObservation.communicationWarning)
             SupportLog_Event("keyboard.communication_warning",communicationWarning?1:0);
         halljoy::keyboard_support::SetSearchObservation(searchCompleted, analogSourceConnected, frozenModels, communicationWarning);

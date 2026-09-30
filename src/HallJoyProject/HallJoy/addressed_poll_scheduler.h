@@ -55,8 +55,11 @@ public:
     void Reset(std::uint64_t nowUs);
     void SetBound(std::uint16_t hidUsage, bool bound);
     void SetPhysicalBound(std::uint8_t keyId, bool bound);
+    // A reply acknowledged the address but supplied no trustworthy depth.
+    // Advance sweep fairness without overwriting a previous measured value.
+    void OnQueried(std::uint8_t keyId, std::uint64_t nowUs);
     void OnSample(std::uint8_t keyId, std::uint16_t raw, std::uint16_t milli, std::uint64_t nowUs);
-    PollPlan BuildPlan(std::uint64_t nowUs);
+    PollPlan BuildPlan(std::uint64_t nowUs, std::size_t capacity = kMaxKeysPerPacket);
     PollSchedulerStats GetStats(std::uint64_t nowUs) const;
 
     std::uint16_t HidForKeyId(std::uint8_t keyId) const;

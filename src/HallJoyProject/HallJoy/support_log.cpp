@@ -12,6 +12,7 @@
 #include <setupapi.h>
 #include <hidsdi.h>
 #include <shlobj.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdio>
@@ -31,6 +32,7 @@ std::atomic<bool> stopping{false}, inventoryDirty{true};
 std::atomic<bool> incidentPending{false};
 std::atomic<std::uint64_t> requestedSnapshot{0}, completedSnapshot{0};
 std::atomic<bool> failurePending{false};
+std::atomic<bool> researchPending{false};
 std::atomic<HWND> uiWindow{nullptr};
 std::atomic<DWORD> lastError{0};
 HANDLE worker = nullptr, stopEvent = nullptr;
@@ -124,7 +126,7 @@ bool WriteLine(HANDLE file, const Line& line) {
 }
 DWORD WINAPI Run(void*) noexcept {
     try {
-        std::deque<Line> history;
+        std::deque<Line> history, researchEvidence;
         std::vector<Line> batch(kQueueLines);
         bool previousIncident = false, previousContinuous = false;
         struct Destination {
@@ -168,16 +170,19 @@ DWORD WINAPI Run(void*) noexcept {
             const bool incident = halljoy::keyboard_support::ShouldAutoSaveSupportLog(s);
             const auto snapshotRequest = requestedSnapshot.load();
             const bool bannerRequested = incidentPending.exchange(false);
-            const bool requested = bannerRequested || snapshotRequest != completedSnapshot.load();
+            const bool snapshotRequested = snapshotRequest != completedSnapshot.load();
+            const bool requested = bannerRequested || snapshotRequested;
             const bool failure = failurePending.exchange(false);
             const bool trigger = failure || requested || (incident && !previousIncident) || (continuous && !previousContinuous);
-            if (requested) Enqueue("support.banner_shown incident_latched=1");
+            if (bannerRequested) Enqueue("support.banner_shown incident_latched=1");
+            if (snapshotRequested) Enqueue("support.snapshot_requested source=api");
             if (incident != previousIncident) SupportLog_Event("support.banner", incident);
             if (continuous != previousContinuous) SupportLog_Event("logging.continuous", continuous);
             const bool changed = inventoryDirty.exchange(false);
             if (trigger || changed) { Inventory(); Snapshot(); }
             else if (ticks % 30 == 0) Snapshot();
-            const bool shouldWrite = failure || requested || continuous || incident || (previousIncident && !incident) || (previousContinuous && !continuous);
+            const bool research = researchPending.exchange(false);
+            const bool shouldWrite = research || failure || requested || continuous || incident || (previousIncident && !incident) || (previousContinuous && !continuous);
             const bool mirrorEnabled = continuous || previousContinuous;
             previousIncident = incident; previousContinuous = continuous;
             ++ticks;
@@ -189,11 +194,33 @@ DWORD WINAPI Run(void*) noexcept {
             ReleaseSRWLockExclusive(&queueLock);
             const unsigned lost = dropped.exchange(0);
             if (lost) SupportLog_Event("logging.queue_dropped", lost);
+            // Keep reviewed research through Open log snapshot resets; no extra file.
+            for(size_t i=0;i<count;++i) {
+                if(strstr(batch[i].data()," redsquare.research ")) {
+                    if(strstr(batch[i].data(),"HallJoy RedSquare code probe v1;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare stream probe v3;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare stream probe v4;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare stream probe v5;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare analog gamepad trial v1;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare analog trace v2;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare batch68 probe v1;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare unknown frame trace v1;") ||
+                       strstr(batch[i].data(),"HallJoy RedSquare unknown packet trace v2;"))researchEvidence.clear();
+                    // Keep the trial marker and newest evidence, including final
+                    // cleanup, even when an unexpectedly long run exceeds the cap.
+                    if(researchEvidence.size()>=2300)
+                        researchEvidence.erase(researchEvidence.begin()+1);
+                    researchEvidence.push_back(batch[i]);
+                }
+            }
             for(size_t i=0;i<count;++i) { history.push_back(batch[i]); if(history.size()>kHistoryLines) history.pop_front(); }
 #if defined(HALLJOY_AULA_MINI60_DIAGNOSTIC) || defined(HALLJOY_IROK_NA87_DIAGNOSTIC) || defined(HALLJOY_DEVICE_SUPPORT_LOG)
             for (size_t i=0;i<count;++i) DebugLog_Write(L"[support] %S", batch[i].data());
             (void)shouldWrite; (void)mirrorEnabled; (void)destinations; (void)distinctMirror;
 #else
+            // One snapshot timestamp for both destinations. A second boundary
+            // between writes must not make otherwise identical mirrors differ.
+            SYSTEMTIME snapshotUtc{}; GetSystemTime(&snapshotUtc);
             for (size_t sink = 0; sink < destinations.size(); ++sink) {
                 auto& state = destinations[sink];
                 if (sink == 1 && (!distinctMirror || !mirrorEnabled)) {
@@ -222,10 +249,13 @@ DWORD WINAPI Run(void*) noexcept {
                             if (reset) {
                                 fileBytes=0;
                                 Line header{};
-                                SYSTEMTIME utc{}; GetSystemTime(&utc);
-                                sprintf_s(header.data(),header.size(),"HallJoy " HALLJOY_VERSION_STRING_FULL " support report schema=2 utc=%04u-%02u-%02uT%02u:%02u:%02uZ bounded_history=512 no_keyboard_text=1",utc.wYear,utc.wMonth,utc.wDay,utc.wHour,utc.wMinute,utc.wSecond);
+                                const bool rawHidPayload=std::any_of(researchEvidence.begin(),researchEvidence.end(),[](const Line& line){
+                                    return strstr(line.data(),"HallJoy RedSquare unknown packet trace v2;")!=nullptr;
+                                });
+                                sprintf_s(header.data(),header.size(),"HallJoy " HALLJOY_VERSION_STRING_FULL " support report schema=2 utc=%04u-%02u-%02uT%02u:%02u:%02uZ bounded_history=512 no_keyboard_text=1 raw_hid_payload=%u",snapshotUtc.wYear,snapshotUtc.wMonth,snapshotUtc.wDay,snapshotUtc.wHour,snapshotUtc.wMinute,snapshotUtc.wSecond,rawHidPayload?1u:0u);
                                 ok=WriteLine(file,header); fileBytes=DWORD(strlen(header.data())+2);
-                                for (const auto& line : history) { if (!ok || !(ok=WriteLine(file,line))) break; fileBytes += DWORD(strlen(line.data())+2); }
+                                for (const auto& line : researchEvidence) { if (!ok || !(ok=WriteLine(file,line))) break; fileBytes += DWORD(strlen(line.data())+2); }
+                                for (const auto& line : history) { if(strstr(line.data()," redsquare.research "))continue; if (!ok || !(ok=WriteLine(file,line))) break; fileBytes += DWORD(strlen(line.data())+2); }
                             } else {
                                 SetFilePointer(file, 0, nullptr, FILE_END);
                                 for(size_t i=0;i<count;++i) { if(!(ok=WriteLine(file,batch[i]))) break; fileBytes += DWORD(strlen(batch[i].data())+2); }
@@ -310,3 +340,21 @@ void SupportLog_SetWindow(HWND window) noexcept { uiWindow=window; }
 DWORD SupportLog_LastError() noexcept { return lastError.load(); }
 std::uint64_t SupportLog_RequestSnapshot() noexcept { return ++requestedSnapshot; }
 std::uint64_t SupportLog_CompletedSnapshot() noexcept { return completedSnapshot.load(); }
+
+bool SupportLog_RedSquareResearch(const char* record) noexcept {
+    if(!record)return false;
+    const auto length=strnlen_s(record,240);
+    if(!length || length>=240)return false;
+    // Records are generated internally; strip CR/LF so one record is one log line.
+    char clean[240]{};size_t n=0;
+    for(size_t i=0;i<length;++i)if(record[i]!='\r' && record[i]!='\n') {
+        if(static_cast<unsigned char>(record[i])<32 || static_cast<unsigned char>(record[i])>126)return false;
+        clean[n++]=record[i];
+    }
+    AcquireSRWLockExclusive(&queueLock);
+    const bool accepted=queued<queue.size();
+    if(accepted)_snprintf_s(queue[queued++].data(),kLineBytes,_TRUNCATE,"uptime_ms=%llu redsquare.research %s",GetTickCount64(),clean);
+    ReleaseSRWLockExclusive(&queueLock);
+    if(accepted)researchPending.store(true);
+    return accepted;
+}

@@ -1,8 +1,11 @@
 #include "ui_activity.h"
+#include "pause_hotkeys.h"
 // keyboard_subpages.cpp
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include "input_shortcuts_runtime.h"
+#include "keyboard_scan_hid.h"
 #include "legal_notices.h"
 #include "support_log.h"
 #include "community_links.h"
@@ -7333,6 +7336,8 @@ struct GlobalSettingsPageState
     RECT rcEngineRuntime{};
     RECT rcDiagnosticLogging{}, rcHallJoyFolder{}, rcLicenses{}, rcLoggingError{};
     RECT rcMinimizeToTray{}, rcCloseToTray{};
+    RECT rcPauseSeparate{}, rcPauseKeys[3]{}, rcPauseClear[3]{};
+    int pauseCaptureSlot=-1;
     RECT rcCommunity{}, rcDiscord{};
     DWORD loggingError = ERROR_SUCCESS;
     bool pausePulseTimer = false;
@@ -7358,6 +7363,7 @@ static constexpr int GLOB_ID_LAYOUT_VARIANT = 7691;
 static constexpr int GLOB_ID_GLOBAL_PROFILE_COMBO = 7606;
 static constexpr int GLOB_ID_GLOBAL_PROFILE_SAVE = 7610;
 static constexpr int GLOB_ID_ENGINE_RUNTIME = 7611;
+static constexpr int GLOB_ID_PAUSE_SEPARATE=7620, GLOB_ID_PAUSE_KEY=7621, GLOB_ID_PAUSE_CLEAR=7624;
 static constexpr int GLOB_ID_DIAGNOSTIC_LOGGING = 7612;
 static constexpr int GLOB_ID_HALLJOY_FOLDER = 7613;
 static constexpr int GLOB_ID_LICENSES = 7617;
@@ -7815,6 +7821,8 @@ static bool Layout_NudgeSelectedKey(HWND hWnd, LayoutPageState* st, int dRow, in
 
 static void Global_Layout(HWND hWnd, GlobalSettingsPageState* st);
 
+#include "pause_hotkey_ui.h"
+
 static int Global_GetMaxScroll(HWND hWnd, GlobalSettingsPageState* st)
 {
     if (!st) return 0;
@@ -7883,6 +7891,17 @@ static void Global_Layout(HWND hWnd, GlobalSettingsPageState* st)
     y += S(hWnd, 28) + S(hWnd, 14);
     st->rcEngineRuntime = RECT{ x, y, x + S(hWnd, 210), y + S(hWnd, 32) };
     y += S(hWnd, 32) + S(hWnd, 58);
+    st->rcPauseSeparate=RECT{x,y,st->rcGlobalProfile.right,y+S(hWnd,28)};
+    y+=S(hWnd,34);
+    for(unsigned i=0;i<3;++i) {
+        const bool visible=Settings_GetPauseSeparate()?i!=0:i==0;
+        st->rcPauseKeys[i]={};st->rcPauseClear[i]={};
+        if(!visible) continue;
+        st->rcPauseKeys[i]=RECT{x,y,st->rcGlobalProfile.right-S(hWnd,76),y+S(hWnd,28)};
+        st->rcPauseClear[i]=RECT{st->rcPauseKeys[i].right+S(hWnd,8),y,st->rcGlobalProfile.right,y+S(hWnd,28)};
+        y+=S(hWnd,34);
+    }
+    y+=S(hWnd,8);
     st->rcMinimizeToTray = RECT{ x, y, st->rcGlobalProfile.right, y + S(hWnd, 28) };
     y += S(hWnd, 34);
     st->rcCloseToTray = RECT{ x, y, st->rcGlobalProfile.right, y + S(hWnd, 28) };
@@ -8043,6 +8062,16 @@ static void Global_RenderContent(HWND hWnd, HDC hdc, const RECT&, void* user)
     CustomPage_DrawText(hdc, L"Pause releases your keyboard so you can use its web configurator without a device-access conflict.",
         pauseHint, UiTheme::Color_TextMuted(), DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
 
+    CustomPage_DrawCheckbox(g,hdc,hWnd,st->rcPauseSeparate,L"Use separate Pause and Resume keys",
+        Settings_GetPauseSeparate(),true);
+    for(int i=0;i<3;++i) {
+        if(IsRectEmpty(&st->rcPauseKeys[i])) continue;
+        const bool capture=st->pauseCaptureSlot==static_cast<int>(i);
+        const wchar_t* title=i==0?L"Pause / Resume: ":i==1?L"Pause: ":L"Resume: ";
+        const auto text=std::wstring(title)+(capture?L"Press shortcut...":Global_PauseKeyText(Settings_GetPauseShortcut(static_cast<unsigned>(i))));
+        CustomPage_DrawButton(g,hdc,st->rcPauseKeys[i],text.c_str(),st->hotId==GLOB_ID_PAUSE_KEY+i,st->pressedId==GLOB_ID_PAUSE_KEY+i,true);
+        CustomPage_DrawButton(g,hdc,st->rcPauseClear[i],capture?L"Cancel":L"Clear",st->hotId==GLOB_ID_PAUSE_CLEAR+i,st->pressedId==GLOB_ID_PAUSE_CLEAR+i,true);
+    }
     CustomPage_DrawCheckbox(g, hdc, hWnd, st->rcMinimizeToTray, L"Minimize button: hide to system tray",
         Settings_GetMinimizeToTray(), true);
     CustomPage_DrawCheckbox(g, hdc, hWnd, st->rcCloseToTray, L"Close button: hide to system tray",
@@ -8131,6 +8160,9 @@ static int Global_HitTest(GlobalSettingsPageState* st, POINT clientPoint)
         { GLOB_ID_LAYOUT_VARIANT, &st->rcLayoutVariant },
         { GLOB_ID_LAYOUT_EDITOR, &st->rcLayoutEditor },
         { GLOB_ID_ENGINE_RUNTIME, &st->rcEngineRuntime },
+        { GLOB_ID_PAUSE_SEPARATE,&st->rcPauseSeparate },
+        { GLOB_ID_PAUSE_KEY,&st->rcPauseKeys[0] }, { GLOB_ID_PAUSE_KEY+1,&st->rcPauseKeys[1] }, { GLOB_ID_PAUSE_KEY+2,&st->rcPauseKeys[2] },
+        { GLOB_ID_PAUSE_CLEAR,&st->rcPauseClear[0] }, { GLOB_ID_PAUSE_CLEAR+1,&st->rcPauseClear[1] }, { GLOB_ID_PAUSE_CLEAR+2,&st->rcPauseClear[2] },
         { GLOB_ID_MINIMIZE_TRAY, &st->rcMinimizeToTray },
         { GLOB_ID_CLOSE_TRAY, &st->rcCloseToTray },
         { GLOB_ID_DIAGNOSTIC_LOGGING, &st->rcDiagnosticLogging },
@@ -8611,10 +8643,15 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
         Global_UpdatePulse(hWnd, st);
         if (!wParam && st)
         {
+            Global_StopPauseCapture(hWnd,st);
             KillTimer(hWnd, GLOBAL_PAUSE_PULSE_TIMER);
             st->pausePulseTimer = false;
         }
         break;
+
+    case halljoy::shortcuts::kCaptureMessage:
+        if (st) Global_OnShortcutCaptured(hWnd, st, static_cast<unsigned>(lParam));
+        return 0;
 
     case WM_TIMER:
         if (!HallJoyUiVisible(hWnd)) return 0;
@@ -8652,6 +8689,7 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
 
     case WM_COMMAND:
         if (!st) return 0;
+        if(Global_PauseCommand(hWnd,st,wParam)) return 0;
 
         if (LOWORD(wParam) == (UINT)GLOB_ID_GLOBAL_PROFILE_COMBO && HIWORD(wParam) == CBN_SELCHANGE)
         {
@@ -8784,6 +8822,8 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
         if (LOWORD(wParam) == (UINT)GLOB_ID_FACTORY_RESET && HIWORD(wParam) == BN_CLICKED)
         {
             GlobalDeleteConfirm_Clear(hWnd, st);
+            // Mouse-only answer: a held/pressed game key must never confirm.
+            const halljoy::main_input::ModalKeyboardBlock keyboardBlock;
             const int answer = MessageBoxW(
                 hWnd,
                 L"Reset all HallJoy settings to defaults?\n\n"
@@ -8819,6 +8859,7 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
         return 0;
 
     case WM_NCDESTROY:
+        Global_StopPauseCapture(hWnd,st);
         if (st)
         {
             if (st->scroll.draggingThumb && GetCapture() == hWnd)
@@ -8874,6 +8915,37 @@ bool KeyboardSubpages_TestLayoutPicker()
     ok &= !HallJoyUiVisible(probe);
     DestroyWindow(probe);
     if (st) {
+        const unsigned savedShortcuts[3]{Settings_GetPauseShortcut(0),Settings_GetPauseShortcut(1),Settings_GetPauseShortcut(2)};
+        const bool savedSeparate=Settings_GetPauseSeparate();
+        const unsigned savedBlock=Settings_GetBlockKeysHotkey();
+        Settings_SetBlockKeysHotkey(0);
+        const unsigned none[3]{};
+        Global_SavePauseSettings(page,none,false);Global_Layout(page,st);
+        ok &= !IsRectEmpty(&st->rcPauseKeys[0]) && IsRectEmpty(&st->rcPauseKeys[1]);
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_SEPARATE,BN_CLICKED),0);
+        ok &= Settings_GetPauseSeparate();
+        ok &= IsRectEmpty(&st->rcPauseKeys[0]) && !IsRectEmpty(&st->rcPauseKeys[1]) && !IsRectEmpty(&st->rcPauseKeys[2]);
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_KEY+1,BN_CLICKED),0);
+        ok &= st->pauseCaptureSlot==1 && halljoy::shortcuts::Capturing();
+        const unsigned ctrlW=halljoy::shortcuts::Make(26,halljoy::shortcuts::kCtrl);
+        Global_OnShortcutCaptured(page,st,ctrlW);
+        ok &= Settings_GetPauseShortcut(1)==ctrlW && st->pauseCaptureSlot<0 && !halljoy::shortcuts::Capturing();
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_KEY+2,BN_CLICKED),0);
+        Global_OnShortcutCaptured(page,st,ctrlW); // Same shortcut as Pause: rejected.
+        ok &= Settings_GetPauseShortcut(2)==0;
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_KEY+2,BN_CLICKED),0);
+        Global_OnShortcutCaptured(page,st,27);
+        ok &= Settings_GetPauseShortcut(2)==27;
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_CLEAR+1,BN_CLICKED),0);
+        ok &= Settings_GetPauseShortcut(1)==0;
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_KEY+1,BN_CLICKED),0);
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_CLEAR+1,BN_CLICKED),0);
+        ok &= st->pauseCaptureSlot<0 && !halljoy::shortcuts::Capturing();
+        SendMessageW(page,WM_COMMAND,MAKEWPARAM(GLOB_ID_PAUSE_KEY+1,BN_CLICKED),0);
+        Global_OnShortcutCaptured(page,st,halljoy::shortcuts::kCaptureCancelled);
+        ok &= st->pauseCaptureSlot<0 && Settings_GetPauseShortcut(1)==0;
+        Global_SavePauseSettings(page,savedShortcuts,savedSeparate);Global_Layout(page,st);
+        Settings_SetBlockKeysHotkey(savedBlock);
         auto& picker = st->layoutPicker;
         ok &= picker.Selected() == 0 && picker.browsing == L"DrunkDeer";
         const auto snapshot = KeyboardLayout_GetSnapshot();
@@ -10811,8 +10883,8 @@ static void Config_RefreshFromCurrentSettings(HWND hWnd, ConfigPageState* st)
 {
     if (!st) return;
     if (!Settings_GetBlockBoundKeys()) {
+        if (st->blockShortcutCapturing) App_EndShortcutCapture(hWnd);
         st->blockShortcutCapturing = false;
-        App_SetBlockKeysHotkeyCapture(false);
         st->hotCustomId = st->pressedCustomId = 0;
     }
 
@@ -11116,26 +11188,8 @@ static int Config_BlockOptionsSpace(HWND hWnd)
 
 static std::wstring Config_BlockShortcutText()
 {
-    const UINT chord = Settings_GetBlockKeysHotkey();
-    if (!chord) return L"Set shortcut";
-    std::wstring text;
-    const UINT mods = chord >> 8;
-    if (mods & MOD_CONTROL) text += L"Ctrl + ";
-    if (mods & MOD_ALT) text += L"Alt + ";
-    if (mods & MOD_SHIFT) text += L"Shift + ";
-    if (mods & MOD_WIN) text += L"Win + ";
-    const UINT vk = chord & 255;
-    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9)
-        return text + L"Num " + std::to_wstring(vk - VK_NUMPAD0);
-    if (vk == VK_DECIMAL) return text + L"Num Decimal";
-    const UINT scan = MapVirtualKeyW(chord & 255, MAPVK_VK_TO_VSC_EX);
-    wchar_t key[64]{};
-    LONG flags = (scan & 255) << 16;
-    if ((scan & 0xff00) == 0xe000 ||
-        (vk >= VK_PRIOR && vk <= VK_DOWN) || vk == VK_INSERT || vk == VK_DELETE)
-        flags |= 1 << 24;
-    if (!GetKeyNameTextW(flags, key, _countof(key))) swprintf_s(key, L"Key %u", chord & 255);
-    return text + key;
+    const UINT shortcut = Settings_GetBlockKeysHotkey();
+    return shortcut ? ShortcutText(shortcut) : std::wstring(L"Set shortcut");
 }
 
 static RECT Config_PrivilegeWarningRect(HWND hWnd)
@@ -12459,19 +12513,19 @@ static bool DeletePreset_NoPopup_ConfigPage(HWND hWnd, ConfigPageState* st, int 
 static void Config_EndBlockShortcutCapture(HWND hWnd, ConfigPageState* st)
 {
     if (!st) return;
+    if (st->blockShortcutCapturing) App_EndShortcutCapture(hWnd);
     st->blockShortcutCapturing = false;
-    App_SetBlockKeysHotkeyCapture(false);
     Config_MarkSurfaceDirty(hWnd, st);
 }
 
-static void Config_CommitBlockShortcut(HWND hWnd, ConfigPageState* st, UINT chord)
+static void Config_CommitBlockShortcut(HWND hWnd, ConfigPageState* st, UINT shortcut)
 {
     if (!st) return;
     Config_EndBlockShortcutCapture(hWnd, st);
-    const DWORD error = App_SetBlockKeysHotkey(chord);
+    const DWORD error = App_SetBlockKeysHotkey(shortcut);
     if (error) {
-        st->blockShortcutError = error == ERROR_HOTKEY_ALREADY_REGISTERED
-            ? L"Shortcut is already in use. Choose another."
+        st->blockShortcutError = error == ERROR_ALREADY_ASSIGNED
+            ? L"This shortcut is already used by Pause/Resume. Choose another."
             : L"This shortcut is unavailable. Choose another.";
     } else {
         st->blockShortcutError.clear();
@@ -12485,8 +12539,6 @@ static void Config_CommitBlockShortcut(HWND hWnd, ConfigPageState* st, UINT chor
 LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     auto* st = (ConfigPageState*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
-    if (msg == halljoy::main_input::QueryExplicitInput())
-        return st && st->blockShortcutCapturing ? 1 : 0;
     if (st && st->blockShortcutCapturing && !Settings_GetBlockBoundKeys())
         Config_EndBlockShortcutCapture(hWnd, st);
     if (msg == WM_APP_BLOCK_KEYS_CHANGED) {
@@ -12497,35 +12549,21 @@ LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wPa
         }
         return 0;
     }
-    if (msg == WM_APP_BLOCK_KEYS_CANCEL_CAPTURE) {
-        if (st && st->blockShortcutCapturing) Config_EndBlockShortcutCapture(hWnd, st);
-        return 0;
-    }
-    if (msg == WM_APP_BLOCK_KEYS_CAPTURED) {
-        if (st && st->blockShortcutCapturing)
-            Config_CommitBlockShortcut(hWnd, st, (LOWORD(lParam) << 8) | HIWORD(lParam));
-        return 0;
-    }
-    if (st && st->blockShortcutCapturing) {
-        if (msg == WM_GETDLGCODE) return DLGC_WANTALLKEYS;
-        if (msg == WM_KILLFOCUS || msg == WM_DESTROY || (msg == WM_SHOWWINDOW && !wParam))
-            Config_EndBlockShortcutCapture(hWnd, st);
-        if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
-            if (wParam == VK_ESCAPE) { Config_EndBlockShortcutCapture(hWnd, st); return 0; }
-            if ((lParam & (1LL << 30)) != 0) return 0; // Auto-repeat is not a new assignment.
-            UINT mods = 0;
-            if (GetKeyState(VK_CONTROL) & 0x8000) mods |= MOD_CONTROL;
-            if (GetKeyState(VK_MENU) & 0x8000) mods |= MOD_ALT;
-            if (GetKeyState(VK_SHIFT) & 0x8000) mods |= MOD_SHIFT;
-            if ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000) mods |= MOD_WIN;
-            const UINT chord = (mods << 8) | halljoy::block_keys::ShortcutKey(
-                static_cast<UINT>(wParam), (static_cast<UINT_PTR>(lParam) >> 16) & 255,
-                (lParam & (1LL << 24)) != 0);
-            if (halljoy::block_keys::ValidShortcut(chord)) Config_CommitBlockShortcut(hWnd, st, chord);
-            return 0;
+    // The shared shortcut engine reports digital or analog presses, so a key
+    // blocked by HallJoy or by keyboard firmware can still be assigned.
+    if (msg == halljoy::shortcuts::kCaptureMessage) {
+        if (st && st->blockShortcutCapturing) {
+            const unsigned result = static_cast<unsigned>(lParam);
+            if (result && result != halljoy::shortcuts::kCaptureCancelled)
+                Config_CommitBlockShortcut(hWnd, st, result);
+            else
+                Config_EndBlockShortcutCapture(hWnd, st);
         }
-        if (msg == WM_KEYUP || msg == WM_SYSKEYUP) return 0;
+        return 0;
     }
+    if (st && st->blockShortcutCapturing &&
+        (msg == WM_DESTROY || (msg == WM_SHOWWINDOW && !wParam)))
+        Config_EndBlockShortcutCapture(hWnd, st);
     if (msg == WM_COMMAND && HIWORD(wParam) == BN_CLICKED && st) {
         // Ignore queued clicks belonging to controls that have just collapsed.
         if (!Settings_GetBlockBoundKeys() &&
@@ -12542,8 +12580,14 @@ LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wPa
             Config_ClosePopupAnchors(st);
             SetFocus(hWnd);
             st->blockShortcutError.clear();
+            if (st->blockShortcutCapturing) {
+                // Clicking the button again cancels the capture.
+                Config_EndBlockShortcutCapture(hWnd, st);
+                Config_RecalcContentHeight(hWnd, st);
+                return 0;
+            }
             st->blockShortcutCapturing = true;
-            App_SetBlockKeysHotkeyCapture(true);
+            App_BeginShortcutCapture(hWnd);
             Config_RecalcContentHeight(hWnd, st);
             Config_MarkSurfaceDirty(hWnd, st);
             return 0;
@@ -12836,10 +12880,18 @@ LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wPa
         return 0;
     }
 
-    // Extra icon click (save dirty preset)
+    // Extra icon click: save dirty preset, or revert its unsaved edits
     if (msg == PremiumCombo::MsgExtraIcon())
     {
         if (st) DeleteConfirm_Clear(hWnd, st);
+
+        if (LOWORD(wParam) == (UINT)PremiumCombo::ExtraIconKind::Revert)
+        {
+            if (KeySettingsPanel_RevertPresetEdits(hWnd))
+                SetProfileStatus(st, L"Unsaved preset changes discarded.");
+            if (st) Config_MarkSurfaceDirty(hWnd, st);
+            return 0;
+        }
 
         HWND hCombo = (HWND)lParam;
 
@@ -13282,6 +13334,11 @@ LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wPa
         }
         break;
     }
+
+    case WM_MOUSELEAVE:
+        // Clears hover of the curve reset button (it requests TME_LEAVE).
+        KeySettingsPanel_HandleCustomControlsMouse(hWnd, WM_MOUSELEAVE, wParam, lParam);
+        break;
 
     case WM_CAPTURECHANGED:
     {

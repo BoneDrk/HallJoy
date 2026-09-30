@@ -404,6 +404,7 @@ LRESULT CALLBACK PremiumComboInternal::ComboProc(HWND hWnd, UINT msg, WPARAM wPa
             st->hovered = false;
             st->arrowHot = false;
             st->extraIconHot = false;
+            st->revertIconHot = false;
             InvalidateRect(hWnd, nullptr, FALSE);
         }
         return 0;
@@ -416,13 +417,15 @@ LRESULT CALLBACK PremiumComboInternal::ComboProc(HWND hWnd, UINT msg, WPARAM wPa
 
         {
             POINT pt{ (short)LOWORD(lParam), (short)HIWORD(lParam) };
-            if (st->extraIconDraw != PremiumCombo::ExtraIconKind::None &&
-                st->extraIconT > 0.001f &&
-                PremiumComboInternal::HitTestExtraIcon(st, pt))
+            const auto clicked = st->extraIconDraw != PremiumCombo::ExtraIconKind::None &&
+                st->extraIconT > 0.001f
+                ? PremiumComboInternal::HitTestExtraIconKind(st, pt)
+                : PremiumCombo::ExtraIconKind::None;
+            if (clicked != PremiumCombo::ExtraIconKind::None)
             {
                 if (st->parent)
                 {
-                    WPARAM wp = MAKEWPARAM((UINT)st->extraIconDraw, (UINT)st->controlId);
+                    WPARAM wp = MAKEWPARAM((UINT)clicked, (UINT)st->controlId);
                     PostMessageW(st->parent, PremiumCombo::MsgExtraIcon(), wp, (LPARAM)hWnd);
                 }
                 return 0;
@@ -893,6 +896,7 @@ namespace PremiumCombo
         st->hovered = false;
         st->arrowHot = false;
         st->extraIconHot = false;
+        st->revertIconHot = false;
         st->hotBtnIndex = -1;
         st->hotBtnKind = ItemButtonKind::None;
 

@@ -63,4 +63,20 @@ Prepared after native gamepad output, using fresh precise calibrated depth;
 old commands remain. No descriptor change. Measured162.667 snapshots/s vs48.1463
 legacy on the installed r6; actual display FPS remains owner-evaluated.
 
+r7 (source only, 2026-09-29, not built or flashed by the agent) adds capability
+bit5 (HJO_CAP_KEEP_ALT_TAB) and mapping flag HJO_KEEP_ALT_TAB. With suppression
+on, Tab/Left Alt/Right Alt stay in ordinary keyboard output (Alt+Tab) while their
+analog value still drives the gamepad. The rule is the shared hjo_suppressed().
+HallJoy sends the flag only when the capability bit is present, because r6 and
+older reject unknown flags at profile commit. Until r7 is flashed, "Keep Alt and
+Tab unblocked" cannot restore Alt/Tab on this keyboard while Block Bound Keys is on.
+
+r8 (2026-09-29, includes r7; QMK bin SHA256 04634f34…aa335, FLASHED, readback verified)
+adds capability bit6 delta upload: A9/72 byte8=1, base CRC at 12..16, accepted
+only while staging equals the committed wire. It also adds bit7 PARK: A9/77
+byte8=1 gives phase 3, native descriptor kept, neutral pad, no suppression,
+30 min lease, reopenable by OPEN without re-enumeration. Block toggles and
+pause/resume no longer re-upload 5 KB or re-enumerate the keyboard. See
+docs/current/K4_BLOCK_PAUSE_FREEZE_2026-09-29.md.
+
 Licensing: see [scope and shared-header grant](LICENSING.md) and [GPL text](COPYING).

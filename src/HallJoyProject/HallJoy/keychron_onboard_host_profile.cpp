@@ -14,7 +14,10 @@ ProfileResult CaptureProfile(hjo_profile& destination) {
     hjo_profile next{};
     next.mapping.flags = (Settings_GetSnappyJoystick()?HJO_SNAP:0) |
         (Settings_GetLastKeyPriority()?HJO_LKP:0) |
-        (Settings_GetBlockBoundKeys()?HJO_SUPPRESS:0);
+        (Settings_GetBlockBoundKeys()?HJO_SUPPRESS:0) |
+        // Honoured only by firmware advertising HJO_CAP_KEEP_ALT_TAB; the
+        // session strips it for older firmware, which would reject the profile.
+        (Settings_GetBlockBoundKeys() && Settings_GetBlockKeysAllowAltTab()?HJO_KEEP_ALT_TAB:0);
     next.mapping.sensitivity=Settings_GetLastKeyPrioritySensitivity();
     for (unsigned a=0;a<4;++a) {
         const int minus=SlotForHid(bindings.axes[0][a].minusHid);

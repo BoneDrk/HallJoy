@@ -177,8 +177,9 @@ namespace PremiumComboInternal
         bool hovered = false;
         bool arrowHot = false;
 
-        // Extra icon hover (closed state)
+        // Extra icon hover (closed state): Save, and Revert in SaveAndRevert mode.
         bool extraIconHot = false;
+        bool revertIconHot = false;
 
         // Hover animations (0..1)
         bool  hoverAnimRunning = false;
@@ -293,7 +294,10 @@ namespace PremiumComboInternal
     // Extra icon / item button geometry + hit-testing
     // ---------------------------------------------------------------------
     RECT GetExtraIconRect(State* st); // combo client coords; empty if not shown
+    RECT GetRevertIconRect(State* st); // left of Save in SaveAndRevert mode
     bool HitTestExtraIcon(State* st, POINT ptClient);
+    // Save, Revert or None for a point in combo client coordinates.
+    PremiumCombo::ExtraIconKind HitTestExtraIconKind(State* st, POINT ptClient);
 
     RECT GetPopupItemButtonRect(State* st, int idx, PremiumCombo::ItemButtonKind kind);
 

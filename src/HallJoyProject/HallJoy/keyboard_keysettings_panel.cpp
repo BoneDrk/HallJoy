@@ -52,11 +52,19 @@ static RECT Ksp_ModeLabelRect(HWND parent);
 static RECT Ksp_ProfileLabelRect(HWND parent);
 static RECT Ksp_ModeComboRect(HWND parent);
 static RECT Ksp_ProfileComboRect(HWND parent);
+static RECT Ksp_ResetCurveRect(HWND parent);
 static RECT Ksp_ToggleSwitchRect(HWND parent, const RECT& row);
 static RECT Ksp_ToViewRect(HWND parent, RECT rc);
 static bool Ksp_PointInRect(const RECT& rc, POINT pt);
 static void Ksp_InvalidateCustomControls();
 static void Ksp_DrawToggleRow(HWND parent, HDC hdc, Gdiplus::Graphics& g, const RECT& rc, HWND hBtn, const wchar_t* label, bool checked, bool enabled);
+static void Ksp_DrawResetCurveButton(HWND parent, Gdiplus::Graphics& g, const RECT& rc, bool hot, bool pressed, bool enabled);
+
+// "Reset curve" button: mouse-only custom control next to the Preset combo.
+static bool g_kspResetHot = false;
+static bool g_kspResetPressed = false;
+// Hovered Save/Revert icon of the retained Preset combo face.
+static PremiumCombo::ExtraIconKind g_kspProfileIconHot = PremiumCombo::ExtraIconKind::None;
 
 // ---------- Helpers ----------
 static bool NearlyEq(float a, float b, float eps = 1e-4f)
@@ -83,6 +91,33 @@ static bool IsSameCurve(const KeyDeadzone& a, const KeyDeadzone& b)
     if (!NearlyEq(a.cp2_w, b.cp2_w)) return false;
 
     return true;
+}
+
+// Straight, evenly distributed curve between the current endpoints. Deadzones,
+// anti-deadzone, output cap, invert and curve mode are preserved; only the
+// control points move onto the P0->P3 line at 1/3 and 2/3. Collinear control
+// points give an exact straight line in both Smooth and Linear modes.
+static KeyDeadzone UniformCurveFor(const KeyDeadzone& ks)
+{
+    KeyDeadzone out = ks;
+    const float dx = ks.high - ks.low;
+    const float dy = ks.outputCap - ks.antiDeadzone;
+    out.cp1_x = ks.low + dx / 3.0f;
+    out.cp1_y = ks.antiDeadzone + dy / 3.0f;
+    out.cp2_x = ks.low + dx * 2.0f / 3.0f;
+    out.cp2_y = ks.antiDeadzone + dy * 2.0f / 3.0f;
+    // Neutral weights for the active mode (Smooth uses 0.5 on mode switch).
+    out.cp1_w = out.cp2_w = (ks.curveMode == 0) ? 0.5f : 1.0f;
+    return out;
+}
+
+static bool IsUniformCurve(const KeyDeadzone& ks)
+{
+    const KeyDeadzone u = UniformCurveFor(ks);
+    constexpr float eps = 1e-3f;
+    return NearlyEq(ks.cp1_x, u.cp1_x, eps) && NearlyEq(ks.cp1_y, u.cp1_y, eps) &&
+        NearlyEq(ks.cp2_x, u.cp2_x, eps) && NearlyEq(ks.cp2_y, u.cp2_y, eps) &&
+        NearlyEq(ks.cp1_w, u.cp1_w, eps) && NearlyEq(ks.cp2_w, u.cp2_w, eps);
 }
 
 // Returns preset index in g_profileList, or -1 if none.
@@ -184,8 +219,9 @@ static void UpdateDirtyIcon_ForCurrentSelection(const KeyDeadzone& ks)
         KeyboardProfiles::SetActiveProfileName(g_profileList[sel].name);
         KeyboardProfiles::SetDirty(dirty);
 
+        // Unsaved edits of a saved preset: Save, and Revert to discard them.
         PremiumCombo::SetExtraIcon(g_kspComboProfile,
-            dirty ? PremiumCombo::ExtraIconKind::Save : PremiumCombo::ExtraIconKind::None);
+            dirty ? PremiumCombo::ExtraIconKind::SaveAndRevert : PremiumCombo::ExtraIconKind::None);
         return;
     }
 
@@ -617,7 +653,8 @@ void KeySettingsPanel_DrawControls(HWND parent, HDC hdc)
     {
         rc = Ksp_ToViewRect(parent, rc);
         if (combo)
-            PremiumCombo::PaintRetainedFace(combo, hdc, rc, false);
+            PremiumCombo::PaintRetainedFace(combo, hdc, rc, false,
+                combo == g_kspComboProfile ? g_kspProfileIconHot : PremiumCombo::ExtraIconKind::None);
         else
             CustomPage_DrawText(hdc, placeholder ? placeholder : L"", rc,
                 UiTheme::Color_TextMuted(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
@@ -625,6 +662,31 @@ void KeySettingsPanel_DrawControls(HWND parent, HDC hdc)
     drawCombo(g_kspComboMode, Ksp_ModeComboRect(parent), L"Linear (Segments)");
     drawCombo(g_kspComboProfile, Ksp_ProfileComboRect(parent), L"Custom");
 
+    const bool resetEnabled = !IsUniformCurve(Ksp_GetActiveSettings());
+    Ksp_DrawResetCurveButton(parent, g, Ksp_ToViewRect(parent, Ksp_ResetCurveRect(parent)),
+        g_kspResetHot && resetEnabled, g_kspResetPressed && resetEnabled, resetEnabled);
+
+}
+
+bool KeySettingsPanel_RevertPresetEdits(HWND parent)
+{
+    if (!g_kspComboProfile) return false;
+    const int sel = PremiumCombo::GetCurSel(g_kspComboProfile);
+    if (sel < 0 || sel >= (int)g_profileList.size()) return false;
+    KeyDeadzone preset{};
+    if (!KeyboardProfiles::LoadPreset(g_profileList[sel].path, preset)) return false;
+    // Same path as choosing the preset: undo history, morph, clean state.
+    Ksp_StartCurveMorph(preset, true);
+    Ksp_SaveActiveSettings(preset);
+    KeyboardProfiles::SetActiveProfileName(g_profileList[sel].name);
+    KeyboardProfiles::SetDirty(false);
+    PremiumCombo::SetExtraIcon(g_kspComboProfile, PremiumCombo::ExtraIconKind::None);
+    g_kspProfileIconHot = PremiumCombo::ExtraIconKind::None;
+    Ksp_SyncUI();
+    InvalidateRect(parent, nullptr, FALSE);
+    Ksp_InvalidateCustomControls();
+    Ksp_RequestSave(parent);
+    return true;
 }
 
 bool KeySettingsPanel_HandleCustomControlsMouse(HWND parent, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -640,6 +702,72 @@ bool KeySettingsPanel_HandleCustomControlsMouse(HWND parent, UINT msg, WPARAM wP
     bool overInvert = Ksp_PointInRect(invert, pt);
     bool overMode = Ksp_PointInRect(Ksp_ModeComboRect(parent), pt);
     bool overProfile = Ksp_PointInRect(Ksp_ProfileComboRect(parent), pt);
+    const bool overReset = msg != WM_MOUSELEAVE && Ksp_PointInRect(Ksp_ResetCurveRect(parent), pt);
+    const bool resetEnabled = !IsUniformCurve(Ksp_GetActiveSettings());
+    // Save/Revert icons inside the retained Preset face act as their own buttons.
+    const PremiumCombo::ExtraIconKind profileIcon = msg != WM_MOUSELEAVE && overProfile && g_kspComboProfile
+        ? PremiumCombo::HitTestRetainedExtraIcon(g_kspComboProfile, Ksp_ProfileComboRect(parent), pt)
+        : PremiumCombo::ExtraIconKind::None;
+
+    if (msg == WM_MOUSELEAVE || msg == WM_MOUSEMOVE)
+    {
+        if (profileIcon != g_kspProfileIconHot)
+        {
+            g_kspProfileIconHot = profileIcon;
+            if (profileIcon != PremiumCombo::ExtraIconKind::None)
+            {
+                TRACKMOUSEEVENT track{ sizeof(track), TME_LEAVE, parent, 0 };
+                TrackMouseEvent(&track);
+            }
+            Ksp_InvalidateCustomControls();
+        }
+        if (overReset != g_kspResetHot)
+        {
+            g_kspResetHot = overReset;
+            if (!overReset) g_kspResetPressed = false;
+            if (overReset)
+            {
+                TRACKMOUSEEVENT track{ sizeof(track), TME_LEAVE, parent, 0 };
+                TrackMouseEvent(&track);
+            }
+            Ksp_InvalidateCustomControls();
+        }
+        if (msg == WM_MOUSELEAVE)
+            return false;
+    }
+
+    if ((msg == WM_SETCURSOR || msg == WM_MOUSEMOVE) && overReset)
+    {
+        SetCursor(LoadCursorW(nullptr, resetEnabled ? IDC_HAND : IDC_ARROW));
+        return msg == WM_SETCURSOR;
+    }
+
+    if (msg == WM_LBUTTONDOWN && overReset)
+    {
+        SetFocus(parent);
+        g_kspResetPressed = resetEnabled;
+        Ksp_InvalidateCustomControls();
+        return true;
+    }
+
+    if (msg == WM_LBUTTONUP && (overReset || g_kspResetPressed))
+    {
+        const bool activate = overReset && g_kspResetPressed && resetEnabled;
+        g_kspResetPressed = false;
+        if (activate)
+        {
+            // Same path as a graph edit: active target, undo history, morph.
+            const KeyDeadzone target = UniformCurveFor(Ksp_GetActiveSettings());
+            Ksp_StartCurveMorph(target, true);
+            Ksp_SaveActiveSettings(target);
+            UpdateDirtyIcon_ForCurrentSelection(Ksp_GetActiveSettings());
+            Ksp_SyncUI();
+            InvalidateRect(parent, nullptr, FALSE);
+            Ksp_RequestSave(parent);
+        }
+        Ksp_InvalidateCustomControls();
+        return true;
+    }
 
     // Native PremiumCombo child windows receive their own mouse input.
     if (msg == WM_SETCURSOR || msg == WM_MOUSEMOVE)
@@ -664,6 +792,13 @@ bool KeySettingsPanel_HandleCustomControlsMouse(HWND parent, UINT msg, WPARAM wP
 
     if (msg == WM_LBUTTONUP)
     {
+        if (profileIcon != PremiumCombo::ExtraIconKind::None)
+        {
+            // Same notification a visible combo sends for its extra icons.
+            PostMessageW(parent, PremiumCombo::MsgExtraIcon(),
+                MAKEWPARAM((UINT)profileIcon, (UINT)KSP_ID_PROFILE), (LPARAM)g_kspComboProfile);
+            return true;
+        }
         if (overUnique)
             return KeySettingsPanel_HandleCommand(parent, MAKEWPARAM(KSP_ID_UNIQUE, BN_CLICKED), 0);
         if (overInvert)
@@ -956,7 +1091,55 @@ static RECT Ksp_ProfileComboRect(HWND parent)
 {
     RECT label = Ksp_ProfileLabelRect(parent);
     int x = label.right;
-    return Ksp_Rect(x, (S(parent, 252) - KeySettingsPanel_HeaderOffsetPx(parent)), S(parent, 200), S(parent, 28));
+    // Leave room for the reset button, right-aligned with the graph edge.
+    const RECT reset = Ksp_ResetCurveRect(parent);
+    const int w = std::max(S(parent, 120), (int)reset.left - S(parent, 8) - x);
+    return Ksp_Rect(x, (S(parent, 252) - KeySettingsPanel_HeaderOffsetPx(parent)), w, S(parent, 28));
+}
+
+static RECT Ksp_ResetCurveRect(HWND parent)
+{
+    const int size = S(parent, 28);
+    const int right = S(parent, 12) + S(parent, 520); // graph right edge
+    return Ksp_Rect(right - size, (S(parent, 252) - KeySettingsPanel_HeaderOffsetPx(parent)), size, size);
+}
+
+static void Ksp_DrawResetCurveButton(HWND parent, Gdiplus::Graphics& g, const RECT& rc, bool hot, bool pressed, bool enabled)
+{
+    auto brighten = [](COLORREF c, int d) {
+        return RGB(std::min(255, GetRValue(c) + d), std::min(255, GetGValue(c) + d), std::min(255, GetBValue(c) + d));
+    };
+    // Same face as the PremiumCombo boxes in this row.
+    const COLORREF fill = pressed ? brighten(UiTheme::Color_ControlBg(), 6)
+        : (hot ? brighten(UiTheme::Color_ControlBg(), 10) : UiTheme::Color_ControlBg());
+    const COLORREF border = hot ? brighten(UiTheme::Color_Border(), 18) : UiTheme::Color_Border();
+    CustomPage_DrawRoundRect(g, rc, fill, border, (float)std::clamp(S(parent, 4), 2, 6));
+
+    // Miniature of the result: a straight linear graph, drawn with the same
+    // orange line and vertical fill gradient as the curve graph itself.
+    const float w = (float)(rc.right - rc.left), h = (float)(rc.bottom - rc.top);
+    const float inset = std::min(w, h) * 0.24f;
+    const float nudge = pressed ? 0.5f : 0.0f;
+    const Gdiplus::RectF plot(rc.left + inset, rc.top + inset + nudge,
+        std::max(1.0f, w - inset * 2.0f), std::max(1.0f, h - inset * 2.0f));
+    const BYTE lineAlpha = enabled ? (hot ? 255 : 200) : 70;
+    const BYTE topAlpha = enabled ? 200 : 60, bottomAlpha = enabled ? 25 : 10;
+    const Gdiplus::Color topC(topAlpha, 255, 170, 0), bottomC(bottomAlpha, 255, 170, 0);
+
+    const Gdiplus::PointF triangle[3] = {
+        Gdiplus::PointF(plot.X, plot.GetBottom()),          // start: bottom-left
+        Gdiplus::PointF(plot.GetRight(), plot.Y),           // end: top-right
+        Gdiplus::PointF(plot.GetRight(), plot.GetBottom()), // area under the line
+    };
+    Gdiplus::RectF gradientRect = plot;
+    gradientRect.Inflate(0.0f, 0.5f); // avoid GDI+ edge wrap on the exact bounds
+    Gdiplus::LinearGradientBrush fillBrush(gradientRect, topC, bottomC, Gdiplus::LinearGradientModeVertical);
+    g.FillPolygon(&fillBrush, triangle, 3);
+
+    Gdiplus::Pen line(Gdiplus::Color(lineAlpha, 255, 170, 0), std::max(1.5f, (float)S(parent, 2)));
+    line.SetStartCap(Gdiplus::LineCapRound);
+    line.SetEndCap(Gdiplus::LineCapRound);
+    g.DrawLine(&line, triangle[0], triangle[1]);
 }
 
 static float KspToggleAnimT(HWND hBtn, bool checkedFallback)

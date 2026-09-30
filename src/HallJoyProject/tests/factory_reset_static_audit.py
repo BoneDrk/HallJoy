@@ -29,7 +29,8 @@ remap = read(HALL / "remap_panel.cpp")
 project = read(HALL / "HallJoy.vcxproj")
 filters = read(HALL / "HallJoy.vcxproj.filters")
 
-for leaf in ("settings.ini", "bindings.ini", "GlobalProfiles", "Layouts", "CurvePresets"):
+for leaf in ("settings.ini", "bindings.ini", "GlobalProfiles", "Layouts", "CurvePresets",
+             "settings.ini.pre-bundle.bak", "settings.ini.bak", "GameProfiles.ini"):
     require(factory, f'L"{leaf}"', f"reset transaction includes {leaf}")
 
 require(factory, "IniUtil_SaveAtomic(", "reset request marker is atomically persisted")

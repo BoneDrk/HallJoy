@@ -10,6 +10,10 @@
 namespace halljoy::k4_onboard {
 struct Device { std::wstring path,serial; std::uint16_t revision=0; };
 std::vector<Device> EnumerateDevices();
+// True while any USB device node of the K4 HE (3434:0E40) is present, including
+// while its HID interfaces are still being (re)created after a mode change.
+// Metadata only: no device handle is opened.
+bool K4UsbDevicePresent();
 class WindowsChannel final : public Channel {
     Device device_;
     HANDLE handle_=INVALID_HANDLE_VALUE;

@@ -24,12 +24,18 @@ namespace
         bool directory;
     };
 
-    constexpr std::array<ResetTarget, 5> kResetTargets{ {
+    // Startup recovery loads settings.ini.pre-bundle.bak/.bak when settings.ini
+    // is missing, so they must leave with it or the reset is silently undone.
+    // Game associations refer to the global profiles removed above.
+    constexpr std::array<ResetTarget, 8> kResetTargets{ {
         { L"settings.ini", false },
         { L"bindings.ini", false },
         { L"GlobalProfiles", true },
         { L"Layouts", true },
         { L"CurvePresets", true },
+        { L"settings.ini.pre-bundle.bak", false },
+        { L"settings.ini.bak", false },
+        { L"GameProfiles.ini", false },
     } };
 
     std::wstring JoinPath(const std::wstring& root, const wchar_t* leaf)

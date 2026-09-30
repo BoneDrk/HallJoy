@@ -197,7 +197,15 @@ bool TimedIo(HANDLE handle, bool write, void* data, DWORD bytes,
             return ok;
         }
         const DWORD waitError = wait == WAIT_TIMEOUT ? WAIT_TIMEOUT : GetLastError();
-        operation.CancelAndDrain(transferred, &error);
+        DWORD drained = 0;
+        operation.CancelAndDrain(&drained, &error);
+        // A report completing between the wait timeout and CancelIoEx is real
+        // stream data (possibly a release delta); do not discard it.
+        if (error == ERROR_SUCCESS && drained != 0)
+        {
+            if (transferred) *transferred = drained;
+            return true;
+        }
         SetLastError(waitError ? waitError : ERROR_GEN_FAILURE);
         return false;
     }
@@ -849,8 +857,12 @@ halljoy::lifecycle::StopResult Stop(
             wait == WAIT_TIMEOUT ? WAIT_TIMEOUT : GetLastError());
     CloseHandle(g_thread);
     g_thread = nullptr;
-    if (g_wake) CloseHandle(g_wake);
-    g_wake = nullptr;
+    {
+        // Notify() may run concurrently from the UI thread under this lock.
+        std::lock_guard<std::mutex> signal(g_signalMutex);
+        if (g_wake) CloseHandle(g_wake);
+        g_wake = nullptr;
+    }
     g_running.store(false, std::memory_order_release);
     g_connected.store(false, std::memory_order_release);
     Clear();

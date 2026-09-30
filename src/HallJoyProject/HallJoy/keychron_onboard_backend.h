@@ -5,6 +5,12 @@ const NativeAnalogBackendDescriptor& KeychronOnboard_GetNativeBackendDescriptor(
 // reserved through reconnect; a disappearing keyboard must not spawn ViGEm.
 bool KeychronOnboard_OwnsOutput() noexcept;
 void KeychronOnboard_SetAdmission(bool admitted) noexcept;
+// Default true: engine stop (pause) parks the K4 session without USB
+// re-enumeration. Set false before process exit so the session fully closes.
+void KeychronOnboard_SetParkOnStop(bool park) noexcept;
+// Process exit after the engine stopped: disables parking and returns a K4
+// that this process parked to ordinary keyboard mode.
+void KeychronOnboard_ReleaseParked() noexcept;
 void KeychronOnboard_MonitorVisible(bool visible) noexcept;
 
 bool KeychronOnboard_CopyPad(std::uint8_t* destination,std::size_t size) noexcept;

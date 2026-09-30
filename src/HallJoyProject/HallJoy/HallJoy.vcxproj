@@ -636,6 +636,7 @@
     <ClCompile Include="slice75_backend.cpp" />
     <ClCompile Include="rongyuan_snapshot_backend.cpp" />
     <ClCompile Include="rongyuan_stream_backend.cpp" />
+    <ClCompile Include="alumix104_backend.cpp" />
     <ClCompile Include="tartarus_backend.cpp" />
     <ClCompile Include="neo65_backend.cpp" />
     <ClCompile Include="mchose_mix87_backend.cpp" />
@@ -645,6 +646,8 @@
     <ClInclude Include="steelseries_apex_backend.h" />
     <ClInclude Include="steelseries_apex_protocol.h" />
     <ClInclude Include="rongyuan_stream_backend.h" />
+    <ClInclude Include="alumix104_backend.h" />
+    <ClInclude Include="alumix104_protocol.h" />
     <ClInclude Include="tartarus_backend.h" />
     <ClInclude Include="neo65_backend.h" />
     <ClInclude Include="rongyuan_stream_protocol.h" />
@@ -655,9 +658,7 @@
       <ExcludedFromBuild Condition="'$(HallJoyAulaHero84HeDiagnostic)'!='true'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="aula_hero84he_diagnostic_protocol.cpp" />
-    <ClCompile Include="mad68_dual_trial_backend.cpp">
-      <ExcludedFromBuild Condition="'$(HallJoyMad68DualTrial)'!='true'">true</ExcludedFromBuild>
-    </ClCompile>
+    <ClCompile Include="mad68_dual_trial_backend.cpp" />
     <ClCompile Include="titan68_turbo_diagnostic_backend.cpp">
       <ExcludedFromBuild Condition="'$(HallJoyTitan68TurboDiagnostic)'!='true' and '$(HallJoyTitan68TurboExperimental)'!='true'">true</ExcludedFromBuild>
     </ClCompile>

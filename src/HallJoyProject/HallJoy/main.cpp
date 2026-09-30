@@ -4,6 +4,7 @@
 #include "support_log.h"
 #include "irok_na87_diagnostic.h"
 #include "aula_mini60_diagnostic.h"
+#include "redsquare_code_probe.h"
 #include "aula_hero84he_backend.h"
 #include "attackshark_pro_diagnostic.h"
 #include "irok_na87_backend.h"
@@ -199,7 +200,35 @@ int WINAPI wWinMain(
     const bool supportTest=supportArgv && supportArgc==2 && wcscmp(supportArgv[1], L"--halljoy-support-self-test")==0;
     const bool k4CatalogTest=supportArgv && supportArgc==2 &&
         wcscmp(supportArgv[1],L"--halljoy-require-k4-onboard")==0;
+    const bool fullCatalogTest=supportArgv && supportArgc==2 &&
+        wcscmp(supportArgv[1],L"--halljoy-require-full-catalog")==0;
     if(supportArgv)LocalFree(supportArgv);
+    if(fullCatalogTest) {
+        if(!NativeAnalogBackends_CatalogIsValid())return 92;
+        // Independent release expectation, not generated from the compiled catalog.
+        constexpr NativeAnalogProtocol required[]={
+            NativeAnalogProtocol::Mad68A0, NativeAnalogProtocol::Hex80,
+            NativeAnalogProtocol::Addressed09402, NativeAnalogProtocol::SparkLink,
+            NativeAnalogProtocol::SayoDepth, NativeAnalogProtocol::AulaWin60He,
+            NativeAnalogProtocol::AulaW669, NativeAnalogProtocol::AulaHero84He,
+            NativeAnalogProtocol::IrokNa87M484, NativeAnalogProtocol::AulaMini60HePro,
+            NativeAnalogProtocol::AttackSharkX65Pro, NativeAnalogProtocol::IrokMg75Pro,
+            NativeAnalogProtocol::KeychronOnboard, NativeAnalogProtocol::ChilkeySlice75,
+            NativeAnalogProtocol::RongYuanSnapshot, NativeAnalogProtocol::RongYuanStream,
+            NativeAnalogProtocol::TartarusPro, NativeAnalogProtocol::Neo65,
+            NativeAnalogProtocol::SteelSeriesApex, NativeAnalogProtocol::Mad68DualTrial,
+            NativeAnalogProtocol::MchoseMix87,
+            NativeAnalogProtocol::Alumix104Yotei};
+        for(const auto protocol:required){
+            bool found=false;
+            for(std::size_t i=0;i<NativeAnalogBackends_Count();++i){
+                const auto* d=NativeAnalogBackends_Descriptor(i);
+                if(d && d->protocol==protocol)found=true;
+            }
+            if(!found)return 100+static_cast<int>(protocol);
+        }
+        return 0;
+    }
     if(k4CatalogTest) {
         if(!NativeAnalogBackends_CatalogIsValid()) return 90;
         for(std::size_t i=0;i<NativeAnalogBackends_Count();++i) {
@@ -212,6 +241,7 @@ int WINAPI wWinMain(
         int line=0; return AulaHero84He_TestPublication(&line) ? 0 : (line % 200 + 1);
     }
     int na87Exit = 0;
+    if (halljoy::redsquare_probe::TryRun(na87Exit)) return na87Exit;
     if (SharkDiagnostic_TryRunCommand(na87Exit)) return na87Exit;
     if (Mini60Diagnostic_TryRunCommand(na87Exit)) return na87Exit;
     if (Na87Diagnostic_TryRunCommand(na87Exit)) return na87Exit;
@@ -407,6 +437,10 @@ int WINAPI wWinMain(
     // is safe to release only after every explicit shutdown stage completed.
     App_DisarmShutdownWatchdog();
 
+    // Every service is stopped. Release per-user ownership before starting the
+    // successor, otherwise it can observe our mutex and exit as a duplicate.
+    if (relaunchRequested)
+        instanceGuard.Release();
     if (relaunchRequested && !App_RelaunchSelf())
     {
         MessageBoxW(nullptr,

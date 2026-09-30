@@ -76,7 +76,7 @@ uint16_t BackendUI_GetRawMilli(uint16_t hid);
 // Bind-capture helpers for layout editor:
 // - Enable capture mode
 // - Consume first newly-pressed HID (edge-triggered) and its raw milli value
-void BackendUI_SetBindCapture(bool enable);
+void BackendUI_SetBindCapture(bool enable, bool waitForRelease=false);
 bool BackendUI_ConsumeBindCapture(uint16_t* outHid, uint16_t* outRawMilli);
 
 // dirty bits: which HID values changed since last consume.
@@ -281,6 +281,7 @@ struct BackendAnalogTelemetry
     int pluginHostLastError = 0;
     int pluginHostTransportError = 0;
     int pluginHostRestartCount = 0;
+    int pluginHostUnplannedRestartCount = 0; // excludes protocol-requested restarts
     int pluginHostInvalidSnapshots = 0;
     int pluginHostActiveKeys = 0;
     int pluginHostDenseDeviceCount = 0;

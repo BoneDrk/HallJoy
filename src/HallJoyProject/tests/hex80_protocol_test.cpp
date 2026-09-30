@@ -166,6 +166,55 @@ int main()
     }
     assert(mapped==87);
 
-    std::cout << "hex80 protocol tests passed: 104 slots, 87 mapped HID keys\n";
+    // MADLIONS MAD68 HE V2 Flagship: same frames, 5x15 matrix, fixed 0.01 mm
+    // scale 330, never the Hex80 calibration SET.
+    static_assert(MappedKeyCount(kMad68V2Model) == 68);
+    static_assert(kMad68V2Model.slots == 75 && kMad68V2Model.fixedTravelMax == 330);
+    static_assert(!kMad68V2Model.calibrationFinish && kHex80Model.calibrationFinish);
+    static_assert(FindModel(0x1125) == &kMad68V2Model && FindModel(0x1176) == &kHex80Model);
+    static_assert(FindModel(0x1109) == nullptr && FindModel(0x1021) == nullptr);
+    assert(IsKnownProductId(0x1125));
+    {
+        // Every one of the 68 firmware keys is unique and mapped; Fn is 0x409.
+        std::array<bool, kHidCount> seen{};
+        unsigned keys = 0;
+        for (std::size_t slot = 0; slot < kMad68V2Slots; ++slot) {
+            const auto hid = kMad68V2SlotToHid[slot];
+            if (!hid) continue;
+            assert(hid < kHidCount && !seen[hid]);
+            seen[hid] = true; ++keys;
+        }
+        assert(keys == 68 && seen[0x409] && seen[0x1a] && seen[0x4] && seen[0x16] && seen[0x7]);
+        // Row/column addressing: slot = row * 15 + col (W = row 1 col 2, Space = row 4 col 6).
+        assert(kMad68V2SlotToHid[1 * 15 + 2] == 0x1a && kMad68V2SlotToHid[4 * 15 + 6] == 0x2c);
+
+        std::uint16_t offset = 0;
+        unsigned seenKeys = 0;
+        for (; offset < kMad68V2Slots; offset += kChunkSize) {
+            const auto size = static_cast<std::uint8_t>(std::min<std::size_t>(kChunkSize, kMad68V2Slots - offset));
+            chunk = MakeChunk(offset, size, {{165, 330, 400, 2}});
+            assert(DecodeTravelChunk(kMad68V2Model, chunk.data(), chunk.size(), offset, size, 330, entries, count));
+            assert(count == size);
+            for (std::size_t i = 0; i < count; ++i) {
+                assert(entries[i].hid == kMad68V2SlotToHid[offset + i]);
+                seenKeys += entries[i].hid != 0;
+            }
+            assert(entries[0].milli == 495 && entries[1].milli == 1000); // round((165-3)*1000/(330-3))
+            if (size > 2) assert(entries[2].milli == 1000);             // above the clamp
+            if (size > 3) assert(entries[3].milli == 0);                // inside the deadzone
+        }
+        assert(seenKeys == 68);
+        // The last firmware chunk is 72..74 (3 slots); slot 75+ is refused.
+        chunk = MakeChunk(72, 4, values);
+        assert(!DecodeTravelChunk(kMad68V2Model, chunk.data(), chunk.size(), 72, 4, 330, entries, count));
+        chunk = MakeChunk(76, 1, values);
+        assert(!DecodeTravelChunk(kMad68V2Model, chunk.data(), chunk.size(), 76, 1, 330, entries, count));
+        // Hex80 decoding of the same frame still uses the 17-column Hex80 map.
+        chunk = MakeChunk(16, 4, values);
+        assert(DecodeTravelChunk(chunk.data(), chunk.size(), 16, 4, 3300, entries, count));
+        assert(entries[0].hid == kSlotToHid[16]);
+    }
+
+    std::cout << "hex80 protocol tests passed: Hex80 104 slots/87 keys, MAD68 HE V2 75 slots/68 keys\n";
     return 0;
 }

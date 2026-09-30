@@ -395,7 +395,7 @@ void ReceiveLine(const std::string& line){
   const auto error=number("error=");
   SupportLog_Event(category.c_str(),1,SupportLog_Win32(error));
    if(std::strcmp(name,"exclusive_open_failed")==0 && error<=MAXDWORD)
-    halljoy::keyboard_support::ReportCommunicationAccessFailure(21,static_cast<unsigned>(error));
+    halljoy::keyboard_support::ReportCommunicationAccessFailure(17,static_cast<unsigned>(error));
   break;
  }
  if(line.rfind("status state=",0)==0)SupportLog_Event("shark.state",number("state="));
@@ -525,11 +525,11 @@ void TestOrdinaryFailureLog(){
  const std::wstring path=std::wstring(directory)+L"\\HallJoy.log";
  Require(SupportLog_Start(directory,directory));
  ReceiveLine("inventory eligible=0 vendor_collections=7 metadata_errors=2 rejected=5 paths_logged=0");
- const auto anomaly=halljoy::keyboard_support::CommunicationAnomalySequence(21);
+ const auto anomaly=halljoy::keyboard_support::CommunicationAnomalySequence(17);
  ReceiveLine("exclusive_open_failed error=32");
- Require(halljoy::keyboard_support::CommunicationAnomalySequence(21)==anomaly+1);
+ Require(halljoy::keyboard_support::CommunicationAnomalySequence(17)==anomaly+1);
  ReceiveLine("exclusive_open_failed error=5");
- Require(halljoy::keyboard_support::CommunicationAnomalySequence(21)==anomaly+1);
+ Require(halljoy::keyboard_support::CommunicationAnomalySequence(17)==anomaly+1);
  ReceiveLine("identity_attempt delay_ms=10 id=3123 repeated_id=9999 reply_command=143 repeated_command=0 report_id=0");
  ReceiveLine("get_feature_failed error=5");
  ReceiveLine("identity_rejected no_depth_commands=1");

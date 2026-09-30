@@ -110,6 +110,19 @@ int main()
     assert(NativeNotice(6,0x57494E363850524Full,false)==0);
     assert(NativeNotice(6,0x57494E363850524Full,true)==AulaRm);
     assert(NativeNotice(12,0x4845110000000003ull,true)==Hero84);
+    assert(ResearchNotice(28,0x0c45,0x80ac,true,false)==Alumix104Research);
+    assert(ResearchNotice(28,0x0c45,0x80ac,true,true)==0);
+    assert(ResearchNotice(28,0x0c45,0x80ac,false,false)==0);
+    assert(ResearchNotice(28,0x0c45,0x80ab,true,false)==0);
+    assert(ResearchNotice(27,0x0c45,0x80ac,true,false)==0);
+    SetSearchObservation(true,false,Alumix104Research);
+    assert(GetStatusSnapshot().frozenModels==Alumix104Research);
+    assert(!GetStatusSnapshot().analogSourceConnected);
+    assert(!ShouldAutoSaveSupportLog(GetStatusSnapshot()));
+    SetSearchObservation(true,false,Alumix104Research | NA87);
+    assert(ShouldAutoSaveSupportLog(GetStatusSnapshot()));
+    SetSearchObservation(true,false,0);
+    assert(ShouldAutoSaveSupportLog(GetStatusSnapshot()));
     assert((ImplementedModels & (NA87Pro|ND75|Azoth96|NuPhy|FamilyCandidate))==0);
     return 0;
 }

@@ -39,7 +39,7 @@ bool Remapped() {
   return halljoy::native_layout::UsesRemapping(g_token.load());
 }
 std::uint64_t HashPath(const std::wstring &s) {
-  std::uint64_t h = 1469598003934665603ull;
+  std::uint64_t h = 1469598103934665603ull;
   for (auto c : s) {
     h ^= static_cast<std::uint16_t>(towlower(c));
     h *= 1099511628211ull;

@@ -29,4 +29,22 @@ inline bool Allow(const MSG& message, HWND main) {
     const UINT query = QueryExplicitInput();
     return query && SendMessageW(message.hwnd,query,0,0) == 1;
 }
+// Modal loops (MessageBox, TrackPopupMenu) bypass Allow(). While one of these
+// guards is alive on the UI thread, game key presses cannot choose a menu item
+// or answer a destructive confirmation; the user answers with the mouse.
+class ModalKeyboardBlock {
+    HHOOK hook_ = nullptr;
+    static LRESULT CALLBACK Filter(int code, WPARAM wParam, LPARAM lParam) {
+        if (code >= 0 && lParam) {
+            const auto* message = reinterpret_cast<const MSG*>(lParam);
+            if (message->message >= WM_KEYFIRST && message->message <= WM_KEYLAST) return TRUE;
+        }
+        return CallNextHookEx(nullptr, code, wParam, lParam);
+    }
+public:
+    ModalKeyboardBlock() : hook_(SetWindowsHookExW(WH_MSGFILTER, &Filter, nullptr, GetCurrentThreadId())) {}
+    ~ModalKeyboardBlock() { if (hook_) UnhookWindowsHookEx(hook_); }
+    ModalKeyboardBlock(const ModalKeyboardBlock&) = delete;
+    ModalKeyboardBlock& operator=(const ModalKeyboardBlock&) = delete;
+};
 }

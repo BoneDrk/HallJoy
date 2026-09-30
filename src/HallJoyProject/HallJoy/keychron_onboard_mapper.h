@@ -13,6 +13,10 @@
 #define HJO_SNAP 1u
 #define HJO_LKP 2u
 #define HJO_SUPPRESS 4u
+// With HJO_SUPPRESS: keep ordinary Tab/Left Alt/Right Alt keyboard events
+// (Alt+Tab) although they are gamepad-bound. Requires status capability bit 5.
+#define HJO_KEEP_ALT_TAB 8u
+#define HJO_CAP_KEEP_ALT_TAB 32u
 
 typedef struct hjo_mapping {
     uint8_t axes[4][2];
@@ -43,7 +47,7 @@ static inline float hjo_min(float a, float b) { return b < a ? b : a; }
 
 static inline int hjo_mapping_valid(const hjo_mapping *p) {
     if (!isfinite(p->sensitivity) || p->sensitivity < .02f || p->sensitivity > .95f ||
-        (p->flags & ~(HJO_SNAP | HJO_LKP | HJO_SUPPRESS))) return 0;
+        (p->flags & ~(HJO_SNAP | HJO_LKP | HJO_SUPPRESS | HJO_KEEP_ALT_TAB))) return 0;
     for (unsigned i = 0; i < 4; ++i)
         for (unsigned j = 0; j < 2; ++j)
             if (p->axes[i][j] >= HJO_SLOTS && p->axes[i][j] != HJO_UNBOUND) return 0;
@@ -60,6 +64,17 @@ static inline int hjo_bound(const hjo_mapping *p, unsigned slot) {
     for (unsigned i = 0; i < 4; ++i)
         if (p->axes[i][0] == slot || p->axes[i][1] == slot) return 1;
     return p->triggers[0] == slot || p->triggers[1] == slot;
+}
+
+// K4 HE ANSI matrix slots of Tab, Left Alt and Right Alt (row * 19 + col).
+static inline int hjo_alt_tab_slot(unsigned slot) {
+    return slot == 38u || slot == 97u || slot == 105u;
+}
+
+// Whether the firmware removes this bound key from ordinary keyboard output.
+static inline int hjo_suppressed(const hjo_mapping *p, unsigned slot) {
+    if (!(p->flags & HJO_SUPPRESS) || !hjo_bound(p, slot)) return 0;
+    return !((p->flags & HJO_KEEP_ALT_TAB) && hjo_alt_tab_slot(slot));
 }
 
 static inline float hjo_value(const float values[HJO_SLOTS], uint8_t slot) {

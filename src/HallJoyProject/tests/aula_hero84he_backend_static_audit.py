@@ -39,7 +39,7 @@ checks = {
     "exact UUID admission": (
         {int(x,16) for x in re.findall(r"\{0x([0-9A-F]+)ull,", (HALL / "aula_hero_family.h").read_text())}
         == {0x110000000005,0x110000000003,0x110000000014,0x11000000000F,0x110000000015,0x110000000012,0x11000000003F}
-        and "hero_family::Find(id)" in source and "if(!model)return false;" in source
+        and "hero_family::Find(id)" in source and has(r"if\(!model\)\s*\{\s*LogStage\(HeroStage::UnknownModel,\s*id\);\s*return false;\s*\}")
         and "if(m.uuid==uuid)return &m; return nullptr;" in (HALL / "aula_hero_family.h").read_text()),
     "live map is read-only 83": "BuildAssignmentRead(0" in source and "ParseAssignmentResponse" in source,
     "typed assignments and complete remaps": "hero84::DecodeAssignment" in source and "native_layout::Publish" in source and "g_factory.Bind" in source,
@@ -48,7 +48,12 @@ checks = {
     "forbidden builders absent": all(marker not in source + protocol for marker in (
         "Build(0x94, 0x00", "Build(0x94, 0x03", "Build(0x94, 0x04",
         "Build(0x94, 0x05", "Build(0x98", "HidD_SetFeature", "HidD_SetOutputReport")),
-    "selected-key one-request loop": has(r"Plan\(\s*&positions\s*\)") and has(r"s\.Exchange\(q,\s*&r,\s*&us\)") and has(r"next\s*\+=\s*std::chrono::milliseconds\(1\)"),
+    "selected-key one-request loop": has(r"Plan\(\s*&positions\s*\)") and has(r"s\.Exchange\(q,\s*&r,\s*&us,") and has(r"next\s*\+=\s*std::chrono::milliseconds\(1\)"),
+    "reply matched, foreign reports skipped": "HidD_FlushQueue(handle.v)" in source and has(r"accept\(\*response\)") and "++g_foreign" in source
+        and "ParseDirectResponse(x, positions.data(), count, &samples)" in source,
+    "identity retried": has(r"attempt\s*<\s*3\s*&&\s*!read") and "ParseIdentityResponse(x, &uuid)" in source,
+    "not-ready stages reach HallJoy.log": all(m in source for m in (
+        '"hero84.not_ready"', '"hero84.session_ready"', '"hero84.no_exact_interface"', "HeroStage::SessionLost")),
     "freshness fails neutral": "kFreshMs = 750" in source and ".Read(hid, GetTickCount64(), kFreshMs)" in source and ".Owns(hid)" in source,
     "adaptive range is observed": "g_top" in source and "g_bottom" in source and has(r"top\s*>\s*bottom\s*\+\s*32"),
     "bounded stop cancels active I/O": has(r"CancelIoEx\(g_active,\s*nullptr\)") and "kStopTimeoutMs = 3000" in source,

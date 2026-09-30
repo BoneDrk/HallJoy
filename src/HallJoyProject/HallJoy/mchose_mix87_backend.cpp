@@ -80,7 +80,11 @@ bool Io(HANDLE handle,bool write,void* bytes,DWORD count,DWORD timeout){
     const auto start=write?op.StartWrite(bytes,count,&error):op.StartRead(bytes,count,&error);
     if(start==HidIoOperation::StartResult::Failed){SetLastError(error);return false;}
     if(start==HidIoOperation::StartResult::Pending && op.Wait(timeout)!=WAIT_OBJECT_0){
-        op.CancelAndDrain(&done,&error);SetLastError(WAIT_TIMEOUT);return false;
+        op.CancelAndDrain(&done,&error);
+        // Keep a report that completed between the timeout and CancelIoEx.
+        if(error!=ERROR_SUCCESS || done==0){SetLastError(WAIT_TIMEOUT);return false;}
+        if(done!=count){SetLastError(ERROR_BAD_LENGTH);return false;}
+        return true;
     }
     if(!op.Finish(&done,&error,false)){SetLastError(error);return false;}
     if(done!=count){SetLastError(ERROR_BAD_LENGTH);return false;}return true;

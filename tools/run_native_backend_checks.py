@@ -70,7 +70,7 @@ def compile_and_run(cxx: str, output: Path, sources: list[Path], include: Path) 
         # MinGW often supplies this implicitly; clang/MSVC does not. Windows
         # token/SID integration tests must link their actual system dependency.
         *(["-ladvapi32", "-luser32"] if os.name == "nt" else []),
-        *(["-lsetupapi", "-lhid", "-lshell32", "-lole32", "-luuid"] if output.name in ("support_log_windows", "input_path_log_windows", "native_layout_devices_windows", "mad68_dual_trial_session", "mchose_mix87_session") else []),
+        *(["-lsetupapi", "-lhid", "-lshell32", "-lole32", "-luuid"] if output.name in ("support_log_windows", "input_path_log_windows", "native_layout_devices_windows", "mad68_dual_trial_session", "mchose_mix87_session", "alumix104_session") else []),
         *(["-lbcrypt"] if output.name == "mchose_mix87_session" else []),
         "-o",
         str(output),
@@ -234,6 +234,7 @@ def main() -> int:
             ("tartarus_protocol", [tests / "tartarus_protocol_test.cpp", hall / "keyboard_support_status.cpp"]),
             ("mchose_mix87_protocol", [tests / "mchose_mix87_protocol_test.cpp"]),
             ("mad68_dual_trial_protocol", [tests / "mad68_dual_trial_protocol_test.cpp"]),
+            ("input_shortcuts", [tests / "input_shortcuts_test.cpp"]),
             ("neo65_protocol", [tests / "neo65_protocol_test.cpp"]),
             ("steelseries_apex_protocol", [tests / "steelseries_apex_protocol_test.cpp"]),
             ("uap_discovery_policy", [tests / "uap_discovery_policy_test.cpp"]),
@@ -285,6 +286,7 @@ def main() -> int:
         ]
         if os.name == "nt":
             fixed_tests.append(("native_analog_telemetry_collect", [tests / "native_analog_telemetry_collect_test.cpp"]))
+            fixed_tests.append(("pause_hotkeys_windows", [tests / "pause_hotkeys_windows_test.cpp"]))
             fixed_tests.append(("hid_io_control", [tests / "hid_io_control_test.cpp"]))
             fixed_tests.append(("keychron_onboard_host_profile", [tests / "keychron_onboard_host_profile_test.cpp", hall / "keychron_onboard_host_profile.cpp", hall / "bindings.cpp", hall / "key_settings.cpp", hall / "backend_curve.cpp", hall / "settings.cpp", hall / "curve_math.cpp"]))
             fixed_tests.append(("keychron_onboard_curve", [tests / "keychron_onboard_curve_test.cpp", hall / "key_settings.cpp", hall / "backend_curve.cpp", hall / "settings.cpp", hall / "curve_math.cpp"]))
@@ -317,6 +319,9 @@ def main() -> int:
             fixed_tests.append(("mchose_mix87_session", [tests / "mchose_mix87_session_test.cpp"]))
             fixed_tests.append(("mad68_dual_trial_session", [
                 tests / "mad68_dual_trial_session_test.cpp"
+            ]))
+            fixed_tests.append(("alumix104_session", [
+                tests / "alumix104_session_test.cpp", hall / "addressed_poll_scheduler.cpp"
             ]))
             fixed_tests.append(("support_log_windows", [
                 tests / "support_log_windows_test.cpp", hall / "support_log.cpp"

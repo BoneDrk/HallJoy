@@ -23,6 +23,7 @@ def main():
             ("input_path_log_windows",[tests/"support_log_windows_test.cpp",hall/"support_log.cpp"]),
             ("mchose_mix87_session",[tests/"mchose_mix87_session_test.cpp"]),
             ("mad68_dual_trial_session",[tests/"mad68_dual_trial_session_test.cpp"]),
+            ("alumix104_session",[tests/"alumix104_session_test.cpp",hall/"addressed_poll_scheduler.cpp"]),
         ]:compile_and_run(compiler,Path(folder)/name,sources,hall)
     print("SUPPORT_DIAGNOSTICS_RELEASE_GATE=PASS")
 if __name__=="__main__":main()

@@ -2,6 +2,12 @@
 #pragma once
 #include <windows.h>
 // Application-wide preferences, independent of game/input profiles.
+// Pause/Resume shortcuts in the packed halljoy::shortcuts format.
+// Slot 0: Pause/Resume toggle; slot 1: Pause; slot 2: Resume (separate mode).
+unsigned Settings_GetPauseShortcut(unsigned slot);
+void Settings_SetPauseShortcut(unsigned slot, unsigned shortcut);
+bool Settings_GetPauseSeparate();
+void Settings_SetPauseSeparate(bool separate);
 bool Settings_GetMinimizeToTray();
 void Settings_SetMinimizeToTray(bool enabled);
 bool Settings_GetCloseToTray();
@@ -25,6 +31,9 @@ void Settings_SetInputAntiDeadzone(float v01);  // 0..0.99
 float Settings_GetInputAntiDeadzone();
 
 void Settings_SetInputOutputCap(float v01);     // 0.01..1.0
+// Sets both endpoints as one pair. Loading a profile through the individual
+// setters would clamp the new anti-deadzone against the previous output cap.
+void Settings_SetInputEndpoints(float antiDeadzone01, float outputCap01);
 float Settings_GetInputOutputCap();
 
 // Global Bezier control points (CP1/CP2) in normalized [0..1] graph space.
@@ -95,8 +104,9 @@ void Settings_SetBlockBoundKeys(bool on);
 bool Settings_GetBlockBoundKeys();
 bool Settings_GetBlockKeysAllowAltTab();
 void Settings_SetBlockKeysAllowAltTab(bool on);
+// Block Bound Keys toggle shortcut, packed halljoy::shortcuts format.
 UINT Settings_GetBlockKeysHotkey();
-void Settings_SetBlockKeysHotkey(UINT chord);
+void Settings_SetBlockKeysHotkey(UINT shortcut);
 
 // Allow digital compatibility fallback when analog SDK stream is unavailable.
 

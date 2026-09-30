@@ -15,6 +15,7 @@
 #include "aula_hero_family.h"
 #include "configured_xusb_builder.h"
 #include "native_layout_state.h"
+#include "support_log.h"
 #include "generated/layout_pipeline/identities.h"
 
 #include <algorithm>
@@ -90,7 +91,18 @@ struct Candidate
 std::atomic<bool> g_prepared{false}, g_present{false}, g_connected{false}, g_running{false}, g_stop{false},
     g_mapReady{false};
 std::atomic<std::uint32_t> g_inputBytes{0}, g_outputBytes{0}, g_mapped{0};
-std::atomic<std::uint64_t> g_ok{0}, g_bad{0};
+std::atomic<std::uint64_t> g_ok{0}, g_bad{0}, g_foreign{0};
+// Support-log stages (HallJoy.log): why an attached HERO keyboard is not used.
+enum class HeroStage : unsigned { Open = 1, Identity = 2, UnknownModel = 3, Map = 4, SessionLost = 5 };
+std::atomic<unsigned> g_lastLoggedStage{0};
+std::atomic<unsigned> g_otherPid{0}, g_productInterfaces{0};
+void LogStage(HeroStage stage, std::uint64_t detail)
+{
+    // A retrying worker must not flood the log with the same reason.
+    if (g_lastLoggedStage.exchange(static_cast<unsigned>(stage)) == static_cast<unsigned>(stage))
+        return;
+    SupportLog_Event("hero84.not_ready", static_cast<unsigned>(stage), SupportLog_Data(detail));
+}
 std::atomic<ULONGLONG> g_last{};
 std::array<std::atomic<std::uint16_t>, 256> g_hidAt{};
 constexpr std::size_t kHidCount = halljoy::physical_analog::kHidCount;
@@ -107,7 +119,7 @@ auto kFactoryAt=FactoryMap();
 bool Remapped() { return halljoy::native_layout::UsesRemapping(g_layoutToken.load()); }
 std::array<std::atomic<std::uint16_t>, 256> g_top{}, g_bottom{};
 std::atomic<std::uint16_t> g_cursor{1};
-std::mutex g_service, g_activeLock;
+std::mutex g_service, g_activeLock, g_wakeLock; // g_wakeLock: Notify vs Start/Stop
 HANDLE g_thread = nullptr, g_wake = nullptr, g_active = INVALID_HANDLE_VALUE;
 
 std::uint64_t HashPath(const std::wstring &s)
@@ -206,8 +218,17 @@ std::vector<Candidate> Enumerate(bool log)
             continue;
         HIDD_ATTRIBUTES a{};
         a.Size = sizeof(a);
-        if (!HidD_GetAttributes(meta.v, &a) || a.VendorID != hero::kVendorId || a.ProductID != hero::kProductId)
+        if (!HidD_GetAttributes(meta.v, &a) || a.VendorID != hero::kVendorId)
             continue;
+        if (a.ProductID != hero::kProductId)
+        {
+            // Another AULA product ID (e.g. a 2.4G receiver): report it once.
+            if (log)
+                g_otherPid.store(a.ProductID);
+            continue;
+        }
+        if (log)
+            ++g_productInterfaces;
         PHIDP_PREPARSED_DATA pp = nullptr;
         if (!HidD_GetPreparsedData(meta.v, &pp))
             continue;
@@ -256,21 +277,37 @@ class Session
         g_active = handle.v;
         return true;
     }
-    bool Exchange(const hero::Report &request, hero::Report *response, std::uint32_t *rtt)
+    // The vendor interface can also carry unsolicited reports, and a reply to a
+    // request that timed out may still arrive later. Drop queued input before
+    // the request, then skip reports until one `accept`s or the timeout ends,
+    // instead of failing (or mis-correlating) on the first foreign report.
+    template <class Accept>
+    bool Exchange(const hero::Report &request, hero::Report *response, std::uint32_t *rtt, Accept &&accept)
     {
         if (!response || !rtt)
             return false;
         const auto begin = Clock::now();
+        (void)HidD_FlushQueue(handle.v);
         hero::Report tx = request;
         DWORD sent = 0;
         if (!TimedIo(handle.v, true, tx.data(), static_cast<DWORD>(tx.size()), kSliceMs, &sent) || sent != tx.size())
             return false;
-        response->fill(0);
-        DWORD received = 0;
-        if (!TimedIo(handle.v, false, response->data(), static_cast<DWORD>(response->size()), kCommandTimeoutMs,
-                     &received) ||
-            received != response->size())
-            return false;
+        const auto deadline = begin + std::chrono::milliseconds(kCommandTimeoutMs);
+        for (;;)
+        {
+            const auto now = Clock::now();
+            if (now >= deadline)
+                return false;
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+            response->fill(0);
+            DWORD received = 0;
+            if (!TimedIo(handle.v, false, response->data(), static_cast<DWORD>(response->size()),
+                         static_cast<DWORD>(std::max<long long>(1, left)), &received))
+                return false;
+            if (received == response->size() && accept(*response))
+                break;
+            ++g_foreign;
+        }
         *rtt = static_cast<std::uint32_t>(std::min<std::int64_t>(
             0xffffffffll, std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - begin).count()));
         return true;
@@ -305,10 +342,16 @@ bool Identity(Session &s)
     hero::Report q{}, r{};
     std::uint32_t us = 0;
     std::array<std::uint8_t, 6> uuid{};
-    if (!hero::BuildIdentityRead(&q) || !s.Exchange(q, &r, &us) || !hero::ParseIdentityResponse(r, &uuid)) return false;
+    if (!hero::BuildIdentityRead(&q)) return false;
+    // A single lost reply must not hide the keyboard for the whole session.
+    bool read = false;
+    for (int attempt = 0; attempt < 3 && !read; ++attempt)
+        read = s.Exchange(q, &r, &us, [&](const hero::Report &x) { return hero::ParseIdentityResponse(x, &uuid); });
+    if (!read) { LogStage(HeroStage::Identity, g_foreign.load()); return false; }
     std::uint64_t id=0; for(auto b:uuid)id=(id<<8)|b;
     const auto* model=halljoy::hero_family::Find(id);
-    if(!model)return false;
+    // The family UUID is a model identifier, not a device serial.
+    if(!model) { LogStage(HeroStage::UnknownModel, id); return false; }
     g_model=model;return true;
 }
 bool InstallMap(const std::array<std::uint32_t,256>& assignments)
@@ -341,8 +384,12 @@ bool Map(Session &s)
         const auto n=std::min(hero::kMaxPositions,positions.size()-base);
         hero::Report q{},r{}; std::uint32_t us=0;
         std::array<hero::Assignment,hero::kMaxPositions> values{};
-        if (!hero::BuildAssignmentRead(0,positions.data()+base,n,&q) || !s.Exchange(q,&r,&us) ||
-            !hero::ParseAssignmentResponse(r,0,positions.data()+base,n,&values)) return false;
+        if (!hero::BuildAssignmentRead(0,positions.data()+base,n,&q)) return false;
+        bool read=false;
+        for (int attempt=0; attempt<3 && !read; ++attempt)
+            read=s.Exchange(q,&r,&us,[&](const hero::Report& x) {
+                return hero::ParseAssignmentResponse(x,0,positions.data()+base,n,&values); });
+        if (!read) { LogStage(HeroStage::Map, base); return false; }
         for (std::size_t i=0;i<n;++i) assignments[values[i].position]=values[i].value;
     }
     return InstallMap(assignments);
@@ -411,7 +458,13 @@ bool Run(const Candidate &c)
 {
     Clear();
     Session s(c);
-    if (!s.Open() || !Identity(s))
+    if (!s.Open())
+    {
+        LogStage(HeroStage::Open, GetLastError());
+        ++g_bad;
+        return false;
+    }
+    if (!Identity(s))
     {
         ++g_bad;
         return false;
@@ -425,6 +478,8 @@ bool Run(const Candidate &c)
         g_connected.store(false);
         return false;
     }
+    g_lastLoggedStage.store(0);
+    SupportLog_Event("hero84.session_ready", g_mapped.load(), SupportLog_Data(c.attributes.VersionNumber));
     DebugLog_Write(L"[aula.hero84.production] session begin path_hash=%016llX "
                    L"allowed=82/01,83,94/02 poll=selected outstanding=1",
                    static_cast<unsigned long long>(HashPath(c.path)));
@@ -436,29 +491,25 @@ bool Run(const Candidate &c)
         const auto count = Plan(&positions);
         hero::Report q{}, r{};
         std::uint32_t us = 0;
-        if (!count || !hero::BuildDirectRead(positions.data(), count, &q) || !s.Exchange(q, &r, &us))
+        std::array<hero::DirectSample, hero::kMaxPositions> samples{};
+        if (!count || !hero::BuildDirectRead(positions.data(), count, &q) ||
+            !s.Exchange(q, &r, &us, [&](const hero::Report &x) {
+                return hero::ParseDirectResponse(x, positions.data(), count, &samples); }))
         {
             ++g_bad;
             if (++failures >= 3)
+            {
+                LogStage(HeroStage::SessionLost, g_ok.load());
                 break;
+            }
         }
         else
         {
-            std::array<hero::DirectSample, hero::kMaxPositions> samples{};
-            if (!hero::ParseDirectResponse(r, positions.data(), count, &samples))
-            {
-                ++g_bad;
-                if (++failures >= 3)
-                    break;
-            }
-            else
-            {
-                failures = 0;
-                for (std::size_t i = 0; i < count; ++i)
-                    Publish(samples[i]);
-                g_last.store(GetTickCount64());
-                ++g_ok;
-            }
+            failures = 0;
+            for (std::size_t i = 0; i < count; ++i)
+                Publish(samples[i]);
+            g_last.store(GetTickCount64());
+            ++g_ok;
         }
         next += std::chrono::milliseconds(1);
         const auto now = Clock::now();
@@ -471,7 +522,7 @@ bool Run(const Candidate &c)
     Clear();
     return false;
 }
-unsigned __stdcall Worker(void *)
+unsigned WorkerBody()
 {
     while (!g_stop.load())
     {
@@ -497,16 +548,45 @@ unsigned __stdcall Worker(void *)
     g_running.store(false);
     return 0;
 }
+unsigned __stdcall Worker(void *)
+{
+    try
+    {
+        return WorkerBody();
+    }
+    catch (...)
+    {
+        // Never terminate the process or leave published depth behind.
+        g_connected.store(false);
+        Clear();
+        g_running.store(false);
+        DebugLog_Write(L"[aula.hero84.production.worker] exception; input neutralized");
+        return 1;
+    }
+}
 bool Prepare()
 {
     bool any = false;
-    for (const auto &c : Enumerate(true))
+    g_otherPid.store(0);
+    g_productInterfaces.store(0);
+    g_lastLoggedStage.store(0);
+    const auto candidates = Enumerate(true);
+    // 372E:103E present but its FF60:0061 report-ID-09 interface missing or
+    // different, or only another AULA product ID (wireless receiver): say so.
+    if (candidates.empty() && (g_productInterfaces.load() || g_otherPid.load()))
+        SupportLog_Event("hero84.no_exact_interface", g_productInterfaces.load(), SupportLog_Data(g_otherPid.load()));
+    for (const auto &c : candidates)
     {
         if (NativeAnalogRouting_IsClaimed(c.path.c_str()) &&
             !NativeAnalogRouting_IsClaimedBy(c.path.c_str(), NativeAnalogProtocol::AulaHero84He))
             continue;
         Session s(c);
-        if (!s.Open() || !Identity(s))
+        if (!s.Open())
+        {
+            LogStage(HeroStage::Open, GetLastError());
+            continue;
+        }
+        if (!Identity(s))
             continue;
         const bool claim = NativeAnalogRouting_Claim(hero::kVendorId, hero::kProductId, c.path.c_str(),
                                                      NativeAnalogProtocol::AulaHero84He);
@@ -529,7 +609,10 @@ bool Start()
     if (!g_present.load())
         return false;
     g_stop.store(false);
-    g_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    {
+        std::lock_guard<std::mutex> wake(g_wakeLock);
+        g_wake = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    }
     if (!g_wake)
         return false;
     g_running.store(true);
@@ -538,6 +621,7 @@ bool Start()
     if (!g_thread)
     {
         g_running.store(false);
+        std::lock_guard<std::mutex> wake(g_wakeLock);
         CloseHandle(g_wake);
         g_wake = nullptr;
         return false;
@@ -564,15 +648,19 @@ halljoy::lifecycle::StopResult Stop(halljoy::lifecycle::GenerationId generation)
                                              wait == WAIT_TIMEOUT ? WAIT_TIMEOUT : GetLastError());
     CloseHandle(g_thread);
     g_thread = nullptr;
-    if (g_wake)
-        CloseHandle(g_wake);
-    g_wake = nullptr;
+    {
+        std::lock_guard<std::mutex> wake(g_wakeLock);
+        if (g_wake)
+            CloseHandle(g_wake);
+        g_wake = nullptr;
+    }
     g_connected.store(false);
     Clear();
     return NativeAnalogBackendStopJoined(generation);
 }
 void Notify()
 {
+    std::lock_guard<std::mutex> wake(g_wakeLock);
     if (g_wake)
         SetEvent(g_wake);
 }

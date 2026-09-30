@@ -108,6 +108,10 @@ namespace
         std::wstring privatePluginPath;
         std::atomic<bool> stopping{ false };
         std::atomic<bool> restartBlocked{ false };
+        // Host restarts NOT requested by the protocol itself (crash, failed
+        // launch). Planned provider-plane resize/device refresh are excluded:
+        // they are not communication faults. Monotonic per client start.
+        std::atomic<int> unplannedRestarts{ 0 };
         // Monotonic rather than boolean so the supervisor can distinguish a
         // notification that arrived before a fresh child launch (already
         // covered by its normal startup enumeration) from one that arrives
@@ -1898,6 +1902,7 @@ namespace
 #endif
 
         LONG restartCount = 0;
+        g_client.unplannedRestarts.store(0, std::memory_order_release);
         while (!g_client.stopping.load(std::memory_order_acquire))
         {
             if (g_client.shared)
@@ -1923,6 +1928,7 @@ namespace
                 {
                     break;
                 }
+                g_client.unplannedRestarts.fetch_add(1, std::memory_order_release);
                 ++restartCount;
                 continue;
             }
@@ -1945,6 +1951,7 @@ namespace
                 SupportLog_ReportFailure("uap.create_process_failed", error);
                 if (WaitForSingleObject(g_client.stopEvent, kRestartDelayMs) == WAIT_OBJECT_0)
                     break;
+                g_client.unplannedRestarts.fetch_add(1, std::memory_order_release);
                 ++restartCount;
                 continue;
             }
@@ -1966,6 +1973,7 @@ namespace
                     hadProcessHandle ? 1 : 0, hadThreadHandle ? 1 : 0);
                 if (WaitForSingleObject(g_client.stopEvent, kRestartDelayMs) == WAIT_OBJECT_0)
                     break;
+                g_client.unplannedRestarts.fetch_add(1, std::memory_order_release);
                 ++restartCount;
                 continue;
             }
@@ -2219,6 +2227,8 @@ namespace
             if (g_client.stopping.load(std::memory_order_acquire) || !restartAllowed ||
                 g_client.restartBlocked.load(std::memory_order_acquire))
                 break;
+            if (!expectedHostRestart)
+                g_client.unplannedRestarts.fetch_add(1, std::memory_order_release);
             ++restartCount;
             if (!immediateRestart &&
                 WaitForSingleObject(g_client.stopEvent,
@@ -3035,6 +3045,7 @@ bool AnalogHostClient_GetTelemetry(AnalogHostTelemetry* out)
     result.lastError = InterlockedCompareExchange(&shared->lastError, 0, 0);
     result.transportError = InterlockedCompareExchange(&shared->transportError, 0, 0);
     result.restartCount = InterlockedCompareExchange(&shared->restartCount, 0, 0);
+    result.unplannedRestartCount = g_client.unplannedRestarts.load(std::memory_order_acquire);
     result.invalidSnapshotCount = InterlockedCompareExchange(&shared->invalidSnapshotCount, 0, 0);
     result.providerV2DualFailureCount =
         InterlockedCompareExchange(&shared->providerV2DualFailureCount, 0, 0);

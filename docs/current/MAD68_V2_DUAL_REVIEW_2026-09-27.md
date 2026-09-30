@@ -352,3 +352,89 @@ processing entry, then reenable resumes analog; full typing delivery remains
 unknown. No support reclassification. Hash-pinned evidence:
 `.local/firmware-behavior/mad68-usb-lifecycle-verified-20260927/`.
 See the firmware behavior runbook for commands and model boundaries.
+
+
+## Regression reported with ordinary hotkey build — 2026-09-27
+
+Owner shared tester screenshot after receiving the newer HallJoy.exe: generic
+No supported analogue keyboard detected replaces the working limited mode.
+Build-source inspection confirms the limited backend is still excluded unless
+HallJoyMad68DualTrial=true; ordinary tools/build_release.ps1 does not set it.
+Thus ordinary Pause/Resume and latest Alumix EXEs omit this previously tested
+backend. This is a build-composition omission, not evidence of a new firmware
+problem or a failed shortcut. Exact tester binary hash/log is not yet available.
+The earlier agent-imposed trial-only delivery split failed to preserve the
+owner's requested retained functionality in subsequent normal EXEs. No fix or
+new build performed in this diagnostic response; integration into the ordinary
+build with the existing red restriction policy remains pending.
+
+
+## Ordinary full-build integration — 2026-09-27
+
+Owner explicitly requires ONE complete HallJoy.exe with retained MAD68 limited
+analog AND automatic Alumix104 research, plus a broad regression check.
+Removed MAD68 source compilation, ordinary-catalog and limited-banner guards;
+no change to its already reviewed device commands, decoder or mode-release logic.
+Special isolated diagnostic catalogs remain isolated. The ordinary full build
+keeps Pause/Resume hotkeys, Keychron onboard and all previous protocol routes.
+The historical Trial naming in internal symbols is retained for stable telemetry.
+
+Added an independent21-protocol expected list to the same-image full-catalog
+self-test and made it mandatory in tools/build_release.ps1. This checks actual
+linked admission rather than merely proving a standalone backend test compiles.
+Alumix probe bounds/cancellation self-test remains a separate mandatory gate.
+README supported/yellow lists remain unchanged (limited red is neither).
+docs/SUPPORTED_HARDWARE.md now correctly states ordinary local build availability.
+
+Live Sheet readback: Main!B503:C503 MADLIONS MAD68 V2 Dual remains Analog available;
+low quality; strict dropdown includes that value; both cells effective red
+RGB .95686275/.7176471/.7176471. No write needed. Full live A1:C1277 snapshot
+.local/full-build-sheet-readback.json reconciles all252 yellow entries: PASS.
+No new hardware claim or public release. Final full regression/build record follows.
+
+
+Final validation PASS: complete tools/run_native_backend_checks.py --require-compiler
+(static audits plus all portable/Windows executables); final post-edit static pass;
+ordinary Release diagnostic contract and embedded-resource gates; all eight
+same-image checks including the independent21-protocol catalog (exit0) and
+Alumix bounds/cancellation. Windows pause test covers analog-only Pause, ordinary
+Resume, separate actions, repeats and capture. MAD68 fake-HID session checks
+mapping/output/release, failed ACK, disconnect, exception and stop during mapping.
+No new physical MAD68/Alumix104 test was performed locally.
+Logs: .local/full-build-regression.log, .local/full-build-static-final.log,
+.local/full-build-release.log. Installed candidate byte equality verified.
+HallJoy.exe SHA256: ec88ecd8d2061ccbfecebe8263f243f1286674be3bfa42c1aeee6b7f39fca0ce.
+No GitHub publication. Deliver ordinary build/bin/Release/x64/HallJoy.exe.
+
+
+## Tester message (5).txt — 2026-09-28
+
+Log SHA256: fc497e8512c858db214f6e5ef756a75599e9782432eb7a87832932dcb8b00abb.
+Schema2, four complete snapshots, catalog21 including mad68-dual-trial.
+Exact28E9:3265 collections found; mapping67; enter_ack=1; first_pair observed.
+Final snapshot: present=1 connected=1 lifecycle=running generation1,
+updates=1582 failures=0 lifecycle/native/engine errors0; source=connected.
+Thus the previous ordinary-build omission is no longer present in this run:
+the retained backend actually entered the mode and decoded analog report pairs.
+No output-gamepad or Pause/Resume cycle is evidenced by this log; do not claim
+those tested physically from it. Last report age21750ms is event-stream silence,
+not measured latency or proof of a stalled device. No queue loss observed;
+analyzer confirms complete telemetry and consistent summary. No Alumix evidence.
+Existing low-quality/red support conclusion unchanged, no status promotion,
+no source/build/Sheet change required for this diagnostic observation.
+
+
+## Owner contradicts end-to-end success — 2026-09-28
+
+Owner reports tester still sees a red banner and no analog. Prior user-facing
+claim that implementation works was too strong. Message(5) proves admission,
+mode ACK and1582 decoded pairs, not useful nonzero mapped values or gamepad output.
+ProcessStreamReport increments g_pairs BEFORE PublishVisualAnalog, which can
+reject unmapped indices and accepts zero depth. Existing counters do not separate
+these cases; failures=0 covers transport errors, not end-to-end correctness.
+Red low-quality-firmware banner is intentional even with working analog; generic
+No supported analogue keyboard detected is different. Exact current banner text
+requested. Do not dismiss tester observation or invent a cause from this log.
+Generic registry routes all admitted descriptors through ownsHid/getMilli; no
+MAD-specific exclusion found there. Actual current failure remains unresolved;
+status remains limited/red, no firmware/support promotion or new build claimed.

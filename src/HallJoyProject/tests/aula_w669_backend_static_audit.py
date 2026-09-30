@@ -19,7 +19,12 @@ checks = {
         "expectedStopCancellation" in backend and
         "readError == ERROR_OPERATION_ABORTED || readError == ERROR_INVALID_HANDLE" in backend and
         'L"aula-w669", L"protocol.cancelled"' in backend and
-        "else if (readError != WAIT_TIMEOUT)" in backend,
+        "if (readError != WAIT_TIMEOUT)" in backend and
+        backend.find("if (expectedStopCancellation)") < backend.find("if (readError != WAIT_TIMEOUT)"),
+    "unplugged device leaves the live session instead of spinning with stale depth":
+        'L"session.read_failed"' in backend and "consecutiveReadFailures >= 3" in backend,
+    "completion racing cancellation is kept as real data":
+        "error == ERROR_SUCCESS && drained != 0" in backend,
     "firmware-default poll code is accepted without a fabricated rate":
         "case 0: hz = 0; break;" in protocol and
         "nominal_poll_hz=unspecified mode=firmware_default" in backend,

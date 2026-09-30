@@ -49,16 +49,17 @@ bool EncodeOutputReport(const std::array<std::uint8_t, kPayloadBytes>& payload,
     return true;
 }
 
-std::uint16_t NormalizeTravelToMilli(std::uint16_t travel, std::uint16_t travelMax) noexcept
+std::uint16_t NormalizeTravelToMilli(std::uint16_t travel, std::uint16_t travelMax,
+    std::uint16_t deadzone) noexcept
 {
-    if (travel <= kRawDeadzone || travelMax <= kRawDeadzone)
+    if (travel <= deadzone || travelMax <= deadzone)
         return 0;
     if (travel >= travelMax)
         return 1000;
     const std::uint32_t numerator =
-        static_cast<std::uint32_t>(travel - kRawDeadzone) * 1000u;
+        static_cast<std::uint32_t>(travel - deadzone) * 1000u;
     const std::uint32_t denominator =
-        static_cast<std::uint32_t>(travelMax - kRawDeadzone);
+        static_cast<std::uint32_t>(travelMax - deadzone);
     const std::uint32_t milli = (numerator + denominator / 2u) / denominator;
     return static_cast<std::uint16_t>(std::min<std::uint32_t>(milli, 1000u));
 }
@@ -122,11 +123,22 @@ bool DecodeTravelChunk(
     std::array<TravelEntry, kChunkSize>& outEntries,
     std::size_t& outCount) noexcept
 {
+    return DecodeTravelChunk(kHex80Model, data, bytes, expectedOffset, expectedSize,
+        travelMax, outEntries, outCount);
+}
+
+bool DecodeTravelChunk(const Model& model,
+    const std::uint8_t* data, std::size_t bytes,
+    std::uint16_t expectedOffset, std::uint8_t expectedSize,
+    std::uint16_t travelMax,
+    std::array<TravelEntry, kChunkSize>& outEntries,
+    std::size_t& outCount) noexcept
+{
     outEntries = {};
     outCount = 0;
-    if (expectedSize == 0 || expectedSize > kChunkSize ||
-        expectedOffset >= kTotalSlots ||
-        static_cast<std::size_t>(expectedOffset) + expectedSize > kTotalSlots)
+    if (!model.slotToHid || expectedSize == 0 || expectedSize > kChunkSize ||
+        expectedOffset >= model.slots ||
+        static_cast<std::size_t>(expectedOffset) + expectedSize > model.slots)
         return false;
 
     std::size_t payloadBytes = 0;
@@ -151,14 +163,14 @@ bool DecodeTravelChunk(
         const std::uint16_t slot = static_cast<std::uint16_t>(returnedOffset + index);
         TravelEntry entry{};
         entry.slot = slot;
-        entry.hid = kSlotToHid[slot];
+        entry.hid = model.slotToHid[slot];
         entry.adc = static_cast<std::uint16_t>(
             (static_cast<std::uint16_t>(payload[cursor]) << 8) | payload[cursor + 1]);
         entry.travel = static_cast<std::uint16_t>(
             (static_cast<std::uint16_t>(payload[cursor + 2]) << 8) | payload[cursor + 3]);
         entry.status = payload[cursor + 4];
         if (entry.travel > plausibleLimit) return false;
-        entry.milli = NormalizeTravelToMilli(entry.travel, travelMax);
+        entry.milli = NormalizeTravelToMilli(entry.travel, travelMax, model.rawDeadzone);
         staged[index] = entry;
     }
     outEntries = staged;

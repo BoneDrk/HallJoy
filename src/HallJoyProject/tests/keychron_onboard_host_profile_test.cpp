@@ -25,7 +25,17 @@ int main() {
     assert(p.mapping.axes[0][0]==58 && p.mapping.axes[0][1]==60);
     assert(p.mapping.triggers[0]==106 && p.mapping.triggers[1]==18);
     assert(p.mapping.axes[2][0]==HJO_UNBOUND);
-    assert(p.mapping.buttons[101]==3 && p.mapping.flags==7);
+    // Keep Alt and Tab defaults on: the host requests firmware passthrough.
+    assert(p.mapping.buttons[101]==3 && p.mapping.flags==(7|HJO_KEEP_ALT_TAB));
+    Settings_SetBlockKeysAllowAltTab(false);
+    { hjo_profile q{}; assert(CaptureProfile(q)==ProfileResult::Ready && q.mapping.flags==7); }
+    Settings_SetBlockKeysAllowAltTab(true);
+    // Shared firmware rule: bound Tab/Alt stay in keyboard output only with the flag.
+    { hjo_mapping m{}; m.flags=HJO_SUPPRESS; m.buttons[38]=1; m.buttons[97]=1; m.buttons[0]=1;
+      assert(hjo_suppressed(&m,38) && hjo_suppressed(&m,97) && hjo_suppressed(&m,0));
+      m.flags|=HJO_KEEP_ALT_TAB;
+      assert(!hjo_suppressed(&m,38) && !hjo_suppressed(&m,97) && hjo_suppressed(&m,0));
+      assert(!hjo_suppressed(&m,105)); } // unbound RAlt is never suppressed
     unsigned physical=0;
     for (unsigned i=0;i<HJO_SLOTS;++i) if (kSlotHid[i]) {
         ++physical;

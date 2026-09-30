@@ -1015,8 +1015,10 @@ struct OverlayHttpRequest
     std::string target;
     std::string origin;
     std::string cookie;
+    std::string host;
     size_t frameBytes = 0;
     bool keepAlive = false;
+    bool hostPresent = false;
     bool originPresent = false;
     bool cookiePresent = false;
 };
@@ -1186,6 +1188,13 @@ static OverlayHttpParseResult OverlayParseHttpRequest(
             request.origin.assign(value.data(), value.size());
             request.originPresent = true;
         }
+        else if (OverlayAsciiEquals(name, "host"))
+        {
+            if (request.hostPresent)
+                return OverlayHttpParseResult::BadRequest;
+            request.host.assign(value.data(), value.size());
+            request.hostPresent = true;
+        }
         else if (OverlayAsciiEquals(name, "cookie"))
         {
             if (cookieSeen)
@@ -1218,8 +1227,23 @@ static bool OverlaySecureEquals(std::string_view left, std::string_view right)
     return difference == 0;
 }
 
+// DNS rebinding: a browser page whose hostname resolves to 127.0.0.1 sends
+// same-origin requests without Origin, but always with its own Host. Only the
+// loopback names this server is reached by are accepted.
+static bool OverlayHostAllowed(const OverlayHttpRequest& request)
+{
+    if (!request.hostPresent)
+        return true; // Non-browser clients; browsers always send Host.
+    std::string port;
+    AppendUInt(port, static_cast<unsigned>(g_overlayPort.load(std::memory_order_acquire)));
+    return OverlayAsciiEquals(request.host, "127.0.0.1:" + port) ||
+        OverlayAsciiEquals(request.host, "localhost:" + port);
+}
+
 static bool OverlayOriginAllowed(const OverlayHttpRequest& request)
 {
+    if (!OverlayHostAllowed(request))
+        return false;
     if (!request.originPresent)
         return true;
     std::string expected = "http://127.0.0.1:";

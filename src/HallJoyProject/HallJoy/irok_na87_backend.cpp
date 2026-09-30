@@ -1060,7 +1060,7 @@ void Telemetry(NativeAnalogBackendTelemetry* out)
 {
     if (!out) return;
     *out = {};
-    if(g_ajazzPlaying.load()) wcsncpy_s(out->deviceName,L"AJAZZ AK820 MAX RGB",_TRUNCATE);
+    if(g_ajazzPlaying.load()) wcsncpy_s(out->deviceName,L"AJAZZ AK820 MAX HE (wired, RGB)",_TRUNCATE);
     out->present = Present();
     out->connected = Connected();
     if (out->connected && !g_ajazzPlaying.load()) out->verifiedLayoutToken=irok_na87::kAnsiLayoutToken;
@@ -1083,7 +1083,7 @@ void Telemetry(NativeAnalogBackendTelemetry* out)
         ? static_cast<std::uint32_t>(std::min<std::uint64_t>(now - last,
             0xffffffffull)) : 0;
     _snwprintf_s(out->status, _countof(out->status), _TRUNCATE,
-        g_ajazzPlaying.load() ? L"AJAZZ AK820 MAX RGB: USB analog, automatic key range, range_errors=%llu" :
+        g_ajazzPlaying.load() ? L"AJAZZ AK820 MAX HE (wired, RGB): USB analog, automatic key range, range_errors=%llu" :
         L"IROK NA87 M484 experimental, device map, raw 0..40, range_errors=%llu",
         static_cast<unsigned long long>(g_outOfRange.load()));
 }
@@ -1235,7 +1235,7 @@ bool IrokNa87_TryRunSelfTest(int& result) noexcept
     const auto rawRouted=NativeAnalogBackends_ReadMilli(22);
     Telemetry(&telemetry);
     pass=pass && rawRouted.owned && rawRouted.milli==1000 &&
-        telemetry.verifiedLayoutToken==0 && wcscmp(telemetry.deviceName,L"AJAZZ AK820 MAX RGB")==0;
+        telemetry.verifiedLayoutToken==0 && wcscmp(telemetry.deviceName,L"AJAZZ AK820 MAX HE (wired, RGB)")==0;
     EndAjazzPlay();pass=pass && Get(22)==0 && !Connected();
     const auto pipeName=L"\\\\.\\pipe\\HallJoyNa87SelfTest-"+std::to_wstring(GetCurrentProcessId());
     {

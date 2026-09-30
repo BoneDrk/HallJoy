@@ -1576,7 +1576,19 @@ unsigned __stdcall AddressedWorkerEntry(void*) noexcept
 bool AddressedAnalog_PrepareProtocolRouting()
 {
     if (g_routingPrepared.load(std::memory_order_acquire))
-        return g_claimedProductId.load(std::memory_order_acquire) != 0;
+    {
+        // Resume resets routing claims. Keep the proven claim only while the
+        // routing registry still holds it; otherwise drop the stale claim
+        // (the worker is stopped between generations) and prove again.
+        HidPath retained{};
+        DeviceProfile retainedProfile{};
+        if (GetClaimSnapshot(retained, retainedProfile) &&
+            NativeAnalogRouting_IsClaimedBy(retained.path.c_str(), NativeAnalogProtocol::Addressed09402))
+            return g_claimedProductId.load(std::memory_order_acquire) != 0;
+        if (GetClaimSnapshot(retained, retainedProfile)) ClearClaimForPath(retained.path);
+        g_claimedProductId.store(0, std::memory_order_release);
+        g_routingPrepared.store(false, std::memory_order_release);
+    }
     QueryPerformanceFrequency(&g_qpcFreq);
     QueryPerformanceCounter(&g_qpcStart);
     const bool found = FindAndClaimCandidate();

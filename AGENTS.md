@@ -53,3 +53,28 @@ Old local mirrors/backups contain removed history. Base future publication on
 the cleaned remote main; never force-push stale mirrors or reintroduce old tags.
 Preserve existing release asset IDs and download counters; do not delete/reupload
 historical EXEs for source-history or legal-document cleanup.
+
+## Tester delivery and diagnostics (owner decision, 2026-09-27)
+
+Use HallJoy's normal workflow for tester investigations: deliver one HallJoy.exe;
+collect the result in the existing HallJoy.log, accessible through Open log.
+Do not require archives, CMD/PowerShell/Python scripts, command-line flags,
+separate research exports, or manual assembly of diagnostic files from testers.
+Integrate device-specific diagnostics into HallJoy's bounded background work and
+existing log writer. Keep normal privacy/performance/lifecycle and logging rules;
+this does not authorize forced logging for instability or limited-support banners.
+Local agent research tools/artifacts remain allowed; they are not a tester workflow.
+See docs/development/SUPPORT_DIAGNOSTICS_CONTRACT.md.
+
+
+## Complete ordinary builds (owner decision, 2026-09-27)
+
+Every delivered ordinary HallJoy.exe must retain all approved functionality,
+including MAD68 V2 Dual limited stock analog with its red warning and no forced
+logging, alongside the bounded Alumix104 investigation. Do not leave retained
+implementations behind trial-only compile flags when delivering newer features.
+Use tools/build_release.ps1 and its exact-image --halljoy-require-full-catalog
+check. Keep the independent expected catalog explicit; do not generate the test
+expectation from the same conditional manifest it must validate. New protocol
+admissions must update this expectation; deliberate exclusions need an explicit
+owner decision. Local builds are not GitHub publication authorization.

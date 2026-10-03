@@ -5,6 +5,7 @@
 #include <hidsdi.h>
 #include <hidpi.h>
 
+#include "usb_path_identity.h"
 #include "native_analog_backend.h"
 #include "mad68_dual_trial_protocol.h"
 #include "support_log.h"
@@ -172,6 +173,17 @@ std::vector<DevicePair> Enumerate(bool verbose)
         std::vector<std::uint8_t> storage(needed);
         auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(storage.data()); detail->cbSize = sizeof(*detail);
         if (!SetupDiGetDeviceInterfaceDetailW(set, &iface, detail, needed, nullptr, nullptr)) continue;
+        // Opening every HID interface on the machine cost ~60 ms per discovery.
+        // A path that proves another USB identity cannot be this device; any
+        // other path is still opened and checked by its HID attributes.
+        if (!halljoy::usb_path::MayBe(detail->DevicePath, kVendorId, kProductId)) {
+            if (verbose) {
+                std::uint16_t pathVid = 0, pathPid = 0;
+                halljoy::usb_path::TryRead(detail->DevicePath, pathVid, pathPid);
+                DebugLog_Write(L"[mad68dual.enumerate] path_hash=%016llX vid=%04X pid=%04X skipped_by_path=1", static_cast<unsigned long long>(HashPath(detail->DevicePath)), pathVid, pathPid);
+            }
+            continue;
+        }
         Handle metadata(CreateFileW(detail->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
         if (!metadata) continue;
         HIDD_ATTRIBUTES attributes{}; attributes.Size = sizeof(attributes);

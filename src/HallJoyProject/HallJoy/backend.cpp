@@ -1,3 +1,4 @@
+#include "perf_trace.h"
 #include "sparklink_model_profiles.h"
 #include "keychron_onboard_backend.h"
 #include "keychron_onboard_host_profile.h"
@@ -2808,7 +2809,10 @@ bool Backend_Init()
 #endif
 
     DebugLog_Write(L"[backend.init] wooting_analog_initialise begin");
-    wootingInit = wooting_analog_initialise();
+    {
+        halljoy::perf::Scope uapInit("backend.uap_initialise");
+        wootingInit = wooting_analog_initialise();
+    }
     DebugLog_Write(L"[backend.init] wooting_analog_initialise ret=%d", wootingInit);
     // The SDK/plugin now run in an isolated child process. Reinstalling the
     // handler here remains a cheap integrity check for the HallJoy process.
@@ -2822,6 +2826,7 @@ bool Backend_Init()
         if (kEnableDeviceInfoQuery)
         {
             DebugLog_Write(L"[backend.init] device snapshot begin");
+            halljoy::perf::Scope snapshotScope("backend.device_snapshot");
             LogConnectedDevicesDetailed(L"after_init_call");
             DebugLog_Write(L"[backend.init] device snapshot done known_ids=%d",
                 g_knownDeviceCount.load(std::memory_order_relaxed));
@@ -2861,7 +2866,10 @@ bool Backend_Init()
             initIssues &= ~BackendInitIssue_Unknown;
     }
 
-    if (initIssues == BackendInitIssue_None && !VigemOutput_Start())
+    const auto vigemStart = halljoy::perf::Now();
+    const bool vigemStarted = initIssues == BackendInitIssue_None && VigemOutput_Start();
+    halljoy::perf::Span("backend.vigem_start", 0, vigemStart);
+    if (initIssues == BackendInitIssue_None && !vigemStarted)
     {
         const VIGEM_ERROR error = g_vigemLastErr.load(std::memory_order_acquire);
         initIssues |= error == VIGEM_ERROR_BUS_NOT_FOUND
@@ -2932,8 +2940,9 @@ bool Backend_Shutdown()
 {
     StabilityTrace_Write(L"INFO", L"backend", L"shutdown.begin");
     DebugLog_Write(L"[backend] shutdown");
-    // A K4 parked by pause must not keep an idle controller after exit.
-    KeychronOnboard_ReleaseParked();
+    // Pause also runs this shutdown. A K4 parked by pause stays parked so the
+    // next resume reopens it without re-enumeration; process exit releases it
+    // (AppShutdownNoThrow, after the engine owner stopped).
 #if defined(HALLJOY_TITAN68_TURBO_DIAGNOSTIC) || defined(HALLJOY_ROG_AZOTH96HE_DIAGNOSTIC)
     const bool nativeStopped = NativeAnalogBackends_StopPhase(NativeAnalogStartPhase::BeforeUap);
     StabilityTrace_Write(nativeStopped ? L"INFO" : L"ERROR", L"backend", L"shutdown.end",
@@ -3474,10 +3483,11 @@ void Backend_Tick()
                 bestHid = hid;
             }
         };
-        // Prefer visible physical split keys on equal depth. Their legacy
-        // Space/Fn aliases remain available for older ordinary-layout bindings.
+        // Prefer visible extended keys on equal depth (split Space/Fn, O3C,
+        // Keychron RGB, Wooting Profile/Mode). Only keys of the current layout
+        // are read, so unused extended codes cost no provider reads.
         if (tracked) for (int i = 0; i < tracked->count; ++i)
-            if (halljoy::wooting_physical::IsCode(tracked->keys[i]) || halljoy::keycode::IsO3c(tracked->keys[i]))
+            if (!halljoy::keycode::IsStandardHid(tracked->keys[i]))
                 consider(tracked->keys[i]);
         for (uint16_t hid = 1; hid < 256; ++hid)
             consider(hid);

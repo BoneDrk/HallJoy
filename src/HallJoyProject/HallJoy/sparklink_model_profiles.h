@@ -35,12 +35,14 @@ constexpr std::uint64_t ExperimentalToken(unsigned vid,unsigned pid,unsigned pag
  case 0x270a: // EWEADN: DK75 HE
  case 0x5e01: // EWEADN: DK63 HE
   return (static_cast<std::uint64_t>(vid)<<16)|pid;
- default:return 0; // MG75 Max retains its confirmed status.
+ default:return 0; // MG75 Max and Everglide SU75 Pro (0x3002) are Supported.
  }
 }
 // Admission before any SparkLink command, not merely a status classification.
 constexpr bool ProbeIdentity(unsigned vid,unsigned pid) noexcept {
- return vid==0x1ca6 && (pid==0x0529 || ExperimentalToken(vid,pid,0xffb0)!=0);
+ // 0x3002: Everglide SU75 Pro (xsyd.top; official catalog: public v2, FFB0/1),
+ // tester-confirmed 2026-10-02 (126 mapped keys, no failures).
+ return vid==0x1ca6 && (pid==0x0529 || pid==0x3002 || ExperimentalToken(vid,pid,0xffb0)!=0);
 }
 constexpr bool ProbeInterface(unsigned vid,unsigned pid,unsigned page,unsigned usage) noexcept {
  return ProbeIdentity(vid,pid) && page==0xffb0 && usage==1;

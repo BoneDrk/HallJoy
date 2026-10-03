@@ -15,7 +15,12 @@ for number,name in zip(range(7,11),('kLeftSpace','kRightSpace','kCenterFn','kRig
     assert f'case soup::KEY_OEM_{number}: return halljoy::wooting_physical::{name};' in main
 assert 'IdentityFromLegacyCode(' in main and 'provider_key_values' in main
 backend = (hall/'backend.cpp').read_text(encoding='utf-8-sig')
-assert 'wooting_physical::IsCode(tracked->keys[i])' in backend
+# Bind capture reads every extended key of the current layout (split keys,
+# O3C, Keychron RGB 0x404, Wooting Profile/Mode), not a fixed allow list.
+assert '!halljoy::keycode::IsStandardHid(tracked->keys[i])' in backend
+render = (hall/'keyboard_render.cpp').read_text(encoding='utf-8-sig')
+anim = render.split('for (uint16_t hid = 1; hid < halljoy::keycode::kCount; ++hid)',1)[1].split('return n;',1)[0]
+assert 'continue;' not in anim, 'animation loop must not skip extended key codes'
 assert 'IsWindowsKeyBound(hid, Bindings_IsHidBound)' in (hall/'app.cpp').read_text(encoding='utf-8-sig')
 assert 'wooting_physical_keys_test.cpp' in (root/'tools/run_native_backend_checks.py').read_text(encoding='utf-8')
-print('WOOTING_PHYSICAL_KEYS_STATIC_AUDIT=PASS production_wire_path aliases capture blocking regression_route')
+print('WOOTING_PHYSICAL_KEYS_STATIC_AUDIT=PASS production_wire_path aliases capture extended_animation blocking regression_route')

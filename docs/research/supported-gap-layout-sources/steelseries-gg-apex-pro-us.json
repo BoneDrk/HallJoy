@@ -1,0 +1,504 @@
+{
+ "source": "https://engine.steelseriescdn.com/SteelSeriesGG120.0.0Setup.exe (sha256 88b091f2a316d2bdbaed6cc78437b44fb57ae7252cf13be5a7466e468eb7cb26) > resources/app.asar (sha256 4cc19f7ec395083fa5b7ee8d89e681a8bf204134f0c7c3f60fa91cbab1e94ecb) > render/index.css",
+ "sourceSha256": "f397494d12bb34151131640cf433efc80a3583eda4a98b55bda745e3a1ee1b5f",
+ "note": "#DeviceConfig.apex_pro .code<HID> rules, base plus region-1 (US) overrides. Default zone 26x28 px.",
+ "zone": {
+  "width": 26,
+  "height": 28
+ },
+ "rules": {
+  "4": {
+   "left": "62px",
+   "top": "110px"
+  },
+  "5": {
+   "left": "215px",
+   "top": "144px"
+  },
+  "6": {
+   "left": "147px",
+   "top": "144px"
+  },
+  "7": {
+   "left": "130px",
+   "top": "110px"
+  },
+  "8": {
+   "left": "122px",
+   "top": "77px"
+  },
+  "9": {
+   "left": "165px",
+   "top": "110px"
+  },
+  "10": {
+   "left": "199px",
+   "top": "110px"
+  },
+  "11": {
+   "left": "233px",
+   "top": "110px"
+  },
+  "12": {
+   "left": "292px",
+   "top": "77px"
+  },
+  "13": {
+   "left": "266px",
+   "top": "110px"
+  },
+  "14": {
+   "left": "300px",
+   "top": "110px"
+  },
+  "15": {
+   "left": "334px",
+   "top": "110px"
+  },
+  "16": {
+   "left": "283px",
+   "top": "144px"
+  },
+  "17": {
+   "left": "249px",
+   "top": "144px"
+  },
+  "18": {
+   "left": "326px",
+   "top": "77px"
+  },
+  "19": {
+   "left": "360px",
+   "top": "77px"
+  },
+  "20": {
+   "left": "53px",
+   "top": "77px"
+  },
+  "21": {
+   "left": "156px",
+   "top": "77px"
+  },
+  "22": {
+   "left": "96px",
+   "top": "110px"
+  },
+  "23": {
+   "left": "190px",
+   "top": "77px"
+  },
+  "24": {
+   "left": "259px",
+   "top": "77px"
+  },
+  "25": {
+   "left": "182px",
+   "top": "144px"
+  },
+  "26": {
+   "left": "87px",
+   "top": "77px"
+  },
+  "27": {
+   "left": "113px",
+   "top": "144px"
+  },
+  "28": {
+   "left": "224px",
+   "top": "77px"
+  },
+  "29": {
+   "left": "79px",
+   "top": "144px"
+  },
+  "30": {
+   "left": "36px",
+   "top": "44px"
+  },
+  "31": {
+   "left": "70px",
+   "top": "44px"
+  },
+  "32": {
+   "left": "104px",
+   "top": "44px"
+  },
+  "33": {
+   "left": "137px",
+   "top": "44px"
+  },
+  "34": {
+   "left": "172px",
+   "top": "44px"
+  },
+  "35": {
+   "left": "206px",
+   "top": "44px"
+  },
+  "36": {
+   "left": "240px",
+   "top": "44px"
+  },
+  "37": {
+   "left": "274px",
+   "top": "44px"
+  },
+  "38": {
+   "left": "309px",
+   "top": "44px"
+  },
+  "39": {
+   "left": "343px",
+   "top": "44px"
+  },
+  "40": {
+   "left": "439px",
+   "top": "110px",
+   "width": "66px"
+  },
+  "41": {
+   "left": "1px",
+   "top": "2px"
+  },
+  "42": {
+   "left": "447px",
+   "top": "44px",
+   "width": "58px"
+  },
+  "43": {
+   "left": "5px",
+   "top": "77px",
+   "width": "39px"
+  },
+  "44": {
+   "left": "142px",
+   "top": "177px",
+   "width": "183px"
+  },
+  "45": {
+   "left": "377px",
+   "top": "44px"
+  },
+  "46": {
+   "left": "411px",
+   "top": "44px"
+  },
+  "47": {
+   "left": "393px",
+   "top": "77px"
+  },
+  "48": {
+   "left": "427px",
+   "top": "77px"
+  },
+  "49": {
+   "left": "466px",
+   "top": "77px",
+   "width": "39px"
+  },
+  "50": {
+   "left": "1px",
+   "top": "44px",
+   "display": "none"
+  },
+  "51": {
+   "left": "369px",
+   "top": "110px"
+  },
+  "52": {
+   "left": "402px",
+   "top": "110px"
+  },
+  "53": {
+   "left": "1px",
+   "top": "44px"
+  },
+  "54": {
+   "left": "317px",
+   "top": "144px"
+  },
+  "55": {
+   "left": "351px",
+   "top": "144px"
+  },
+  "56": {
+   "left": "385px",
+   "top": "144px"
+  },
+  "57": {
+   "left": "5px",
+   "top": "110px",
+   "width": "47px"
+  },
+  "58": {
+   "left": "70px",
+   "top": "2px"
+  },
+  "59": {
+   "left": "104px",
+   "top": "2px"
+  },
+  "60": {
+   "left": "139px",
+   "top": "2px"
+  },
+  "61": {
+   "left": "173px",
+   "top": "2px"
+  },
+  "62": {
+   "left": "224px",
+   "top": "2px"
+  },
+  "63": {
+   "left": "259px",
+   "top": "2px"
+  },
+  "64": {
+   "left": "293px",
+   "top": "2px"
+  },
+  "65": {
+   "left": "327px",
+   "top": "2px"
+  },
+  "66": {
+   "left": "377px",
+   "top": "2px"
+  },
+  "67": {
+   "left": "411px",
+   "top": "2px"
+  },
+  "68": {
+   "left": "446px",
+   "top": "2px"
+  },
+  "69": {
+   "left": "480px",
+   "top": "2px"
+  },
+  "70": {
+   "left": "524px",
+   "top": "2px"
+  },
+  "71": {
+   "left": "558px",
+   "top": "2px"
+  },
+  "72": {
+   "left": "593px",
+   "top": "2px"
+  },
+  "73": {
+   "left": "523px",
+   "top": "44px"
+  },
+  "74": {
+   "left": "557px",
+   "top": "44px"
+  },
+  "75": {
+   "left": "591px",
+   "top": "44px"
+  },
+  "76": {
+   "left": "523px",
+   "top": "77px"
+  },
+  "77": {
+   "left": "557px",
+   "top": "77px"
+  },
+  "78": {
+   "left": "591px",
+   "top": "77px"
+  },
+  "79": {
+   "left": "590px",
+   "top": "177px"
+  },
+  "80": {
+   "left": "522px",
+   "top": "177px"
+  },
+  "81": {
+   "left": "556px",
+   "top": "177px"
+  },
+  "82": {
+   "left": "556px",
+   "top": "144px"
+  },
+  "83": {
+   "left": "635px",
+   "top": "44px"
+  },
+  "84": {
+   "left": "669px",
+   "top": "44px"
+  },
+  "85": {
+   "left": "703px",
+   "top": "44px"
+  },
+  "86": {
+   "left": "738px",
+   "top": "44px"
+  },
+  "87": {
+   "left": "737px",
+   "top": "77px",
+   "height": "60px"
+  },
+  "88": {
+   "left": "737px",
+   "top": "144px",
+   "height": "60px"
+  },
+  "89": {
+   "left": "635px",
+   "top": "144px"
+  },
+  "90": {
+   "left": "667px",
+   "top": "144px"
+  },
+  "91": {
+   "left": "701px",
+   "top": "144px"
+  },
+  "92": {
+   "left": "635px",
+   "top": "110px"
+  },
+  "93": {
+   "left": "667px",
+   "top": "110px"
+  },
+  "94": {
+   "left": "701px",
+   "top": "110px"
+  },
+  "95": {
+   "left": "635px",
+   "top": "77px"
+  },
+  "96": {
+   "left": "668px",
+   "top": "77px"
+  },
+  "97": {
+   "left": "702px",
+   "top": "77px"
+  },
+  "98": {
+   "left": "635px",
+   "top": "177px",
+   "width": "58px"
+  },
+  "99": {
+   "left": "701px",
+   "top": "177px"
+  },
+  "100": {
+   "left": "45px",
+   "top": "144px",
+   "width": "26px",
+   "display": "none"
+  },
+  "101": {
+   "left": "552px",
+   "top": "177px",
+   "width": "31px"
+  },
+  "133": {
+   "display": "none"
+  },
+  "135": {
+   "left": "419px",
+   "top": "144px",
+   "display": "none"
+  },
+  "136": {
+   "left": "364px",
+   "top": "177px",
+   "width": "26px",
+   "display": "none"
+  },
+  "137": {
+   "left": "446px",
+   "top": "44px",
+   "display": "none"
+  },
+  "138": {
+   "left": "325px",
+   "top": "177px",
+   "width": "26px",
+   "display": "none"
+  },
+  "139": {
+   "left": "123px",
+   "top": "177px",
+   "width": "26px",
+   "display": "none"
+  },
+  "144": {
+   "left": "476px",
+   "top": "177px",
+   "width": "26px",
+   "display": "none"
+  },
+  "145": {
+   "left": "230px",
+   "top": "177px",
+   "width": "26px",
+   "display": "none"
+  },
+  "224": {
+   "left": "5px",
+   "top": "177px",
+   "width": "39px"
+  },
+  "225": {
+   "left": "5px",
+   "top": "144px",
+   "width": "66px"
+  },
+  "226": {
+   "left": "99px",
+   "top": "177px",
+   "width": "31px"
+  },
+  "227": {
+   "left": "56px",
+   "top": "177px",
+   "width": "31px"
+  },
+  "228": {
+   "left": "466px",
+   "top": "177px",
+   "width": "39px"
+  },
+  "229": {
+   "left": "422px",
+   "top": "144px",
+   "width": "83px"
+  },
+  "230": {
+   "left": "337px",
+   "top": "177px",
+   "width": "31px"
+  },
+  "231": {
+   "left": "379px",
+   "top": "177px",
+   "width": "31px"
+  },
+  "240": {
+   "left": "422px",
+   "top": "177px",
+   "width": "31px"
+  }
+ }
+}

@@ -118,7 +118,13 @@
     <ClCompile Include="keyboard_profiles.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="keyboard_canvas.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="keyboard_render.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="perf_trace.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="keyboard_subpages.cpp">
@@ -465,7 +471,13 @@
     <ClInclude Include="keyboard_profiles.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="keyboard_canvas.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="keyboard_render.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="perf_trace.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="keyboard_ui.h">
@@ -748,5 +760,8 @@
     <ClCompile Include="mchose_mix87_backend.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClInclude Include="mchose_mix87_backend.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="mchose_mix87_protocol.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="mchose_jet75_backend.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="mchose_jet75_backend.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="mchose_jet75_protocol.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
 </Project>

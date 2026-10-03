@@ -9,6 +9,7 @@
 #include <vector>
 #include <algorithm>
 #include <limits>
+#include <map>
 
 namespace halljoy::ini {
 inline constexpr std::uint64_t kMaxFileBytes = 16u * 1024u * 1024u;
@@ -36,11 +37,94 @@ public:
     ReadFile& operator=(const ReadFile&) = delete;
     explicit operator bool() const { return handle_ != INVALID_HANDLE_VALUE; }
 };
+struct CaseInsensitiveLess {
+    bool operator()(const std::wstring& a, const std::wstring& b) const {
+        return _wcsicmp(a.c_str(), b.c_str()) < 0;
+    }
+};
+using SectionValues = std::map<std::wstring, std::wstring, CaseInsensitiveLess>;
+
+// One GetPrivateProfileSectionW call: Win32 keeps its ANSI/UTF-16 decoding,
+// section matching and line handling. Each key=value line is then reduced
+// exactly as GetPrivateProfileStringW reduces it (trimmed key, trimmed value,
+// one pair of matching quotes removed, first duplicate wins).
+inline bool LoadSectionValues(const wchar_t* path, const wchar_t* section, SectionValues& values) {
+    values.clear();
+    constexpr size_t maximum = static_cast<size_t>(kMaxFileBytes) + 2;
+    std::vector<wchar_t> buffer(4096);
+    for (;;) {
+        const DWORD size = GetPrivateProfileSectionW(section, buffer.data(),
+            static_cast<DWORD>(buffer.size()), path);
+        if (size < buffer.size() - 2) break;
+        if (buffer.size() == maximum) return false;
+        buffer.resize((std::min)(buffer.size() * 2, maximum));
+    }
+    for (const wchar_t* entry = buffer.data(); *entry; entry += wcslen(entry) + 1) {
+        const wchar_t* equals = wcschr(entry, L'=');
+        if (!equals) continue;
+        std::wstring name(entry, equals);
+        while (!name.empty() && (name.back() == L' ' || name.back() == L'\t')) name.pop_back();
+        std::wstring value(equals + 1);
+        const auto first = value.find_first_not_of(L" \t");
+        value = first == std::wstring::npos ? L"" : value.substr(first);
+        const auto last = value.find_last_not_of(L" \t");
+        if (last != std::wstring::npos) value.resize(last + 1);
+        if (value.size() >= 2 && (value.front() == L'\"' || value.front() == L'\'') && value.back() == value.front())
+            value = value.substr(1, value.size() - 2);
+        values.emplace(std::move(name), std::move(value)); // First duplicate wins, like Win32.
+    }
+    return true;
+}
+
+// Read snapshot: while alive on this thread, Read() for exactly this path is
+// served from sections loaded once each, instead of one full Win32 parse per
+// key. Create it only while an ini::ReadFile lease pins the file (no writer can
+// change it meanwhile). Snapshots nest (settings + bindings pinned together).
+class ReadSnapshot {
+    std::wstring path_;
+    std::map<std::wstring, SectionValues, CaseInsensitiveLess> sections_;
+    ReadSnapshot* previous_;
+    static ReadSnapshot*& Active() { static thread_local ReadSnapshot* active = nullptr; return active; }
+public:
+    explicit ReadSnapshot(const wchar_t* path) : path_(path ? path : L""), previous_(Active()) { Active() = this; }
+    ~ReadSnapshot() { Active() = previous_; }
+    ReadSnapshot(const ReadSnapshot&) = delete;
+    ReadSnapshot& operator=(const ReadSnapshot&) = delete;
+    // nullptr when no snapshot of this path is active on this thread.
+    static ReadSnapshot* For(const wchar_t* path) {
+        for (ReadSnapshot* s = Active(); s; s = s->previous_)
+            if (path && !s->path_.empty() && _wcsicmp(s->path_.c_str(), path) == 0) return s;
+        return nullptr;
+    }
+    // Same contract as Read(): false when the value would not fit `maximum`.
+    bool Get(const wchar_t* section, const wchar_t* key, std::wstring& out, std::size_t maximum) {
+        auto found = sections_.find(section);
+        if (found == sections_.end()) {
+            SectionValues values;
+            if (!LoadSectionValues(path_.c_str(), section, values)) return false;
+            found = sections_.emplace(section, std::move(values)).first;
+        }
+        // Win32 also trims spaces (not tabs) around the requested key name.
+        std::wstring name(key);
+        const auto begin = name.find_first_not_of(L' ');
+        name = begin == std::wstring::npos ? L"" : name.substr(begin);
+        const auto end = name.find_last_not_of(L' ');
+        if (end != std::wstring::npos) name.resize(end + 1);
+        const auto value = found->second.find(name);
+        if (value == found->second.end()) { out.clear(); return true; }
+        if (value->second.size() + 1 >= maximum) return false;
+        out = value->second;
+        return true;
+    }
+};
+
 inline bool Read(const wchar_t* path, const wchar_t* section,
     const wchar_t* key, std::wstring& out, std::size_t maximum = 65536) {
     // maximum is a buffer capacity including the terminator. Keep a spare
     // character to distinguish a complete value from Win32's truncated result.
     if (maximum < 2 || maximum > (std::numeric_limits<DWORD>::max)()) return false;
+    if (section && key)
+        if (ReadSnapshot* snapshot = ReadSnapshot::For(path)) return snapshot->Get(section, key, out, maximum);
     for (std::size_t capacity = std::min<std::size_t>(256, maximum);;) {
         std::vector<wchar_t> buffer(capacity);
         const DWORD n = GetPrivateProfileStringW(section, key, L"", buffer.data(),

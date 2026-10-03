@@ -1,0 +1,285 @@
+{
+ "source": "https://bpcdn.atkgear.com/hub-v3/production/3.2.27/static/index-F-MYsmWR.js",
+ "sourceSha256": "275ec10d7bf0916fea8f27f6cc6415c3eff6e02e682c8164e286626f0f394256",
+ "travelUnits": {
+  "BITYUAN": "0.001 mm, scale via 02 96 24",
+  "DUCKBREAD": "0.01 mm, no 02 96 24"
+ },
+ "models": {
+  "kb_60": {
+   "provider": "BITYUAN",
+   "pids": [
+    4226,
+    4271,
+    4272,
+    4372,
+    4447,
+    4448,
+    4449,
+    4843
+   ],
+   "names": [
+    "EDGE 60HE ULTIMATE"
+   ],
+   "matrix": [
+    5,
+    14
+   ]
+  },
+  "atk60_rx": {
+   "provider": "BITYUAN",
+   "pids": [
+    4549,
+    4550,
+    4551,
+    4604
+   ],
+   "names": [
+    "ATK 60 RX"
+   ],
+   "matrix": [
+    5,
+    14
+   ]
+  },
+  "kb_63": {
+   "provider": "BITYUAN",
+   "pids": [
+    4411,
+    4412,
+    4413,
+    4456,
+    4457,
+    4458
+   ],
+   "names": [
+    "EDGE 63HE ULTIMATE"
+   ],
+   "matrix": [
+    5,
+    14
+   ]
+  },
+  "atk63_rx": {
+   "provider": "BITYUAN",
+   "pids": [
+    4714,
+    4715
+   ],
+   "names": [
+    "ATK RS63 Air"
+   ],
+   "matrix": [
+    5,
+    14
+   ]
+  },
+  "kb_68": {
+   "provider": "BITYUAN",
+   "pids": [
+    4252,
+    4253,
+    4254,
+    4450,
+    4451,
+    4452,
+    4536,
+    4537,
+    4566,
+    4584,
+    4585,
+    4586,
+    4587,
+    4781,
+    4782,
+    4860,
+    4861
+   ],
+   "names": [
+    "ATK RS6",
+    "ATK RS6 Ultra",
+    "Nothing 68"
+   ],
+   "matrix": [
+    5,
+    15
+   ]
+  },
+  "atk_68": {
+   "provider": "BITYUAN",
+   "pids": [
+    4370,
+    4459,
+    4582,
+    4623,
+    4624,
+    4862
+   ],
+   "names": [
+    "ATK RS6",
+    "ATK RS6 Plus",
+    "ATK RS6 Ultra Plus",
+    "ATK68 V3"
+   ],
+   "matrix": [
+    5,
+    15
+   ]
+  },
+  "atk_68_v4": {
+   "provider": "BITYUAN",
+   "pids": [
+    4697,
+    4848
+   ],
+   "names": [
+    "RS6 Cube"
+   ],
+   "matrix": [
+    5,
+    15
+   ]
+  },
+  "atk68_rx": {
+   "provider": "BITYUAN",
+   "pids": [
+    4506,
+    4544,
+    4545
+   ],
+   "names": [
+    "ATK68 RX"
+   ],
+   "matrix": [
+    5,
+    15
+   ]
+  },
+  "rs6_air": {
+   "provider": "BITYUAN",
+   "pids": [
+    4560,
+    4617,
+    4699,
+    4700,
+    4756,
+    4815
+   ],
+   "names": [
+    "ATK RS6 Air",
+    "ATK RS6 Air Cyber"
+   ],
+   "matrix": [
+    5,
+    15
+   ]
+  },
+  "edge75": {
+   "provider": "BITYUAN",
+   "pids": [
+    4238,
+    4240
+   ],
+   "names": [
+    "ATK EDGE75"
+   ],
+   "matrix": [
+    6,
+    15
+   ]
+  },
+  "edge75_v2": {
+   "provider": "BITYUAN",
+   "pids": [
+    4614
+   ],
+   "names": [],
+   "matrix": [
+    6,
+    15
+   ]
+  },
+  "rs7_v2": {
+   "provider": "BITYUAN",
+   "pids": [
+    4468,
+    4503,
+    4504,
+    4520,
+    4525,
+    4526,
+    4527,
+    4528,
+    4538,
+    4570,
+    4575,
+    4640,
+    4641,
+    4651,
+    4695,
+    4696,
+    4757,
+    4888,
+    4917,
+    4918,
+    4921
+   ],
+   "names": [
+    "ATK RS7 Air",
+    "ATK RS7 Air Cyber",
+    "ATK RS7 V2"
+   ],
+   "matrix": [
+    6,
+    15
+   ]
+  },
+  "rs7_air_iso": {
+   "provider": "BITYUAN",
+   "pids": [
+    4801
+   ],
+   "names": [],
+   "matrix": [
+    6,
+    15
+   ]
+  },
+  "rs7_revi": {
+   "provider": "BITYUAN",
+   "pids": [
+    4576,
+    4577
+   ],
+   "names": [
+    "ATK RS7 Turbo"
+   ],
+   "matrix": [
+    6,
+    15
+   ]
+  },
+  "rs7": {
+   "provider": "DUCKBREAD",
+   "pids": [
+    4164
+   ],
+   "names": [],
+   "matrix": [
+    6,
+    16
+   ]
+  },
+  "atk68_v2_pro": {
+   "provider": "DUCKBREAD",
+   "pids": [
+    4168
+   ],
+   "names": [],
+   "matrix": [
+    5,
+    15
+   ]
+  }
+ }
+}

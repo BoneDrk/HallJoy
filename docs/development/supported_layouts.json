@@ -1,0 +1,547 @@
+{
+ "schema": 1,
+ "rule": "Every Sheet row with a Supported status must list at least one built-in layout preset here, and the model must be findable by name in the Brand/Model picker: the Sheet model name appears in the picker name, or shownAs gives the reviewed picker name. Add the layout first, then the Sheet status. Checked by tools/check_supported_layouts.py.",
+ "models": [
+  {
+   "brand": "AJAZZ",
+   "model": "AK820 MAX HE (wired, RGB)",
+   "presets": [
+    "AJAZZ AK820 MAX HE ANSI"
+   ],
+   "shownAs": "AK820 MAX HE"
+  },
+  {
+   "brand": "ATK",
+   "model": "Hex80",
+   "presets": [
+    "ATK Hex80 ANSI"
+   ]
+  },
+  {
+   "brand": "ATTACK SHARK",
+   "model": "R85 HE",
+   "presets": [
+    "ATTACK SHARK R85 HE + R85 Ultra ANSI"
+   ]
+  },
+  {
+   "brand": "ATTACK SHARK",
+   "model": "X65 Pro HE",
+   "presets": [
+    "ATTACK SHARK X65 Pro HE ANSI"
+   ]
+  },
+  {
+   "brand": "AULA",
+   "model": "KP-TE153",
+   "presets": [
+    "Aula KP-TE153 ISO"
+   ]
+  },
+  {
+   "brand": "AULA",
+   "model": "MINI 60 HE",
+   "presets": [
+    "Aula MINI60 HE ANSI"
+   ]
+  },
+  {
+   "brand": "AULA",
+   "model": "MINI 60 HE MAX",
+   "presets": [
+    "Aula MINI60 HE MAX ANSI"
+   ],
+   "shownAs": "MINI60 HE / Pro / MAX"
+  },
+  {
+   "brand": "AULA",
+   "model": "MINI 60 HE Pro",
+   "presets": [
+    "Aula MINI60 HE Pro ANSI"
+   ]
+  },
+  {
+   "brand": "AULA",
+   "model": "WIN 60 HE",
+   "presets": [
+    "Aula WIN 60 HE Standard ANSI"
+   ]
+  },
+  {
+   "brand": "AULA",
+   "model": "WIN 60 HE MAX",
+   "presets": [
+    "Aula WIN 60 HE MAX ANSI"
+   ]
+  },
+  {
+   "brand": "AULA",
+   "model": "WIN 68 HE",
+   "presets": [
+    "Aula WIN 68 HE Standard ANSI"
+   ]
+  },
+  {
+   "brand": "DrunkDeer",
+   "model": "A75",
+   "presets": [
+    "DrunkDeer A75 ANSI",
+    "DrunkDeer A75 ISO"
+   ]
+  },
+  {
+   "brand": "DrunkDeer",
+   "model": "A75 Pro",
+   "presets": [
+    "DrunkDeer A75 Pro"
+   ]
+  },
+  {
+   "brand": "DrunkDeer",
+   "model": "G60",
+   "presets": [
+    "DrunkDeer G60 ANSI"
+   ]
+  },
+  {
+   "brand": "DrunkDeer",
+   "model": "G65",
+   "presets": [
+    "DrunkDeer G65 ANSI"
+   ]
+  },
+  {
+   "brand": "DrunkDeer",
+   "model": "G75",
+   "presets": [
+    "DrunkDeer G75 ANSI",
+    "DrunkDeer G75 JIS"
+   ]
+  },
+  {
+   "brand": "EPOMAKER",
+   "model": "HE108",
+   "presets": [
+    "EPOMAKER HE108 ANSI"
+   ]
+  },
+  {
+   "brand": "Everglide",
+   "model": "SU75 Pro",
+   "presets": [
+    "Everglide SU75 Pro ANSI"
+   ]
+  },
+  {
+   "brand": "GravaStar",
+   "model": "Mercury V75",
+   "presets": [
+    "GravaStar Mercury V75 ANSI"
+   ]
+  },
+  {
+   "brand": "IPI / QBZ",
+   "model": "Aurora 75",
+   "presets": [
+    "IPI QBZ75 + Aurora 75 ANSI"
+   ]
+  },
+  {
+   "brand": "IPI / QBZ",
+   "model": "QBZ75",
+   "presets": [
+    "IPI QBZ75 + Aurora 75 ANSI"
+   ]
+  },
+  {
+   "brand": "IROK",
+   "model": "MG75 Max",
+   "presets": [
+    "IROK MG75 Max ANSI"
+   ]
+  },
+  {
+   "brand": "IROK",
+   "model": "NA87",
+   "presets": [
+    "IROK NA87 Mag ANSI"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "K2 HE",
+   "presets": [
+    "Keychron K2 HE ANSI",
+    "Keychron K2 HE ISO",
+    "Keychron K2 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "K3 HE",
+   "presets": [
+    "Keychron K3 HE ANSI",
+    "Keychron K3 HE ISO",
+    "Keychron K3 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "K4 HE",
+   "presets": [
+    "Keychron K4 HE ANSI - Imported",
+    "Keychron K4 HE ISO",
+    "Keychron K4 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "K6 HE",
+   "presets": [
+    "Keychron K6 HE ANSI"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "K8 HE",
+   "presets": [
+    "Keychron K8 HE ANSI",
+    "Keychron K8 HE ISO",
+    "Keychron K8 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "K10 HE",
+   "presets": [
+    "Keychron K10 HE ANSI",
+    "Keychron K10 HE ISO"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q1 HE",
+   "presets": [
+    "Keychron Q1 HE ANSI - Imported",
+    "Keychron Q1 HE ISO",
+    "Keychron Q1 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q1 HE 8K",
+   "presets": [
+    "Keychron Q1 HE 8K ANSI",
+    "Keychron Q1 HE 8K ISO",
+    "Keychron Q1 HE 8K JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q2 HE",
+   "presets": [
+    "Keychron Q2 HE ANSI"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q3 HE",
+   "presets": [
+    "Keychron Q3 HE ANSI",
+    "Keychron Q3 HE ISO",
+    "Keychron Q3 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q3 HE 8K",
+   "presets": [
+    "Keychron Q3 HE 8K ANSI",
+    "Keychron Q3 HE 8K ISO",
+    "Keychron Q3 HE 8K JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q4 HE",
+   "presets": [
+    "Keychron Q4 HE ANSI"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q5 HE",
+   "presets": [
+    "Keychron Q5 HE ANSI",
+    "Keychron Q5 HE ISO",
+    "Keychron Q5 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q5 HE 8K",
+   "presets": [
+    "Keychron Q5 HE 8K ANSI"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q6 HE",
+   "presets": [
+    "Keychron Q6 HE ANSI",
+    "Keychron Q6 HE ISO",
+    "Keychron Q6 HE JIS"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q6 HE 8K",
+   "presets": [
+    "Keychron Q6 HE 8K ANSI"
+   ]
+  },
+  {
+   "brand": "Keychron",
+   "model": "Q12 HE",
+   "presets": [
+    "Keychron Q12 HE ANSI",
+    "Keychron Q12 HE ISO"
+   ]
+  },
+  {
+   "brand": "Lemokey",
+   "model": "P1 HE",
+   "presets": [
+    "Lemokey P1 HE ANSI",
+    "Lemokey P1 HE ISO"
+   ]
+  },
+  {
+   "brand": "MADLIONS",
+   "model": "MAD 68 Pro R",
+   "presets": [
+    "MADLIONS MAD 68 Pro R ANSI"
+   ]
+  },
+  {
+   "brand": "MADLIONS",
+   "model": "MAD60HE",
+   "presets": [
+    "MADLIONS MAD60HE ANSI"
+   ]
+  },
+  {
+   "brand": "MADLIONS",
+   "model": "MAD68 HE V2 Flagship",
+   "presets": [
+    "MADLIONS MAD68HE ANSI"
+   ]
+  },
+  {
+   "brand": "MADLIONS",
+   "model": "MAD68HE",
+   "presets": [
+    "MADLIONS MAD68HE ANSI"
+   ]
+  },
+  {
+   "brand": "MADLIONS",
+   "model": "MAD68R",
+   "presets": [
+    "MADLIONS MAD68R ANSI"
+   ]
+  },
+  {
+   "brand": "MCHOSE",
+   "model": "Mix 87 (III revision)",
+   "presets": [
+    "MCHOSE Mix 87 III ANSI"
+   ],
+   "shownAs": "Mix 87 III"
+  },
+  {
+   "brand": "NuPhy",
+   "model": "Air60 HE",
+   "presets": [
+    "NuPhy Air60 HE ANSI"
+   ]
+  },
+  {
+   "brand": "NuPhy",
+   "model": "Air75 HE",
+   "presets": [
+    "NuPhy Air75 HE ANSI"
+   ]
+  },
+  {
+   "brand": "NuPhy",
+   "model": "Field75 HE",
+   "presets": [
+    "NuPhy Field75 HE ANSI"
+   ]
+  },
+  {
+   "brand": "Razer",
+   "model": "Huntsman Mini Analog",
+   "presets": [
+    "Razer Huntsman Mini Analog ANSI"
+   ]
+  },
+  {
+   "brand": "Razer",
+   "model": "Huntsman V2 Analog",
+   "presets": [
+    "Razer Huntsman V2 Analog ANSI",
+    "Razer Huntsman V2 Analog JIS"
+   ]
+  },
+  {
+   "brand": "Razer",
+   "model": "Huntsman V3 Pro",
+   "presets": [
+    "Razer Huntsman V3 Pro ANSI",
+    "Razer Huntsman V3 Pro JIS",
+    "Razer Huntsman V3 Pro ISO"
+   ]
+  },
+  {
+   "brand": "Razer",
+   "model": "Huntsman V3 Pro Mini",
+   "presets": [
+    "Razer Huntsman V3 Pro Mini ANSI",
+    "Razer Huntsman V3 Pro Mini ISO",
+    "Razer Huntsman V3 Pro Mini JIS"
+   ]
+  },
+  {
+   "brand": "Razer",
+   "model": "Huntsman V3 Pro Tenkeyless",
+   "presets": [
+    "Razer Huntsman V3 Pro Tenkeyless ANSI",
+    "Razer Huntsman V3 Pro Tenkeyless JIS"
+   ]
+  },
+  {
+   "brand": "Redragon",
+   "model": "K673RGB-M",
+   "presets": [
+    "Redragon K673WB-RGB-M ANSI",
+    "Redragon K673RGB-M ISO",
+    "Redragon K673RGB-M ABNT2"
+   ]
+  },
+  {
+   "brand": "Royal Kludge",
+   "model": "RK68 HE",
+   "presets": [
+    "Royal Kludge RK68 HE ANSI",
+    "Royal Kludge RK68 HE ISO"
+   ]
+  },
+  {
+   "brand": "SayoDevice",
+   "model": "O3C",
+   "presets": [
+    "SayoDevice O3C ANSI"
+   ]
+  },
+  {
+   "brand": "SteelSeries",
+   "model": "Apex Pro",
+   "presets": [
+    "SteelSeries Apex Pro ANSI"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "60HE",
+   "presets": [
+    "Wooting 60HE ANSI",
+    "Wooting 60HE ISO"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "60HE v2",
+   "presets": [
+    "Wooting 60HE v2 ANSI",
+    "Wooting 60HE v2 ISO",
+    "Wooting 60HE v2 Split ANSI",
+    "Wooting 60HE v2 Split ISO"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "60HE+",
+   "presets": [
+    "Wooting 60HE+ ANSI",
+    "Wooting 60HE+ ISO"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "80HE",
+   "presets": [
+    "Wooting 80HE ANSI",
+    "Wooting 80HE ISO",
+    "Wooting 80HE JIS"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "80HE+",
+   "presets": [
+    "Wooting 80HE+ ANSI",
+    "Wooting 80HE+ ISO",
+    "Wooting 80HE+ Split ANSI",
+    "Wooting 80HE+ Split ISO"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "One",
+   "presets": [
+    "Wooting One ANSI",
+    "Wooting One ISO"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "Two",
+   "presets": [
+    "Wooting Two ANSI",
+    "Wooting Two ISO"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "Two HE",
+   "presets": [
+    "Wooting Two HE ANSI",
+    "Wooting Two HE ISO"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "UwU",
+   "presets": [
+    "Wooting UwU + UwU RGB ANSI"
+   ]
+  },
+  {
+   "brand": "Wooting",
+   "model": "UwU RGB",
+   "presets": [
+    "Wooting UwU + UwU RGB ANSI"
+   ]
+  },
+  {
+   "brand": "MCHOSE",
+   "model": "Jet 75 (II revision)",
+   "presets": [
+    "MCHOSE Jet 75 II ANSI"
+   ],
+   "shownAs": "Jet 75 II"
+  }
+ ]
+}

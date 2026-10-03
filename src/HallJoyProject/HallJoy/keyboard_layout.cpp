@@ -1,3 +1,4 @@
+#include "perf_trace.h"
 #include "keychron_onboard_identity.h"
 #include "keyboard_layout.h"
 
@@ -9,10 +10,13 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <filesystem>
 #include <cwctype>
 #include <memory>
 #include <mutex>
+#include <exception>
+#include <thread>
 #if defined(HALLJOY_ANALOG_SIMULATOR)
 #include <fstream>
 #include <stdexcept>
@@ -55,6 +59,28 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    // FileNamePolicy_CanonicalKey is pure (NFC + trimming + invariant lower case)
+    // but costly, and catalog lookups compare against every preset name. Keys
+    // are memoized (the catalog's name set is small and stable); semantics stay
+    // exactly those of FileNamePolicy_Equivalent: an empty key never matches.
+    bool NamesEquivalent(const std::wstring& left, const std::wstring& right)
+    {
+        static std::mutex lock;
+        static std::unordered_map<std::wstring, std::wstring> keys;
+        constexpr std::size_t kMaxCachedKeys = 8192;
+        std::lock_guard<std::mutex> guard(lock);
+        const auto key = [&](const std::wstring& name, std::wstring& scratch) -> const std::wstring& {
+            const auto found = keys.find(name);
+            if (found != keys.end()) return found->second;
+            if (keys.size() >= kMaxCachedKeys) return scratch = FileNamePolicy_CanonicalKey(name);
+            return keys.emplace(name, FileNamePolicy_CanonicalKey(name)).first->second;
+        };
+        std::wstring leftScratch, rightScratch;
+        const std::wstring& leftKey = key(left, leftScratch);
+        const std::wstring& rightKey = key(right, rightScratch);
+        return !leftKey.empty() && leftKey == rightKey;
+    }
+
     struct PresetDef
     {
         const wchar_t* name;
@@ -428,21 +454,23 @@ namespace
         {L"Wooting Two ISO", L"Wooting Two HE ISO", L"Wooting Two + Two HE ISO"},
         {L"Razer Huntsman V2 Analog ANSI", L"Razer Huntsman V3 Pro ANSI", L"Razer Huntsman V2 Analog + Huntsman V3 Pro ANSI"},
         {L"Razer Huntsman V2 Analog JIS", L"Razer Huntsman V3 Pro JIS", L"Razer Huntsman V2 Analog + Huntsman V3 Pro JIS"},
-        {L"MADLIONS MAD68HE ANSI", L"MADLIONS MAD68R ANSI", L"MADLIONS MAD68HE + MAD68R ANSI"},
+        // MAD68 HE V2 Flagship uses the MAD68HE geometry (exact identity selects it).
+        {L"MADLIONS MAD68HE ANSI", L"MADLIONS MAD68R ANSI", L"MADLIONS MAD68HE + MAD68R ANSI",
+            nullptr, L"MADLIONS MAD68HE / MAD68R / MAD68 HE V2 Flagship ANSI"},
         {L"IPI QBZ75 + Aurora 75 ANSI", L"IPI Aurora75 PRO ANSI", L"IPI QBZ75 + Aurora 75 + Aurora75 PRO ANSI",
             nullptr, L"IPI QBZ75 / Aurora 75 / Aurora75 PRO ANSI"},
     };
     static const LayoutMerge* MergeFor(const std::wstring& name) {
         for (const auto& merge : g_layoutMerges)
-            if (FileNamePolicy_Equivalent(name, merge.first) || FileNamePolicy_Equivalent(name, merge.second) ||
-                (merge.third && FileNamePolicy_Equivalent(name, merge.third)) ||
-                (merge.fourth && FileNamePolicy_Equivalent(name, merge.fourth))) return &merge;
+            if (NamesEquivalent(name, merge.first) || NamesEquivalent(name, merge.second) ||
+                (merge.third && NamesEquivalent(name, merge.third)) ||
+                (merge.fourth && NamesEquivalent(name, merge.fourth))) return &merge;
         return nullptr;
     }
     static bool IsUneditedMergedLegacy(const PresetStore& p) {
         if (!MergeFor(p.name) || p.uniformSpacing || p.uniformGap != 8) return false;
         for (const auto& b : g_builtinPresets) {
-            if (!FileNamePolicy_Equivalent(p.name, b.name)) continue;
+            if (!NamesEquivalent(p.name, b.name)) continue;
             if (p.brand != b.brand || p.keys.size() != (size_t)b.count || p.labels.size() != p.keys.size()) return false;
             for (size_t i = 0; i < p.keys.size(); ++i) {
                 const auto& k = p.keys[i]; const auto& old = b.keys[i];
@@ -680,7 +708,7 @@ namespace
         if (out.brand.empty() && !requireSchema) {
             out.brand = L"Custom";
             for (const auto& builtin : g_builtinPresets)
-                if (FileNamePolicy_Equivalent(out.name, builtin.name)) out.brand = builtin.brand;
+                if (NamesEquivalent(out.name, builtin.name)) out.brand = builtin.brand;
         }
         out.keys = std::move(keys);
         out.labels = std::move(labels);
@@ -779,9 +807,9 @@ namespace
         const KeyDef* old = nullptr;
         const KeyDef* updated = nullptr;
         size_t count = 0;
-        if (FileNamePolicy_Equivalent(p.name,L"DrunkDeer A75 Pro")) {
+        if (NamesEquivalent(p.name,L"DrunkDeer A75 Pro")) {
             old=g_a75Keys; updated=g_drunkdeer_A75Pro; count=std::size(g_a75Keys);
-        } else if (FileNamePolicy_Equivalent(p.name,L"DrunkDeer G65 ANSI")) {
+        } else if (NamesEquivalent(p.name,L"DrunkDeer G65 ANSI")) {
             old=g_g65Keys; updated=g_drunkdeer_G65; count=std::size(g_g65Keys);
         }
         if (!old || p.uniformSpacing || p.keys.size()!=count || p.labels.size()!=count) return false;
@@ -801,9 +829,9 @@ namespace
 
     static bool ApplyBuiltinGeometryMigrations(PresetStore& preset)
     {
-        const bool drunkdeerA75 = FileNamePolicy_Equivalent(
+        const bool drunkdeerA75 = NamesEquivalent(
             preset.name, L"DrunkDeer A75 Pro");
-        const bool generic100 = FileNamePolicy_Equivalent(preset.name, L"Generic 100% ANSI");
+        const bool generic100 = NamesEquivalent(preset.name, L"Generic 100% ANSI");
         if (!drunkdeerA75 && !generic100)
             return false;
 
@@ -974,7 +1002,7 @@ namespace
     {
         for (int i = 0; i < (int)g_presets.size(); ++i)
         {
-            if (FileNamePolicy_Equivalent(g_presets[i].name, name))
+            if (NamesEquivalent(g_presets[i].name, name))
                 return i;
         }
         return -1;
@@ -990,7 +1018,7 @@ namespace
 
     static const wchar_t* ResolveSavedPresetName(const wchar_t* name)
     {
-        return name && FileNamePolicy_Equivalent(name, L"Keychron K4 HE")
+        return name && NamesEquivalent(name, L"Keychron K4 HE")
             ? L"Keychron K4 HE ANSI - Imported" : (name ? name : L"");
     }
 
@@ -1039,6 +1067,7 @@ namespace
         fs::path dir = GetLayoutsDir();
         if (!fs::exists(dir, ec)) return;
 
+        std::vector<fs::path> paths;
         for (const auto& e : fs::directory_iterator(dir, ec))
         {
             if (ec) break;
@@ -1046,19 +1075,52 @@ namespace
             if (_wcsicmp(e.path().extension().c_str(), L".ini") != 0) continue;
             // Retired preset: keep any historical file recoverable on disk,
             // but never let it re-enter the catalogue or overwrite the replacement.
-            if (FileNamePolicy_Equivalent(e.path().stem().wstring(), L"Keychron K4 HE")) continue;
+            if (NamesEquivalent(e.path().stem().wstring(), L"Keychron K4 HE")) continue;
+            paths.push_back(e.path());
+        }
 
-            PresetStore p{};
-            if (LoadPresetFile(e.path().c_str(), p))
-            {
-                // Leave legacy files recoverable on disk, but do not re-register
-                // untouched duplicates or overwrite an edited combined preset.
-                if (IsUneditedMergedLegacy(p)) continue;
-                // Migrations affect memory; explicit saves persist them later.
-                ApplyBuiltinGeometryMigrations(p);
-                UpgradeUneditedDrunkDeer(p);
-                AddOrReplacePreset(p);
+        // Parsing a file is independent work (Win32 section read + key
+        // decoding into a local PresetStore), so it runs on a few workers.
+        // Registration below stays sequential in directory order, exactly as
+        // before: same migrations, same duplicate resolution, same result.
+        std::vector<PresetStore> parsed(paths.size());
+        std::vector<char> loaded(paths.size(), 0);
+        std::atomic<std::size_t> next{0};
+        std::exception_ptr failure;
+        std::mutex failureLock;
+        const auto work = [&]() noexcept {
+            try {
+                for (std::size_t i; (i = next.fetch_add(1)) < paths.size();)
+                    loaded[i] = LoadPresetFile(paths[i].c_str(), parsed[i]) ? 1 : 0;
+            } catch (...) {
+                std::lock_guard<std::mutex> guard(failureLock);
+                if (!failure) failure = std::current_exception();
+                next.store(paths.size());
             }
+        };
+        const unsigned hardware = (std::max)(1u, std::thread::hardware_concurrency());
+        const std::size_t helpers = paths.size() < 16 ? 0 : (std::min<std::size_t>)(3, hardware - 1);
+        std::vector<std::thread> pool;
+        for (std::size_t i = 0; i < helpers; ++i)
+        {
+            try { pool.emplace_back(work); }
+            catch (...) { break; } // fewer helpers; the caller thread still parses everything left
+        }
+        work();
+        for (auto& worker : pool) worker.join();
+        if (failure) std::rethrow_exception(failure);
+
+        for (std::size_t i = 0; i < paths.size(); ++i)
+        {
+            if (!loaded[i]) continue;
+            PresetStore& p = parsed[i];
+            // Leave legacy files recoverable on disk, but do not re-register
+            // untouched duplicates or overwrite an edited combined preset.
+            if (IsUneditedMergedLegacy(p)) continue;
+            // Migrations affect memory; explicit saves persist them later.
+            ApplyBuiltinGeometryMigrations(p);
+            UpgradeUneditedDrunkDeer(p);
+            AddOrReplacePreset(p);
         }
     }
 
@@ -1071,9 +1133,15 @@ namespace
             // Register every shipped preset for both fresh and existing users.
             // Files loaded afterwards intentionally override same-name built-ins,
             // preserving user edits while newly shipped presets remain discoverable.
-            AddBuiltinDefaults();
-            LoadPresetsFromDir();
-
+            {
+                halljoy::perf::Scope builtins("layout.catalog.builtins");
+                AddBuiltinDefaults();
+            }
+            {
+                halljoy::perf::Scope files("layout.catalog.user_files");
+                LoadPresetsFromDir();
+            }
+            halljoy::perf::Scope activate("layout.catalog.activate");
             ActivatePreset(0);
             StabilityTrace_Write(L"INFO", L"layout-catalog", L"init.complete",
                 L"presets=%zu duration_ms=%llu builtin_files_created=0", g_presets.size(), GetTickCount64() - started);

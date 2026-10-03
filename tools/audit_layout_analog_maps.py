@@ -19,7 +19,7 @@ def audit():
         for r in reports:
             pipeline.validate_report(r)
             evidence='Pinned source extraction and generated runtime geometry; not a full hardware analog proof'
-            if brand=='IPI':
+            if brand in ('IPI','Royal Kludge'):
                 for product in r['identity']['products']:
                     ids=[int(v) for v in re.search(r'ids_'+product+r'\[\] = \{([^}]+)',ipi)[1].split(',')]
                     assert sorted(values[i] for i in ids)==sorted(k['hid'] for k in r['keys']),r['name']

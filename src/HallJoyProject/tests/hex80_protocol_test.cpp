@@ -215,6 +215,50 @@ int main()
         assert(entries[0].hid == kSlotToHid[16]);
     }
 
-    std::cout << "hex80 protocol tests passed: Hex80 104 slots/87 keys, MAD68 HE V2 75 slots/68 keys\n";
+    {
+        // ATK keyboards on the Hex80 protocol (generated from the ATK hub).
+        static_assert(kModels.size() == 2 + kAtkFamilyModels.size() && kAtkFamilyModels.size() == 15);
+        const std::array<std::size_t, 15> keys{{ 61, 61, 64, 64, 68, 68, 68, 68, 68, 81, 80, 81, 80, 80, 67 }};
+        std::array<const Model*, 0x10000> owner{};
+        for (const auto* model : kModels)
+            for (std::size_t i = 0; i < model->productCount; ++i) {
+                assert(!owner[model->productIds[i]]); // no PID belongs to two models
+                owner[model->productIds[i]] = model;
+                assert(FindModel(model->productIds[i]) == model);
+            }
+        for (std::size_t m = 0; m < kAtkFamilyModels.size(); ++m) {
+            const auto& model = *kAtkFamilyModels[m];
+            assert(!model.calibrationFinish && model.productCount > 0);
+            assert(MappedKeyCount(model) == keys[m]);
+            std::array<bool, kHidCount> seen{};
+            for (std::size_t slot = 0; slot < model.slots; ++slot) {
+                const auto hid = model.slotToHid[slot];
+                if (!hid) continue;
+                assert(hid < kHidCount && !seen[hid]);
+                seen[hid] = true;
+            }
+            assert(seen[0x1a] && seen[0x2c] && seen[0x409]); // W, Space and Fn everywhere
+            // Every chunk, including a short last one, decodes against this model.
+            for (std::uint16_t offset = 0; offset < model.slots; offset += kChunkSize) {
+                const auto size = static_cast<std::uint8_t>(std::min<std::size_t>(kChunkSize, model.slots - offset));
+                chunk = MakeChunk(offset, size, values);
+                assert(DecodeTravelChunk(model, chunk.data(), chunk.size(), offset, size, 3300, entries, count));
+                assert(count == size && entries[0].hid == model.slotToHid[offset]);
+            }
+        }
+        // Slot = row * hub matrix cols: 5x14 EDGE 60, 5x15 RS6, 6x15 RS7 V2, 6x16 RS7.
+        assert(kAtkEdge60Model.slots == 70 && kAtkEdge60SlotToHid[1 * 14 + 2] == 0x1a);
+        assert(kAtkRs6Model.slots == 75 && kAtkRs6SlotToHid[1 * 15 + 2] == 0x1a && kAtkRs6SlotToHid[4 * 15 + 10] == 0x409);
+        assert(kAtkRs7v2Model.slots == 90 && kAtkRs7v2SlotToHid[2 * 15 + 2] == 0x1a && kAtkRs7v2SlotToHid[0] == 0x29);
+        assert(kAtkRs7Model.slots == 96 && kAtkRs7SlotToHid[2 * 16 + 2] == 0x1a && kAtkRs7SlotToHid[0 * 16 + 15] == 0x4c);
+        // DUCKBREAD boards report 0.01 mm and have no 02 96 24: fixed scale.
+        static_assert(kAtkRs7Model.fixedTravelMax == 340 && kAtkRs7Model.rawDeadzone == 3);
+        static_assert(kAtk68v2proModel.fixedTravelMax == 330 && kAtkRs6Model.fixedTravelMax == 0);
+        static_assert(FindModel(0x109C) == &kAtkRs6Model && FindModel(0x1044) == &kAtkRs7Model);
+        static_assert(FindModel(0x105E) == nullptr); // ATK68 V2 (ARBITER) is a different protocol
+    }
+
+    std::cout << "hex80 protocol tests passed: Hex80 104 slots/87 keys, MAD68 HE V2 75 slots/68 keys, "
+                 "15 ATK family models\n";
     return 0;
 }

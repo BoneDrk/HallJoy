@@ -1430,6 +1430,206 @@
           "status": "Implemented; awaiting hardware testing"
         }
       ]
+    },
+    {
+      "id": "AtkHex80Family",
+      "flag": 16777216,
+      "protocol": 2,
+      "tokens": [
+        "0C198DF29CA9F131",
+        "122DA12FD67E0EAF",
+        "326B33923E7CB2CB",
+        "33CC0CE586CC352E",
+        "3B6C8B81F9762CB4",
+        "420C00E8C2ABAC9B",
+        "50947FC601DAF980",
+        "590523E95F3D75FE",
+        "7FD89DDD0506AFED",
+        "879AE0EED47B9613",
+        "A53EEC3221CAAE86",
+        "AA7F8F1561F93524",
+        "B20BD447BB53432F",
+        "B8F5B1060E7934B6",
+        "CD46342E663772DF"
+      ],
+      "models": [
+        {
+          "brand": "ATK",
+          "model": "60 RX",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "68 RX",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "68 V2 Pro",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "68 V3",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "EDGE 60 HE",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "EDGE 63 HE",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "EDGE 75 HE",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS6",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS6 Air",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS6 Cube",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS6 Ultra",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS6 Ultra+",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS6+",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS63 Air",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS7",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS7 Air",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS7 Turbo",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS7 V2",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "ATK",
+          "model": "RS7 V2 Ultra",
+          "status": "Implemented; awaiting hardware testing"
+        }
+      ]
+    },
+    {
+      "id": "MchoseFamily",
+      "flag": 33554432,
+      "protocol": 29,
+      "tokens": [
+        "C19BC9D40FAC0AA4",
+        "0AC93D48E90B5C30",
+        "9B4588C88D53AF15",
+        "03762ECD7D6E5678",
+        "9F7EF505885301C3"
+      ],
+      "models": [
+        {
+          "brand": "MCHOSE",
+          "model": "Ace 60 Pro",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Ace 60X",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Ace 68",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Ace 68 Air",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Jet 75 (I revision)",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Mix 87 (I revision)",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Zero75X",
+          "status": "Implemented; awaiting hardware testing"
+        }
+      ],
+      "confirmed_devices": [
+        {
+          "token": "0AC93D48E90B5C30",
+          "pid": 8474
+        }
+      ]
+    },
+    {
+      "id": "MchoseArmFamily",
+      "flag": 33554432,
+      "protocol": 27,
+      "tokens": [
+        "C19BC9D40FAC0AA4",
+        "30F502E69E60CBE0"
+      ],
+      "models": [
+        {
+          "brand": "MCHOSE",
+          "model": "Ace 68 Turbo 8K",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Ace 68 V2",
+          "status": "Implemented; awaiting hardware testing"
+        },
+        {
+          "brand": "MCHOSE",
+          "model": "Ace 75 8K",
+          "status": "Implemented; awaiting hardware testing"
+        }
+      ]
     }
   ]
 }

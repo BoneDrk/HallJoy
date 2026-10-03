@@ -27,6 +27,13 @@ Inventory is Windows metadata only. Each row carries stable protocol ID, catalog
 index, USB/report metadata, provider availability, observed connection, counters,
 and separately available lifecycle evidence. No key values/text, serial numbers,
 user device names, paths, or raw packets are serialized.
+HID inventory rows (`hid.candidate`) also carry `name="..."`: the USB product
+string reported by the bus (DEVPKEY_Device_BusReportedDeviceDesc of the HID node,
+else of its parent USB node), i.e. the manufacturer's firmware string, read from
+Windows metadata without opening the device (2026-10-02, owner request, so the
+keyboard model in a tester log is not guessed from VID/PID). Empty when Windows
+has none; control characters, quotes and backslashes become `_`; at most 48
+characters. User-editable friendly names are still not read.
 
 `unavailable`, `not_present`, `present_not_connected`, and `connected` are distinct.
 Lifecycle `running` means worker startup succeeded, NOT analog reception.

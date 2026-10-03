@@ -272,6 +272,35 @@ static void ApplyToStorage_NoUndo(const KeyDeadzone& in)
     }
 }
 
+// Perf profiling only (--halljoy-perf-log): reproduces dragging the global
+// curve's start point (left edge, moved up and down) exactly like the graph
+// drag path (capture: no undo entry per move), then restores the curve.
+static bool g_perfCurveActive = false;
+static KeyDeadzone g_perfCurveOriginal{};
+void KeySettingsPanel_PerfCurveBegin()
+{
+    if (g_perfCurveActive) return;
+    g_perfCurveOriginal = Ksp_GetActiveSettings();
+    g_perfCurveActive = true;
+}
+void KeySettingsPanel_PerfCurveStep(float y)
+{
+    if (!g_perfCurveActive) return;
+    KeyDeadzone ks = Ksp_GetActiveSettings();
+    constexpr float minGap = 0.01f;
+    ks.low = 0.0f;
+    ks.antiDeadzone = std::clamp(y, 0.0f, 1.0f);
+    ks.cp1_x = std::clamp(ks.cp1_x, ks.low + minGap, ks.high - minGap);
+    ks.cp2_x = std::clamp(ks.cp2_x, ks.cp1_x + minGap, ks.high - minGap);
+    ApplyToStorage_NoUndo(ks);
+}
+void KeySettingsPanel_PerfCurveEnd()
+{
+    if (!g_perfCurveActive) return;
+    ApplyToStorage_NoUndo(g_perfCurveOriginal);
+    g_perfCurveActive = false;
+}
+
 bool Ksp_Undo()
 {
     UndoHistory& h = HistForActiveTarget();

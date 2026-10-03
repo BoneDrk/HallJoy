@@ -20,6 +20,9 @@ assert 'KeySettingsPanel_HandleKey(hWnd' not in config
 assert 'Ctrl+S = save preset' not in config
 assert 'main window keyboard admission checks failed' in ui
 render = (root/'keyboard_render.cpp').read_text(encoding='utf-8-sig')
-assert 'SelectClipPath(hdc,RGN_AND)' in render
-assert 'if (shapeDC) RestoreDC(hdc,shapeDC);' in render
+# Compound keys: the analogue interior is clipped to the inset contour and the
+# whole key to its outer contour (Direct2D geometry layers, aliased edges).
+assert 'D2D1::LayerParameters(D2D1::InfiniteRect(), innerShape, D2D1_ANTIALIAS_MODE_ALIASED)' in render
+assert 'D2D1::LayerParameters(D2D1::InfiniteRect(), outer, D2D1_ANTIALIAS_MODE_ALIASED)' in render
+assert 'if (innerLayer) { rt->PopLayer(); innerLayer->Release(); }' in render
 print('MAIN_KEYBOARD_INPUT_STATIC_AUDIT=PASS')

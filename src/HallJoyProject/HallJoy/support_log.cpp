@@ -10,8 +10,12 @@
 #include "version.h"
 #include "app_paths.h"
 #include <setupapi.h>
+#include <initguid.h>
+#include <devpkey.h>
+#include <cfgmgr32.h>
 #include <hidsdi.h>
 #include <shlobj.h>
+#pragma comment(lib, "cfgmgr32.lib")
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -51,6 +55,33 @@ void Enqueue(const char* text) noexcept {
     } else ++dropped;
     ReleaseSRWLockExclusive(&queueLock);
 }
+// USB product name reported by the bus (the manufacturer's firmware string, e.g.
+// "SU75 Pro"), read from Windows metadata without opening the device. Not the
+// user-editable friendly name; no serial or path. Control characters, quotes
+// and backslashes are replaced and the text is bounded to 48 characters.
+void BusReportedName(HDEVINFO devices, SP_DEVINFO_DATA& info, char* out, int size) noexcept {
+    out[0] = 0;
+    wchar_t text[128]{}; DEVPROPTYPE type = 0;
+    if (!SetupDiGetDevicePropertyW(devices, &info, &DEVPKEY_Device_BusReportedDeviceDesc, &type,
+            reinterpret_cast<PBYTE>(text), sizeof(text) - sizeof(wchar_t), nullptr, 0) ||
+        type != DEVPROP_TYPE_STRING)
+        text[0] = 0;
+    // Fall back to the parent USB node (composite interface or device).
+    DEVINST parent = 0;
+    if (!text[0] && CM_Get_Parent(&parent, info.DevInst, 0) == CR_SUCCESS) {
+        ULONG bytes = sizeof(text) - sizeof(wchar_t);
+        if (CM_Get_DevNode_PropertyW(parent, &DEVPKEY_Device_BusReportedDeviceDesc, &type,
+                reinterpret_cast<PBYTE>(text), &bytes, 0) != CR_SUCCESS || type != DEVPROP_TYPE_STRING)
+            text[0] = 0;
+    }
+    wchar_t clean[49]{}; size_t n = 0;
+    for (const wchar_t* c = text; *c && n < 48; ++c) {
+        wchar_t ch = *c;
+        if (ch < 0x20 || ch == 0x7f || ch == L'"' || ch == L'\\') ch = L'_';
+        clean[n++] = ch;
+    }
+    if (!WideCharToMultiByte(CP_UTF8, 0, clean, -1, out, size, nullptr, nullptr)) out[0] = 0;
+}
 void Inventory() {
     GUID guid{}; HidD_GetHidGuid(&guid);
     HDEVINFO devices = SetupDiGetClassDevsW(&guid, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
@@ -75,8 +106,10 @@ void Inventory() {
         unsigned v = vid ? wcstoul(vid + 4, nullptr, 16) & 0xffff : 0;
         unsigned p = pid ? wcstoul(pid + 4, nullptr, 16) & 0xffff : 0;
         unsigned m = mi ? wcstoul(mi + 3, nullptr, 16) & 0xff : 0xff;
-        char line[160]{};
-        sprintf_s(line, "hid.candidate vid=%04X pid=%04X interface=%02X metadata_only=1", v, p, m);
+        char name[160]{};
+        BusReportedName(devices, info, name, sizeof(name));
+        char line[320]{};
+        sprintf_s(line, "hid.candidate vid=%04X pid=%04X interface=%02X name=\"%s\" metadata_only=1", v, p, m, name);
         Enqueue(line);
     }
     SetupDiDestroyDeviceInfoList(devices);
@@ -118,6 +151,21 @@ void Snapshot() {
     }
     sprintf_s(line,"snapshot.end seq=%llu rows=%d complete=%d",seq,t.nativeProtocolCount,t.nativeTelemetryComplete);
     Enqueue(line);
+}
+// Windows refuses to replace a file while any reader has it open, even with
+// FILE_SHARE_DELETE (ERROR_ACCESS_DENIED). Readers are brief: Open log, an
+// editor or antivirus. Retry the rename for up to ~1 s instead of falling into
+// the 5 s write backoff that is meant for unusable destinations.
+bool ReplaceLog(const std::wstring& source, const std::wstring& target) noexcept {
+    for (unsigned attempt = 0;; ++attempt) {
+        if (MoveFileExW(source.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return true;
+        const DWORD error = GetLastError();
+        if ((error != ERROR_ACCESS_DENIED && error != ERROR_SHARING_VIOLATION) || attempt >= 40) {
+            SetLastError(error);
+            return false;
+        }
+        Sleep(25);
+    }
 }
 bool WriteLine(HANDLE file, const Line& line) {
     const DWORD length = static_cast<DWORD>(strlen(line.data())); DWORD written = 0;
@@ -182,7 +230,7 @@ DWORD WINAPI Run(void*) noexcept {
             if (trigger || changed) { Inventory(); Snapshot(); }
             else if (ticks % 30 == 0) Snapshot();
             const bool research = researchPending.exchange(false);
-            const bool shouldWrite = research || failure || requested || continuous || incident || (previousIncident && !incident) || (previousContinuous && !continuous);
+            bool shouldWrite = research || failure || requested || continuous || incident || (previousIncident && !incident) || (previousContinuous && !continuous);
             const bool mirrorEnabled = continuous || previousContinuous;
             previousIncident = incident; previousContinuous = continuous;
             ++ticks;
@@ -195,8 +243,12 @@ DWORD WINAPI Run(void*) noexcept {
             const unsigned lost = dropped.exchange(0);
             if (lost) SupportLog_Event("logging.queue_dropped", lost);
             // Keep reviewed research through Open log snapshot resets; no extra file.
+            // The batch itself decides: the producer sets researchPending only
+            // after releasing the queue, so a record taken in this batch can
+            // carry its flag into the next, empty tick and never be written.
             for(size_t i=0;i<count;++i) {
                 if(strstr(batch[i].data()," redsquare.research ")) {
+                    shouldWrite = true;
                     if(strstr(batch[i].data(),"HallJoy RedSquare code probe v1;") ||
                        strstr(batch[i].data(),"HallJoy RedSquare stream probe v3;") ||
                        strstr(batch[i].data(),"HallJoy RedSquare stream probe v4;") ||
@@ -262,7 +314,7 @@ DWORD WINAPI Run(void*) noexcept {
                             }
                             DWORD error = ok ? 0 : GetLastError();
                             CloseHandle(file);
-                            if(ok && reset && !MoveFileExW(destination.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+                            if(ok && reset && !ReplaceLog(destination, path)) {
                                 ok=false; error=GetLastError();
                             }
                             if(reset && !ok) DeleteFileW(destination.c_str()); // Only our exact transient file.

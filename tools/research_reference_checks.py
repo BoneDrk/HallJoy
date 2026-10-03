@@ -4,8 +4,10 @@ Recording requires every original audit to pass against available source files.
 Public checks NEVER claim to have replayed absent proprietary source material.
 """
 import argparse
+import concurrent.futures
 import hashlib
 import json
+import os
 from pathlib import Path
 import runpy
 import subprocess
@@ -19,7 +21,8 @@ SCRIPTS = ('check_rongyuan_stream_profiles.py', 'check_atk_hex80_native_map.py',
            'build_jingtai_layouts.py', 'build_rongyuan_layouts.py',
            'build_epomaker_layouts.py', 'build_neo_k617_layouts.py',
            'prepare_madlions_layouts.py', 'prepare_atk_hex80_layout.py',
-           'prepare_ipi_layouts.py', 'build_ipi_native_catalog.py', 'research_layout_checks.py')
+           'prepare_ipi_layouts.py', 'build_ipi_native_catalog.py', 'build_everglide_layouts.py',
+           'research_layout_checks.py')
 
 
 def digest(path, private=False):
@@ -30,6 +33,7 @@ def digest(path, private=False):
 
 
 def trace(script, output):
+    os.environ['HALLJOY_RESEARCH_TRACE'] = '1'
     reads = {ROOT / 'tools' / script}
     active = True
 
@@ -107,6 +111,7 @@ def main():
     data = json.loads(MANIFEST.read_text(encoding='utf8'))
     if set(data['checks']) != set(SCRIPTS):
         raise RuntimeError('Audit set changed; record the full private checks again')
+    replay = []
     for script in SCRIPTS:
         missing = verify_record(ROOT, data['checks'][script])
         if missing:
@@ -114,7 +119,22 @@ def main():
                 raise RuntimeError('Private sources required: ' + script)
             print('PUBLIC_REFERENCE=PASS ' + script + '; private source replay NOT RUN; checked files unchanged')
         else:
-            subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'tools' / script)], check=True, timeout=120)
+            replay.append(script)
+    # The full replays are independent read-only scripts: run them concurrently,
+    # print each output in the fixed order and fail if any of them fails.
+    def run_one(script):
+        return subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'tools' / script)],
+                              capture_output=True, text=True, encoding='utf8', errors='replace', timeout=120)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(replay))) as pool:
+        results = list(pool.map(run_one, replay))
+    failed = []
+    for script, result in zip(replay, results):
+        sys.stdout.write(result.stdout); sys.stderr.write(result.stderr)
+        if result.returncode != 0:
+            failed.append(script)
+    sys.stdout.flush()
+    if failed:
+        raise SystemExit('Research reference replay failed: ' + ', '.join(failed))
 
 
 if __name__ == '__main__':

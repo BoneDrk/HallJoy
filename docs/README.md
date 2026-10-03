@@ -1,3 +1,22 @@
+> Build speed: [parallel/cached checks](current/FAST_CHECKS_2026-10-02.md).
+> Support log: [USB product names in HID inventory](current/SUPPORT_LOG_PRODUCT_NAMES_2026-10-02.md).
+> Everglide: [SU75 Pro on the SparkLink V2 path](current/EVERGLIDE_SU75PRO_2026-10-02.md).
+> IO / Pwnage: [recheck for new firmware or knowledge, nothing new](current/IO_PWNAGE_RECHECK_2026-10-02.md).
+> Royal Kludge: [RK68 HE log, BY/hubx platform, 24 sibling firmware images compared](current/RK68HE_HUBX_2026-10-02.md).
+> MCHOSE: [ARM family (Mix87 III design), experimental support](current/MCHOSE_ARM_FAMILY_2026-10-02.md).
+> MCHOSE: [RISC-V family (Jet 75 II design), experimental support](current/MCHOSE_RISCV_FAMILY_2026-10-02.md).
+> Build: [tools/build.ps1 fixes (Hex80 check, unused locals)](current/BUILD_PS1_FIXES_2026-10-02.md).
+> MCHOSE: [Ace 68 (Ace68-II, 41E4:2116) tester build on the Jet 75 II backend](current/MCHOSE_ACE68II_2026-10-02.md).
+> MCHOSE: [static survey of all M HUB firmware: one analog design, three implementations](current/MCHOSE_FAMILY_SURVEY_2026-10-02.md).
+> MCHOSE: [Jet 75 II experimental support, M HUB firmware/layout acquisition](current/MCHOSE_JET75_2026-10-02.md).
+> Startup: [deep startup and settings optimisation, INI snapshot, D2D warm-up, private-desktop test fix](current/STARTUP_OPTIMIZATION_2026-10-01.md).
+> Performance: [real-hardware profile, K4 pause/exit and flaky log-gate fixes](current/PERF_PROFILE_2026-10-01.md).
+> Rendering: [keyboard view on one Direct2D canvas](current/KEYBOARD_D2D_CANVAS_2026-10-01.md).
+> Fix: [extended vendor keys (Keychron RGB, Wooting Profile/Mode) frozen animation and capture](current/EXTENDED_KEY_ANIMATION_2026-10-01.md).
+> ATK: [Hex80-protocol family, experimental support for 15 models](current/ATK_HEX80_FAMILY_2026-10-01.md).
+> Build: [closing an elevated HallJoy before EXE replacement](current/BUILD_CLOSE_ELEVATED_HALLJOY_2026-10-01.md).
+> Layouts: [Supported model layout coverage (4 gaps)](current/SUPPORTED_LAYOUT_COVERAGE_2026-09-30.md).
+> IO: [catalog and firmware check, frameVersion-1 addressed getter 0x68](current/IO_CATALOG_FIRMWARE_2026-09-30.md).
 > Published: [HallJoy 1.6.6 publication record](current/RELEASE_1.6.6_PUBLICATION_2026-09-30.md).
 > Fix: [keyboards lost after Pause/Resume (Hex80, Addressed, W669 re-claim)](current/RESUME_RECLAIM_FIX_2026-09-30.md).
 

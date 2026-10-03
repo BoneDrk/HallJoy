@@ -35,7 +35,7 @@ static BOOL FakeRead(HANDLE,LPVOID buf,DWORD n,LPDWORD,LPOVERLAPPED o){
     assert(n==65);auto* wire=static_cast<unsigned char*>(buf);std::memset(wire,0,n);o->InternalHigh=n;auto* p=wire+1;
     if(!pending){StreamStep(p);if(!p[0]){SetLastError(WAIT_TIMEOUT);return FALSE;}return TRUE;}
     pending=false;std::memcpy(p,req.data(),64);p[0]=0xaa;
-    if(req[1]==3){p[8]=scenario==2?0x23:0x22;p[9]=1;}
+    if(req[1]==3){p[8]=scenario==2?0x23:scenario==10?0x14:0x22;p[9]=1;}
     if(req[1]==0xe0){
         const unsigned address=req[5]|req[6]<<8|req[7]<<16;
         for(unsigned i=0;i<req[4];++i){
@@ -74,12 +74,25 @@ static NTSTATUS FakeHash(BCRYPT_ALG_HANDLE,PUCHAR,ULONG,PUCHAR,ULONG,PUCHAR out,
 }
 void StreamStep(unsigned char* p){
     ++stream;
+    assert(Connected()); // live before the first key report (idle keyboard)
     if(stream==1 && scenario==5){StopTest();return;}
     if(stream==1 && scenario==6){p[0]=0xa0;p[1]=16;p[3]=26;p[6]=0xff;return;}
     if(stream==1 && scenario==9){base[2]=1;StopTest();return;}
     p[0]=0xa0;p[1]=16;p[3]=26;p[14]=1;p[15]=0x55;
-    if(stream==1){p[6]=1;p[7]=0x55;}
+    if(stream==1){p[6]=1;p[7]=0x55;Notify();} // unrelated device change mid-session
     if(stream==2)assert(Connected() && Get(26)==1000);
+    if(stream==2 && scenario==10){
+        // Ace 75 8K: model keys, identity and layout token; no fingerprint hashing.
+        assert(Owns(0x4d) && Owns(0x4a) && !Owns(0x49) && !Owns(0x46) && hashIndex==0);
+        NativeAnalogBackendTelemetry t{};Telemetry(&t);
+        assert(t.connected && t.vendorId==0x3837 && t.productId==0x303c && t.mappedKeys==80);
+        assert(!wcscmp(t.deviceName,L"MCHOSE Ace 75 8K"));
+        assert(t.verifiedLayoutToken && t.verifiedLayoutToken==halljoy::layout_identity::Token("mchose-ace75","ACE758K-3837-303C"));
+    }
+    if(stream==2 && scenario==0){
+        NativeAnalogBackendTelemetry t{};Telemetry(&t);
+        assert(t.productId==0x300d && t.mappedKeys==86 && !wcscmp(t.deviceName,L"MCHOSE Mix87 III"));
+    }
     if(stream==3){assert(Get(26)==0);StopTest();}
 }
 void StopTest(){g_stop.store(true);}
@@ -94,6 +107,7 @@ int main(){
         settings[7]=scenario==0?8:0;settings[8]=0x55;
         g_stop.store(false);Candidate candidate{L"synthetic"};Run(candidate);
         assert(!Connected() && Get(26)==0 && settings[8]==0x55);
+        if(scenario==0 || scenario==1 || scenario==8)assert(stream==3); // survived the device change
         if(scenario==2 || scenario==3){assert(writes==0);}
         else if(scenario==0){assert(writes==1 && !(settings[7]&8));}
         else if(scenario==9){assert(writes==1 && (settings[7]&8));}
@@ -107,8 +121,15 @@ int main(){
             assert(writes==0 && !(settings[7]&8));
         }
     }
+    {   // Ace 75 8K (non-fingerprinted ARM model): any version, same lifecycle.
+        scenario=10;pending=false;writes=stream=hashIndex=0;g_autoAttempted=false;
+        base={0,1,0,0,0,0,0,0};settings.fill(0xff);std::fill_n(settings.begin(),256,0);settings[8]=0x55;
+        g_stop.store(false);Candidate candidate{L"synthetic",halljoy::mix87::FindModel(0x3837,0x303c)};Run(candidate);
+        assert(writes==2 && !(settings[7]&8) && stream==3 && hashIndex==0);
+        g_model.store(&halljoy::mix87::Models[0]);
+    }
     { Session session(Candidate{L"synthetic"});std::uint8_t value=0;
       pending=false;assert(!session.ReadBytes(0x2a000,&value,1,true,GetTickCount64()));
       assert(GetLastError()==WAIT_TIMEOUT && !pending); }
-    puts("Mix87 lifecycle PASS: auto-enable, pre-enabled no redundant enable, normal/early stop cleanup, ambiguous enable cleanup, bad version/hash, stream rejection, stop during write, disconnect, profile race, no flash retry loop");
+    puts("Mix87 lifecycle PASS: auto-enable, pre-enabled no redundant enable, normal/early stop cleanup, ambiguous enable cleanup, bad version/hash, stream rejection, stop during write, disconnect, profile race, no flash retry loop, Ace 75 8K model");
 }

@@ -9,11 +9,14 @@ Linux/macOS/MinGW while developing parsers and schedulers.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -43,7 +46,7 @@ def find_cxx() -> str | None:
     return None
 
 
-def compile_and_run(cxx: str, output: Path, sources: list[Path], include: Path) -> None:
+def compile_command(cxx: str, output: Path, sources: list[Path], include: Path) -> list[str]:
     extra_compile_args = (
         ["-DHALLJOY_VIGEM_TRANSPORT_FAKE_ONLY"]
         if output.name == "vigem_child_transport"
@@ -70,13 +73,145 @@ def compile_and_run(cxx: str, output: Path, sources: list[Path], include: Path) 
         # MinGW often supplies this implicitly; clang/MSVC does not. Windows
         # token/SID integration tests must link their actual system dependency.
         *(["-ladvapi32", "-luser32"] if os.name == "nt" else []),
-        *(["-lsetupapi", "-lhid", "-lshell32", "-lole32", "-luuid"] if output.name in ("support_log_windows", "input_path_log_windows", "native_layout_devices_windows", "mad68_dual_trial_session", "mchose_mix87_session", "alumix104_session") else []),
+        *(["-lsetupapi", "-lcfgmgr32", "-lhid", "-lshell32", "-lole32", "-luuid"] if output.name in ("support_log_windows", "input_path_log_windows", "native_layout_devices_windows", "mad68_dual_trial_session", "mchose_mix87_session", "mchose_jet75_session", "alumix104_session") else []),
         *(["-lbcrypt"] if output.name == "mchose_mix87_session" else []),
         "-o",
         str(output),
     ]
-    run(command)
-    run([str(output)])
+    return command
+
+
+# Test-binary cache. A binary is reused only when the compiler executable, the
+# full command line and the bytes of every file the compiler read (its -MD
+# dependency list, system headers included) are identical. Every test still
+# RUNS each time; only an identical recompilation is skipped.
+# HALLJOY_NO_TEST_CACHE=1 forces fresh compilation.
+CACHE_DIR = Path(__file__).resolve().parents[1] / "build" / "obj" / "portable-tests" / "cache"
+ISOLATED_LONG_TESTS = {"support_log_windows", "input_path_log_windows", "process_generation_supervisor"}
+
+
+def _digest_files(paths: list[str]) -> str | None:
+    h = hashlib.sha256()
+    for name in paths:
+        try:
+            h.update(name.encode("utf-8", "surrogateescape") + b"\0" + Path(name).read_bytes() + b"\0")
+        except OSError:
+            return None
+    return h.hexdigest()
+
+
+def _parse_depfile(text: str) -> list[str]:
+    text = text.replace("\\\r\n", " ").replace("\\\n", " ")
+    _, _, deps = text.partition(": ")
+    items, current, i = [], "", 0
+    while i < len(deps):
+        c = deps[i]
+        if c == "\\" and i + 1 < len(deps) and deps[i + 1] == " ":
+            current += " "; i += 2; continue
+        if c.isspace():
+            if current: items.append(current); current = ""
+        else:
+            current += c
+        i += 1
+    if current: items.append(current)
+    return sorted(set(items))
+
+
+def _cache_key(command: list[str], output: Path) -> str:
+    h = hashlib.sha256()
+    compiler = Path(shutil.which(command[0]) or command[0])
+    try:
+        st = compiler.stat(); h.update(f"{compiler}|{st.st_size}|{st.st_mtime_ns}".encode())
+    except OSError:
+        h.update(str(compiler).encode())
+    for arg in command[1:]:
+        h.update(("<out>" if arg == str(output) else arg).encode("utf-8", "surrogateescape") + b"\0")
+    return h.hexdigest()[:32]
+
+
+def _build(command: list[str], output: Path) -> str:
+    """Compile (or reuse an identical cached binary); returns a log line."""
+    use_cache = os.environ.get("HALLJOY_NO_TEST_CACHE") != "1"
+    exe = output.with_suffix(".exe") if os.name == "nt" and output.suffix != ".exe" else output
+    key = _cache_key(command, output)
+    entry = CACHE_DIR / key
+    if use_cache and (entry / "deps.txt").is_file() and (entry / "bin").is_file():
+        deps = (entry / "deps.txt").read_text(encoding="utf-8").splitlines()
+        if (entry / "digest.txt").read_text(encoding="utf-8") == _digest_files(deps):
+            target = output.with_name((entry / "name.txt").read_text(encoding="utf-8"))
+            shutil.copyfile(entry / "bin", target)
+            return f"= cached (identical inputs) {output.name}"
+    depfile = output.with_name(output.name + ".d")
+    full = command[:-2] + ["-MD", "-MF", str(depfile)] + command[-2:]
+    started = time.time_ns() - 2_000_000_000  # filesystem timestamp slack
+    result = subprocess.run(full, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError("+ " + " ".join(command) + "\n" + result.stdout + result.stderr)
+    log = "+ " + " ".join(command) + ("\n" + (result.stdout + result.stderr).rstrip() if (result.stdout + result.stderr).strip() else "")
+    built = exe if exe.is_file() else output
+    if use_cache and depfile.is_file() and built.is_file():
+        deps = _parse_depfile(depfile.read_text(encoding="utf-8", errors="surrogateescape"))
+        digest = _digest_files(deps)
+        try:  # an input edited during compilation must never be cached
+            stable = all(Path(d).stat().st_mtime_ns < started for d in deps)
+        except OSError:
+            stable = False
+        if digest and stable:
+            tmp = CACHE_DIR / (key + ".tmp" + str(os.getpid()) + "_" + output.name)
+            shutil.rmtree(tmp, ignore_errors=True); tmp.mkdir(parents=True)
+            (tmp / "deps.txt").write_text("\n".join(deps), encoding="utf-8")
+            (tmp / "digest.txt").write_text(digest, encoding="utf-8")
+            (tmp / "name.txt").write_text(built.name, encoding="utf-8")
+            shutil.copyfile(built, tmp / "bin")
+            shutil.rmtree(entry, ignore_errors=True)
+            try: tmp.rename(entry)
+            except OSError: shutil.rmtree(tmp, ignore_errors=True)
+    return log
+
+
+def compile_and_run_many(cxx: str, out: Path, tests: list[tuple[str, list[Path]]], include: Path) -> None:
+    """Compile all tests in parallel, then run each binary sequentially."""
+    jobs = [(name, compile_command(cxx, out / name, sources, include)) for name, sources in tests]
+    failures = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, os.cpu_count() or 1)) as pool:
+        futures = {pool.submit(_build, command, out / name): name for name, command in jobs}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                print(future.result(), flush=True)
+            except Exception as exc:  # report every failing compile, then fail
+                failures.append(f"{futures[future]}: {exc}")
+    if failures:
+        print("\n".join(failures), flush=True)
+        raise subprocess.CalledProcessError(1, "compile: " + ", ".join(f.split(":")[0] for f in failures))
+    # Long tests that wait on real timers and use only private temp directories
+    # and unnamed kernel objects run alongside the ordered sequential tests.
+    background = {}
+    for name, _ in jobs:
+        if name in ISOLATED_LONG_TESTS:
+            print("+ (parallel) " + str(out / name), flush=True)
+            background[name] = subprocess.Popen([str(out / name)], stdout=subprocess.PIPE,
+                                                stderr=subprocess.STDOUT, text=True, errors="replace")
+    try:
+        for name, _ in jobs:
+            if name not in background:
+                run([str(out / name)])
+    finally:
+        failed = []
+        for name, process in background.items():
+            try:
+                output, _ = process.communicate(timeout=120)
+            except subprocess.TimeoutExpired:
+                process.kill(); process.communicate()
+                raise subprocess.TimeoutExpired(str(out / name), 120)
+            print(f"= {name}:\n{output.rstrip()}", flush=True)
+            if process.returncode != 0:
+                failed.append(name)
+        if failed:
+            raise subprocess.CalledProcessError(1, "tests: " + ", ".join(failed))
+
+
+def compile_and_run(cxx: str, output: Path, sources: list[Path], include: Path) -> None:
+    compile_and_run_many(cxx, output.parent, [(output.name, sources)], include)
 
 
 def main() -> int:
@@ -233,6 +368,7 @@ def main() -> int:
             ("mg75_pro_protocol", [tests / "mg75_pro_protocol_test.cpp"]),
             ("tartarus_protocol", [tests / "tartarus_protocol_test.cpp", hall / "keyboard_support_status.cpp"]),
             ("mchose_mix87_protocol", [tests / "mchose_mix87_protocol_test.cpp"]),
+            ("mchose_jet75_protocol", [tests / "mchose_jet75_protocol_test.cpp"]),
             ("mad68_dual_trial_protocol", [tests / "mad68_dual_trial_protocol_test.cpp"]),
             ("input_shortcuts", [tests / "input_shortcuts_test.cpp"]),
             ("neo65_protocol", [tests / "neo65_protocol_test.cpp"]),
@@ -304,6 +440,7 @@ def main() -> int:
             fixed_tests.append(("native_layout_devices_windows", [tests / "native_layout_devices_windows_test.cpp", hall / "native_layout_devices.cpp"]))
             fixed_tests.append(("bounded_ini_numeric", [tests / "bounded_ini_numeric_test.cpp"]))
             fixed_tests.append(("layout_ini_section", [tests / "layout_ini_section_windows_test.cpp"]))
+            fixed_tests.append(("ini_read_snapshot", [tests / "ini_read_snapshot_windows_test.cpp"]))
             fixed_tests.append(("ini_write_batch", [tests / "ini_write_batch_windows_test.cpp"]))
             # Uses the real Windows ViGEm SDK ABI (including Windows packing
             # headers), even with fake device calls. Keep mandatory coverage in
@@ -317,6 +454,7 @@ def main() -> int:
                 tests / "support_log_windows_test.cpp", hall / "support_log.cpp"
             ]))
             fixed_tests.append(("mchose_mix87_session", [tests / "mchose_mix87_session_test.cpp"]))
+            fixed_tests.append(("mchose_jet75_session", [tests / "mchose_jet75_session_test.cpp"]))
             fixed_tests.append(("mad68_dual_trial_session", [
                 tests / "mad68_dual_trial_session_test.cpp"
             ]))
@@ -327,7 +465,7 @@ def main() -> int:
                 tests / "support_log_windows_test.cpp", hall / "support_log.cpp"
             ]))
             fixed_tests.append(("engine_runtime_notification_windows", [
-                tests / "engine_runtime_notification_windows_test.cpp", hall / "engine_runtime_owner.cpp"
+                tests / "engine_runtime_notification_windows_test.cpp", hall / "engine_runtime_owner.cpp", hall / "perf_trace.cpp"
             ]))
             fixed_tests.append(("debug_event_handles_windows", [
                 tests / "debug_event_handles_windows_test.cpp"
@@ -344,9 +482,7 @@ def main() -> int:
                 hall / "provider_v2_data_plane_layout.cpp",
                 hall / "analog_provider_v2.cpp",
             ]))
-        for name, sources in fixed_tests:
-            compile_and_run(cxx, out / name, sources, hall)
-
+        all_tests = list(fixed_tests)
         # Convention used by built-ins and tools/new_native_backend.py:
         # tests/<name>_protocol_test.cpp links HallJoy/<name>_protocol.cpp.
         explicit_sources = {source.resolve() for _, sources in fixed_tests for source in sources}
@@ -356,7 +492,8 @@ def main() -> int:
             protocol_source = hall / test.name.replace("_test.cpp", ".cpp")
             if not protocol_source.exists():
                 raise SystemExit(f"Missing pure protocol source for {test.name}: {protocol_source}")
-            compile_and_run(cxx, out / test.stem, [test, protocol_source], hall)
+            all_tests.append((test.stem, [test, protocol_source]))
+        compile_and_run_many(cxx, out, all_tests, hall)
 
     print("native backend checks: all static and portable C++ tests passed")
     return 0

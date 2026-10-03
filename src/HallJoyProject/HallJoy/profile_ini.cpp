@@ -219,6 +219,8 @@ bool ParseCodes(const std::wstring& text,
 bool Profile_PrepareIni(const wchar_t* path, BindingsSnapshot& out) {
     halljoy::ini::ReadFile file(path);
     if (!file) return false;
+    // The lease pins the file: serve every key from one parse per section.
+    halljoy::ini::ReadSnapshot snapshot(path);
     std::wstring schema, kind, bundle;
     if (!halljoy::ini::Read(path, L"HallJoyPersistence", L"SchemaVersion", schema) ||
         !halljoy::ini::Read(path, L"HallJoyPersistence", L"Kind", kind) ||

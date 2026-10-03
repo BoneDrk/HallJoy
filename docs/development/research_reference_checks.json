@@ -4,7 +4,7 @@
     "check_rongyuan_stream_profiles.py": [
       {
         "path": "docs/development/keyboard_support_notices.json",
-        "sha256": "be618104e0d0535c2dab1b7d75622ab65e1e910511fcc322f4777b55a9f8930e",
+        "sha256": "7ae8c4691bc920cceeefce8b7d78c844e1e391a765b33714ca207c5631b6d49c",
         "private": false
       },
       {
@@ -1254,7 +1254,7 @@
       },
       {
         "path": "tools/layout_catalog.json",
-        "sha256": "d9310d11a3e2c371539cfe872e1ac4c7fa33441071afde7c0d8f60d85d723831",
+        "sha256": "c8885365a42d4e8df2611005236495d8276da53374fc53a6083bd7921c4309a9",
         "private": false
       }
     ],
@@ -1271,7 +1271,7 @@
       },
       {
         "path": "src/HallJoyProject/HallJoy/hex80_protocol.h",
-        "sha256": "a9147406cba10f8d57cc32d04f03794500e4a2f1bffadc02406f551ed1cea586",
+        "sha256": "789451f63407a6c4b87abfd4ac452b10322c114fb012f9c9f0c76e4f49c065cf",
         "private": false
       },
       {
@@ -1809,7 +1809,7 @@
       },
       {
         "path": "tools/layout_catalog.json",
-        "sha256": "d9310d11a3e2c371539cfe872e1ac4c7fa33441071afde7c0d8f60d85d723831",
+        "sha256": "c8885365a42d4e8df2611005236495d8276da53374fc53a6083bd7921c4309a9",
         "private": false
       },
       {
@@ -2355,13 +2355,18 @@
         "private": true
       },
       {
+        "path": "docs/research/supported-gap-layout-sources/rk-rk68he-keys.json",
+        "sha256": "e69f09c7c14f95ce3187f8e82434e9bcb97a3ff82c05e002f4486c197d376045",
+        "private": false
+      },
+      {
         "path": "src/HallJoyProject/HallJoy/generated/ipi_models.h",
-        "sha256": "6e625d120ab22ce6bfeff4f4faf582a0bb23163a7f1cda99f0599dbfac5f27a5",
+        "sha256": "bc2e585ec53bb25e7840b244b305beacdc2f0496c34709750d096e2168aab7a5",
         "private": false
       },
       {
         "path": "tools/build_ipi_native_catalog.py",
-        "sha256": "b57a8e572baef3219d61e6d6aac11e14bfb4041165422b88359cf8a1244e90f1",
+        "sha256": "2a9334faaab790d21a4fc2a937c1d1ca5749eae567b2636b33dc95e33ac6acd1",
         "private": false
       },
       {
@@ -2377,6 +2382,23 @@
       {
         "path": "tools/prepare_ipi_layouts.py",
         "sha256": "8eed4982606c792a81fd97f791fe757d67f03f3417d30e71c1c686f83cd80e24",
+        "private": false
+      }
+    ],
+    "build_everglide_layouts.py": [
+      {
+        "path": "docs/research/everglide-layout-reports/everglide_su75_pro_ansi.json",
+        "sha256": "a266b840b407ed631e7bdca4853650979eaa748aa2b67b3d5cf69a7480f2547b",
+        "private": false
+      },
+      {
+        "path": "docs/research/everglide-layout-sources/su75-pro-geometry.json",
+        "sha256": "2b7f6a0b76488e93593a89d0bf2b9389ce0d9702d0d70276438afcd485c38a8a",
+        "private": false
+      },
+      {
+        "path": "tools/build_everglide_layouts.py",
+        "sha256": "6d510cea40348dab68cc94e5dc5164071137896d7dbec6287dc633fc5380a2b7",
         "private": false
       }
     ],
@@ -2827,6 +2849,11 @@
         "private": false
       },
       {
+        "path": "docs/exports/layout-pipeline/AJAZZ AK820 MAX HE ANSI.ini",
+        "sha256": "57fe2ac1e1566ecc245b86a0fdd1f07e6a0dfaab797679856597786a880e4db7",
+        "private": false
+      },
+      {
         "path": "docs/exports/layout-pipeline/AJAZZ ALUX60 ANSI.ini",
         "sha256": "a4d159761cc8c9006cb06ca2bbd36669284cacf65781ea1b48f4b4ba64e419e4",
         "private": false
@@ -2834,6 +2861,11 @@
       {
         "path": "docs/exports/layout-pipeline/AJAZZ NS67 + NS67 PRO ANSI.ini",
         "sha256": "cbe17cd29ff5732802ae7c4977d221162c1d0f85e4a5b436b23e18d6c90798b7",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ajazz_ak820_max_he_ansi-review.json",
+        "sha256": "bbc231bf7cbc535319a9b04322d5ef8be8044da470762f137ab2aa6d1fdaa4b3",
         "private": false
       },
       {
@@ -2852,13 +2884,113 @@
         "private": false
       },
       {
+        "path": "docs/exports/layout-pipeline/ATK 68 V2 Pro ANSI.ini",
+        "sha256": "f42dd54dd3e568bf5db545af58a41af19fe550e12158725854c663b33236255c",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK 68 V3 + RS6+ + RS6 Ultra+ + RS6 Cube + 68 RX ANSI.ini",
+        "sha256": "9fab76fd2c154e3f3240e4d78d2999040a5543b6410011d3c8ef246dafdd3bdb",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK EDGE 60 HE + 60 RX ANSI.ini",
+        "sha256": "10394cd8e642a7b4b8164257403e49f4cf6d60ec4e2cb2c7675b453b25fd68bb",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK EDGE 63 HE + RS63 Air ANSI.ini",
+        "sha256": "eaaf2d7f706317e46ca40c20c4781786bff2e9f0b22db863156af2983c02e9a5",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK EDGE 75 HE ANSI.ini",
+        "sha256": "e5f87e4bd5484591af04d3f776af0fb2c16a52f06185f8328b80262d6e591ac9",
+        "private": false
+      },
+      {
         "path": "docs/exports/layout-pipeline/ATK Hex80 ANSI.ini",
         "sha256": "a2593d82c9595c32209750178ac8aa4b37fc2e820c1ca156af63880b3fe11a4f",
         "private": false
       },
       {
+        "path": "docs/exports/layout-pipeline/ATK RS6 + RS6 Ultra + RS6 Air ANSI.ini",
+        "sha256": "68a1d4d91a35e6f3cec972df5d73e9b53fce51484991c2e98d6be64856568cf4",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK RS7 Air ISO.ini",
+        "sha256": "c0d3baec06597c05405b9548b1a17e4fc5a21fe77fc73d6e1ced793d01d9704c",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK RS7 ANSI.ini",
+        "sha256": "e3acbd0c596d4e3103a4f9451d6bfa41db0a0c9c0b0d0dcdd3be83944903f1fd",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK RS7 Turbo ANSI.ini",
+        "sha256": "70e2b0128b22aa715b567d79cd90625cd3a6070443acd82f6bb581bc3f9b4539",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/ATK RS7 V2 + RS7 Air ANSI.ini",
+        "sha256": "b64a6bea3a14c761d6e6bb8b23e7121cac40d916d002163b178fe01988e1fadd",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_68v2pro_ansi-review.json",
+        "sha256": "34816c2f3b52125677a98e98c4c868625b9b8fc8b1483baebce92d2df21c8c55",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_68v3_ansi-review.json",
+        "sha256": "3d5b5fc7733ab827d9f3fb2d9cc2c3f0578c5fdb1a8c65a3a50d175aaf1dfd6d",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_edge60_ansi-review.json",
+        "sha256": "6fa25a61bdd51e03a6fb7dd19b900ae3dbcf6a56de0eea1e30877f17081b5f91",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_edge63_ansi-review.json",
+        "sha256": "1baf717b9503fdbee90778abad35c7ba8021418123a074247dd99c4f8da29d3d",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_edge75_ansi-review.json",
+        "sha256": "8ec93e720f3ffbd0eeb4c8ffb90a2cccdfe9ff4aeefc98843c174abfdda85903",
+        "private": false
+      },
+      {
         "path": "docs/exports/layout-pipeline/atk_hex80_ansi-review.json",
         "sha256": "30f4bd422a07d7b9ae9d60538d08b401b22b3b07ef7da68e0f5755bbb06e9629",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_rs6_ansi-review.json",
+        "sha256": "00bccc5d0b9687f9ff064066ca3ebe7e9b68a655b67ffae51375fd62cc1ebfad",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_rs7_ansi-review.json",
+        "sha256": "ae56875655e57b62b28b7d08bc25ef6559b69b512463e3d58e69afc698022450",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_rs7airiso_iso-review.json",
+        "sha256": "4a9ca46398b233b00d9f12b88fbd2b3085b5ced22b684bc5834496e74061df1c",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_rs7turbo_ansi-review.json",
+        "sha256": "005e329ac3d2ffacc8518aa93c756b0226a5b6abfe828fbf7b70461fcf11b48e",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/atk_rs7v2_ansi-review.json",
+        "sha256": "644ac65200ba1e05dbe4701022d4ec822d4d731ca4a62b2b24307053ff2fd517",
         "private": false
       },
       {
@@ -3172,6 +3304,16 @@
         "private": false
       },
       {
+        "path": "docs/exports/layout-pipeline/Everglide SU75 Pro ANSI.ini",
+        "sha256": "9f959ce70db8799c2cba92f840d677e4fddbe1b44bdfaa7bb64dd68bcbce5be0",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/everglide_su75_pro_ansi-review.json",
+        "sha256": "e5b633ca2632144ba43173d4cc7d976fd1ffd841f0fe052345f28259ea7b9a07",
+        "private": false
+      },
+      {
         "path": "docs/exports/layout-pipeline/EWEADN SEEK75 ANSI.ini",
         "sha256": "17560365747225acf717681440979e38ea9e88ac4b8d89c541ca35e9117c5661",
         "private": false
@@ -3427,6 +3569,66 @@
         "private": false
       },
       {
+        "path": "docs/exports/layout-pipeline/MCHOSE Ace 60 ANSI.ini",
+        "sha256": "b0dfd527bf4e0a05125fc4b8a87280921533a68ac8ffdd576501867d409e437b",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/MCHOSE Ace 60 Pro Nordic ISO.ini",
+        "sha256": "8962c6dec3afa37baa70f96f9951c8c8251a1b8f7d903b40b702728a159c4913",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/MCHOSE Ace 68 ANSI.ini",
+        "sha256": "700d5827971311f794615edad3d2a2bf0e601b78f238f83d0d7f1b30a577c3bd",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/MCHOSE Ace 75 8K ANSI.ini",
+        "sha256": "a392402e477502b46dd17981acc9243faa8b6abd887d4d0d451ccaa311632d6f",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/MCHOSE Jet 75 II ANSI.ini",
+        "sha256": "32ca93d61c6e75a8d369f5d4a216668a25397f969e22df6c26408b1902ddf61b",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/MCHOSE Mix 87 III ANSI.ini",
+        "sha256": "c1da5e5a19b0a315df67718483cde9addd05a9d21ac8dc1c4a84ff73de4841a3",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/mchose_ace_60_ansi-review.json",
+        "sha256": "ebe681d869ca3215a744ffc394bb67df3cf637d5c91563e80bc4d4ca293c6608",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/mchose_ace_60_pro_nordic_iso-review.json",
+        "sha256": "a08966cf6555e1380e84d247a417ed44b9a48e781f48c3dd59dcab57bed51464",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/mchose_ace_68_ansi-review.json",
+        "sha256": "44cfe12e3b08c0d8d89ff9bd443bf1ecdcd84438ca8619176d1822b8143d7e75",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/mchose_ace_75_8k_ansi-review.json",
+        "sha256": "a5dd46d0383fdea35ef1091618c84541cbacd2c0b5013c06b023ba28fa3aa09e",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/mchose_jet_75_ii_ansi-review.json",
+        "sha256": "3cf931e4490f964539daf4623c8cb9a94e940edfbde3bfa71d0fbb27a07d0e91",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/mchose_mix_87_iii_ansi-review.json",
+        "sha256": "7eba70e978a921a71d1a0ea058e9ba75492721172aec4c31384c97dc8bb6ad7f",
+        "private": false
+      },
+      {
         "path": "docs/exports/layout-pipeline/MEETION Magic A75 ANSI.ini",
         "sha256": "2b32d09ba80cbd34064012cd69a92d84df93af53f1a139d02055ffd4d59e2394",
         "private": false
@@ -3482,6 +3684,11 @@
         "private": false
       },
       {
+        "path": "docs/exports/layout-pipeline/NuPhy Field75 HE ANSI.ini",
+        "sha256": "66eeb3f7d462f7e1e73b5a9c3b7c0d39e4b369eccfbf414561d84eb869214b70",
+        "private": false
+      },
+      {
         "path": "docs/exports/layout-pipeline/nuphy_air60_he_ansi-review.json",
         "sha256": "22fec1f576d4c438c4d7eecec736ae6f92c1fca9e536f3f90e541cdc22888495",
         "private": false
@@ -3489,6 +3696,11 @@
       {
         "path": "docs/exports/layout-pipeline/nuphy_air75_he_ansi-review.json",
         "sha256": "b323ec831abdb45f0c019c27974eb929d287fea3eb322ca93d1888ee49c3ae8c",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/nuphy_field75_he_ansi-review.json",
+        "sha256": "c1eae88bdf7814d95221b74a20d55ea6e53dfece21620a166ed349c2893829e6",
         "private": false
       },
       {
@@ -3644,6 +3856,26 @@
       {
         "path": "docs/exports/layout-pipeline/redragon_k673_us_ansi-review.json",
         "sha256": "4a6efa0dd59c80d3760f1ac0f0fcb6e73f574e89c7bbd81d4390db1647441aa0",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/Royal Kludge RK68 HE ANSI.ini",
+        "sha256": "ed87c8951f41c6189723c463e55c96041e8a164918a0c2446323a0b75c4479c9",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/Royal Kludge RK68 HE ISO.ini",
+        "sha256": "9df33e86e590a8639e36b4168cfb209cea84a749f503683060a09716325c8190",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/royal_kludge_rk68_he_ansi-review.json",
+        "sha256": "e7043edc1ff958af9616bab630eaf694505bb2c3a091f7b2228e025f083c2aa1",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/royal_kludge_rk68_he_iso-review.json",
+        "sha256": "abbf75f59e85fdfe9dda9b89fcf015dc41d4c3d8c7da0bdc9994cdcd9cf17c91",
         "private": false
       },
       {
@@ -3824,6 +4056,16 @@
       {
         "path": "docs/exports/layout-pipeline/Skyloong GK61 HE ANSI.ini",
         "sha256": "f9fc4b2b5f7414a8172dea057a82148317067a3bf4a138a41e01d3e0fdf04b14",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/SteelSeries Apex Pro ANSI.ini",
+        "sha256": "c29f6a028ee7949c6ecf05548e9c37c226e0e9c87529f73d07d791512179e17f",
+        "private": false
+      },
+      {
+        "path": "docs/exports/layout-pipeline/steelseries_apex_pro_ansi-review.json",
+        "sha256": "0ddd369d0388fb50580b12436ff1a4da4fa32a3aec17bbcd05d0a513f8869d43",
         "private": false
       },
       {
@@ -4089,6 +4331,146 @@
       {
         "path": "docs/exports/lemokey-he/Lemokey P1 HE ISO.ini",
         "sha256": "4e477edfefcaa0b062d2575ce88bd3c272ebcc9b85f86cd22539c9334ff09292",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_68v2pro_ansi.json",
+        "sha256": "34816c2f3b52125677a98e98c4c868625b9b8fc8b1483baebce92d2df21c8c55",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_68v3_ansi.json",
+        "sha256": "3d5b5fc7733ab827d9f3fb2d9cc2c3f0578c5fdb1a8c65a3a50d175aaf1dfd6d",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_edge60_ansi.json",
+        "sha256": "6fa25a61bdd51e03a6fb7dd19b900ae3dbcf6a56de0eea1e30877f17081b5f91",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_edge63_ansi.json",
+        "sha256": "1baf717b9503fdbee90778abad35c7ba8021418123a074247dd99c4f8da29d3d",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_edge75_ansi.json",
+        "sha256": "8ec93e720f3ffbd0eeb4c8ffb90a2cccdfe9ff4aeefc98843c174abfdda85903",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_rs6_ansi.json",
+        "sha256": "00bccc5d0b9687f9ff064066ca3ebe7e9b68a655b67ffae51375fd62cc1ebfad",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_rs7_ansi.json",
+        "sha256": "ae56875655e57b62b28b7d08bc25ef6559b69b512463e3d58e69afc698022450",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_rs7airiso_iso.json",
+        "sha256": "4a9ca46398b233b00d9f12b88fbd2b3085b5ced22b684bc5834496e74061df1c",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_rs7turbo_ansi.json",
+        "sha256": "005e329ac3d2ffacc8518aa93c756b0226a5b6abfe828fbf7b70461fcf11b48e",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-layout-reports/atk_rs7v2_ansi.json",
+        "sha256": "644ac65200ba1e05dbe4701022d4ec822d4d731ca4a62b2b24307053ff2fd517",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/demo-rs6.json",
+        "sha256": "6ff762707881e5f7ed67e6ccc1c7b6742291b17e0f173e6feb6684fb00a49162",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/hub-facts.json",
+        "sha256": "a69597c3b1d94ddd2e1c48d5ebdccc6bf1c7143d2b5fb98551ce92853cd5c1d7",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-atk60_rx.json",
+        "sha256": "4e9ed9a89854b3a3e40cc5e56f3dec7e3cbc03fda44cb4f53347b6ad165b125e",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-atk63_rx.json",
+        "sha256": "94bca91ea13f44c5b5cb9cf4f8ef2a9c064819065b50d8ea4622d2045c25b6ca",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-atk68_rx.json",
+        "sha256": "ebaa5e60fd3f048816bf07d8fad213159ed7aed556e34f0833186c6986754bfc",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-atk68_v2_pro.json",
+        "sha256": "019b47bb678a8cd59fe0fb87ec8641276e00369b0b42d188e2407b86dc040669",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-atk_68.json",
+        "sha256": "7acbdf654b7399e06c63cca30d8b22571739f350939d393eaf10403296a9d060",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-atk_68_v4.json",
+        "sha256": "d3fb81fac08fd9686a4297c9866dc4182458239a6d7021fc6feefafbe3b2bca0",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-edge75.json",
+        "sha256": "37b3ddfb4d193fab10662936e36778f2102a4e7bb94212fb32adcc2686d69b94",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-edge75_v2.json",
+        "sha256": "c3f218d3e592cb52ef58b4e50439af6809fdad92a36d8ea0a62f6f1c13e71ac3",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-kb_60.json",
+        "sha256": "fefea1ce29fa5512f164c6c8bc1113c96eeddf0b933c90f8ccc6375396de794d",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-kb_63.json",
+        "sha256": "3ca1affc5f7c29b0d29992d1f911d67b2d7e25c4f59c82801c174db7fd5fc27d",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-kb_68.json",
+        "sha256": "770ed1d8d2a941b8cd8c4a70da36db183697d985d4c535f0275af2e88322475f",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-rs6_air.json",
+        "sha256": "3caa45e837bcc4931296dafe859bb56d27af611e3b3a00c29d3ec668f5b183f1",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-rs7.json",
+        "sha256": "612e6820e54c288cbbe62f7ce8859ce27ab4f56f4f59385936242413eb095375",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-rs7_air_iso.json",
+        "sha256": "6c7b34ee17465ae36365608fe7d123826cb3de545a8ef1633f1f563317334409",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-rs7_revi.json",
+        "sha256": "e1ae4de3d323ea6aa7425c3a6f76de0fe4dc16cebf7f485e7a3b4102b12fbc95",
+        "private": false
+      },
+      {
+        "path": "docs/research/atk-family-sources/keymap-rs7_v2.json",
+        "sha256": "3dee633c4695080dae2bb6e7475d8cc425cb4dd058b3a9603f459315b69e52a6",
         "private": false
       },
       {
@@ -4509,6 +4891,16 @@
       {
         "path": "docs/research/epomaker-layouts/sources/layout-links.json",
         "sha256": "687e4db0d3fafb5e03db890615a131d85364e330dff70882724919b40f0be4b2",
+        "private": false
+      },
+      {
+        "path": "docs/research/everglide-layout-reports/everglide_su75_pro_ansi.json",
+        "sha256": "a266b840b407ed631e7bdca4853650979eaa748aa2b67b3d5cf69a7480f2547b",
+        "private": false
+      },
+      {
+        "path": "docs/research/everglide-layout-sources/su75-pro-geometry.json",
+        "sha256": "2b7f6a0b76488e93593a89d0bf2b9389ce0d9702d0d70276438afcd485c38a8a",
         "private": false
       },
       {
@@ -5907,6 +6299,111 @@
         "private": false
       },
       {
+        "path": "docs/research/supported-gap-layout-reports/ajazz_ak820_max_he_ansi.json",
+        "sha256": "bbc231bf7cbc535319a9b04322d5ef8be8044da470762f137ab2aa6d1fdaa4b3",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/mchose_ace_60_ansi.json",
+        "sha256": "ebe681d869ca3215a744ffc394bb67df3cf637d5c91563e80bc4d4ca293c6608",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/mchose_ace_60_pro_nordic_iso.json",
+        "sha256": "a08966cf6555e1380e84d247a417ed44b9a48e781f48c3dd59dcab57bed51464",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/mchose_ace_68_ansi.json",
+        "sha256": "44cfe12e3b08c0d8d89ff9bd443bf1ecdcd84438ca8619176d1822b8143d7e75",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/mchose_ace_75_8k_ansi.json",
+        "sha256": "a5dd46d0383fdea35ef1091618c84541cbacd2c0b5013c06b023ba28fa3aa09e",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/mchose_jet_75_ii_ansi.json",
+        "sha256": "3cf931e4490f964539daf4623c8cb9a94e940edfbde3bfa71d0fbb27a07d0e91",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/mchose_mix_87_iii_ansi.json",
+        "sha256": "7eba70e978a921a71d1a0ea058e9ba75492721172aec4c31384c97dc8bb6ad7f",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/nuphy_field75_he_ansi.json",
+        "sha256": "c1eae88bdf7814d95221b74a20d55ea6e53dfece21620a166ed349c2893829e6",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/royal_kludge_rk68_he_ansi.json",
+        "sha256": "e7043edc1ff958af9616bab630eaf694505bb2c3a091f7b2228e025f083c2aa1",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/royal_kludge_rk68_he_iso.json",
+        "sha256": "abbf75f59e85fdfe9dda9b89fcf015dc41d4c3d8c7da0bdc9994cdcd9cf17c91",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-reports/steelseries_apex_pro_ansi.json",
+        "sha256": "0ddd369d0388fb50580b12436ff1a4da4fa32a3aec17bbcd05d0a513f8869d43",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/illumipc-SG8994HERGB.json",
+        "sha256": "1b5c7edbcd2a227236b62907f4381c0b16eec93e1705920195d320374cc0f89f",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/mhub-ace60-keys.json",
+        "sha256": "10d37432ad8b4ff008ba766ab2e981086ec9ce4ce27576bdb7a9086acbc1a3ed",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/mhub-ace60-pro-nordic-keys.json",
+        "sha256": "b57763d4d79be997dc461b3df1a077327c0906ace9433559690163943c65881b",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/mhub-ace68-keys.json",
+        "sha256": "d4445483552f3670b672b123a5146029ad9d9b916d50606edc153b89a56956d5",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/mhub-ace75-8k-keys.json",
+        "sha256": "c646b8df2d3fd198afc8c6628262fc78c8b356e8c01cc5e11ce323613b058f1d",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/mhub-jet75-ii-keys.json",
+        "sha256": "518c97bd12b8093fba3d019a64be533d1c9317038187bcf9e4df1bceb75bc1aa",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/mhub-mix87-iii-keys.json",
+        "sha256": "4109b21e15439b78bb9a556007fee39dc219818b1fd4f836700d494d8e51be33",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/nuphy-field75-he-keys.json",
+        "sha256": "494e2ac0f53624b229eb72fd22d2ad3fce3cc5a2b23f155ff0a1aaf9f628296b",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/rk-rk68he-keys.json",
+        "sha256": "e69f09c7c14f95ce3187f8e82434e9bcb97a3ff82c05e002f4486c197d376045",
+        "private": false
+      },
+      {
+        "path": "docs/research/supported-gap-layout-sources/steelseries-gg-apex-pro-us.json",
+        "sha256": "0c587b57f620d8e699528e4b3fececc419943569f02868ae9aff976e1e5c1f49",
+        "private": false
+      },
+      {
         "path": "docs/research/three-keyboard-layout-reports/chilkey_slice75_he_ansi.json",
         "sha256": "fcc9b963c51faa65bf4e34a485b25441624d68a431b0adf3b070ccf86067bf82",
         "private": false
@@ -5998,22 +6495,22 @@
       },
       {
         "path": "src/HallJoyProject/HallJoy/generated/layout_pipeline/identities.h",
-        "sha256": "8c5f43a5e3a7df802aa9b40c28a0acb800d5aecad1cc050dd94e666be73a9ef1",
+        "sha256": "3215f53463536cc27878e670dcf744af27cea72153e2a7df2898c536971e3ec0",
         "private": false
       },
       {
         "path": "src/HallJoyProject/HallJoy/generated/layout_pipeline/identities.inc",
-        "sha256": "94ecd42bc1e0d8458b8c0e476c7c1796d344ce88d5a326e6618b5cd44b9d551d",
+        "sha256": "93cfcb51fc1f871a5531ff50e39d4274bc00d7c2dda9f242aecb1bcae130086b",
         "private": false
       },
       {
         "path": "src/HallJoyProject/HallJoy/generated/layout_pipeline/layouts.h",
-        "sha256": "e0cb9a3e2eab9a477550a7c946e191c23d2a14c65b9e3ca6561483251d965328",
+        "sha256": "10b6cb1a3f1f05799bfe5aca288f81619330188f67135dbc6787b1b3fbebf1e9",
         "private": false
       },
       {
         "path": "src/HallJoyProject/HallJoy/generated/layout_pipeline/presets.inc",
-        "sha256": "b4f5f40c9bbb1e22207fb6b097682c88fded2777c28ea55a3db5ca12e4ab0d1f",
+        "sha256": "54a6bfcebedfc29746e5e83221a028ded6421bbbae91a13a8f28a01195b9617a",
         "private": false
       },
       {
@@ -6093,7 +6590,7 @@
       },
       {
         "path": "tools/layout_catalog.json",
-        "sha256": "d9310d11a3e2c371539cfe872e1ac4c7fa33441071afde7c0d8f60d85d723831",
+        "sha256": "c8885365a42d4e8df2611005236495d8276da53374fc53a6083bd7921c4309a9",
         "private": false
       },
       {
@@ -6128,12 +6625,12 @@
       },
       {
         "path": "tools/research_layout_checks.py",
-        "sha256": "e09c57a2d4b8367646c638198ac65b4754f945be79573d09485dac5106518d8c",
+        "sha256": "32ffd8bf0500dafc8f2e37635e79531c08d9578d97375c1f2ee3cb623d5acd4f",
         "private": false
       },
       {
         "path": "tools/tests/test_layout_pipeline.py",
-        "sha256": "fff2281597fb9a7e73bbad7df0e3a5a8c18cc981c427ff3b7269fac764121319",
+        "sha256": "db26d4f60ae3cd93fcbecec2c99303f113dbe6da58863fd97c3df45faa6becc5",
         "private": false
       }
     ]

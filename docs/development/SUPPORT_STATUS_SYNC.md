@@ -8,6 +8,11 @@ when a support decision changes. Authorization covers corresponding status edits
 
 ## Destinations
 
+- **Before any Supported status:** a built-in layout and an entry in
+  `docs/development/supported_layouts.json`. `tools/check_supported_layouts.py`
+  must pass both against the compiled catalog and with `--sheet`. This is an
+  owner rule from 2026-10-01; see KEYBOARD_SHEET_RULES.md.
+
 - Runtime admission, relevant feature flags and testing notices.
 - README.md and docs/SUPPORTED_HARDWARE.md.
 - Current implementation/research document and OWNER_CONTEXT.md where decisions change.

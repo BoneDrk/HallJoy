@@ -16,6 +16,18 @@ int main(){
     a[6]=0;a[7]=10;assert(Decode(a,allowed,sample) && sample.milli==29);
     a[7]=0;assert(Decode(a,allowed,sample) && sample.milli==0);
     a[15]=0;assert(!Decode(a,allowed,sample));
+    // Non-fingerprinted ARM models accept the plausible range; Mix87 III stays exact.
+    a[14]=1;a[15]=0x5f;a[6]=0;a[7]=0;assert(!Decode(a,allowed,sample) && Decode(a,allowed,sample,false));
+    a[14]=0;a[15]=150;assert(!Decode(a,allowed,sample,false));a[14]=3;a[15]=0xe8;assert(!Decode(a,allowed,sample,false));
+    a[14]=1;a[15]=0x55;
+    assert(FindModel(Vid,Pid)==&Models[0] && Models[0].fingerprinted && !Models[0].keys && std::size(Models)==7);
+    for(std::size_t i=1;i<std::size(Models);++i){
+        assert(!Models[i].fingerprinted && FindModel(Models[i].vid,Models[i].pid)==&Models[i]);
+        std::array<bool,256> m{};for(std::size_t k=0;k<Models[i].keyCount;++k){assert(!m[Models[i].keys[k]]);m[Models[i].keys[k]]=true;}
+        for(std::size_t j=0;j<i;++j)assert(Models[i].vid!=Models[j].vid || Models[i].pid!=Models[j].pid);
+    }
+    assert(FindModel(0x3837,0x303c)->keyCount==80 && FindModel(0x3837,0x3003)->keyCount==67);
+    assert(!FindModel(0x41e4,0x2101) && !FindModel(0x3837,0x3007) && !FindModel(0x3837,0x3026) && !FindModel(0x41e4,0x211a));
     assert(Hid(16,128,0)==0xe7 && Hid(16,3,0)==0 && Hid(0xf0,255,1)==0);
     for(unsigned profile=0;profile<4;++profile)for(unsigned byte=0;byte<256;++byte)for(bool enable:{false,true}){
         SettingsPage config{};config.fill(0xff);for(unsigned i=0;i<256;++i)config[i]=static_cast<unsigned char>(i*17+5);
@@ -60,5 +72,5 @@ int main(){
         auto write=[&](const Report& q,Report&){page[q[5]]=q[8];std::fill(page.begin()+256,page.end(),0xff);return true;};
         assert(ChangeFlag(base,true,read,write)==ChangeResult::Verified);
     }
-    puts("Mix87 protocol PASS: 2048 preserving opt-in transactions, no-op, stale profile, lost ACK, ignored write, failed readback, framing/depth/modifiers");
+    puts("Mix87 protocol PASS (model table): 2048 preserving opt-in transactions, no-op, stale profile, lost ACK, ignored write, failed readback, framing/depth/modifiers");
 }

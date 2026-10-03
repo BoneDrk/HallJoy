@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 static std::atomic<bool> enabled{false}, missing{false};
 static std::atomic<bool> experimental{false}, unstable{false}, limited{false};
@@ -56,10 +57,18 @@ static void Await(const std::wstring& path, const char* text) {
     throw std::runtime_error(std::string("await failed: ")+text);
 }
 int main() {
-    wchar_t temp[MAX_PATH]{}, unique[MAX_PATH]{};
-    GetTempPathW(MAX_PATH,temp); Check(GetTempFileNameW(temp,L"hjl",0,unique)!=0);
-    Check(DeleteFileW(unique)); Check(CreateDirectoryW(unique,nullptr));
-    const std::wstring directory=unique, path=directory+L"\\HallJoy.log";
+    // Create the private directory atomically. A temp file deleted and then
+    // reused as a directory name can be taken by a concurrent test process.
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH,temp);
+    std::wstring directory;
+    for(unsigned attempt=0;attempt<1000 && directory.empty();++attempt) {
+        const auto candidate=std::wstring(temp)+L"hjl-"+std::to_wstring(GetCurrentProcessId())+L"-"+
+            std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(attempt);
+        if(CreateDirectoryW(candidate.c_str(),nullptr)) directory=candidate;
+    }
+    Check(!directory.empty());
+    const std::wstring path=directory+L"\\HallJoy.log";
     const auto mirrorDir = directory+L"\\mirror", mirrorPath=mirrorDir+L"\\HallJoy.log";
     try {
         Check(SupportLog_Start(directory.c_str(), mirrorDir.c_str()));
@@ -142,6 +151,14 @@ int main() {
         Check(Read(path).find("PRIVATE_MANUFACTURER_SENTINEL")==std::string::npos);
         Check(Read(path).find("hid.candidate vid=")!=std::string::npos ||
             Read(path).find("inventory.complete")!=std::string::npos);
+        {   // Every inventory row carries the bus-reported product name field.
+            const std::string text=Read(path);
+            for (size_t at=text.find("hid.candidate vid=");at!=std::string::npos;at=text.find("hid.candidate vid=",at+1)) {
+                const size_t end=text.find('\n',at);
+                const std::string row=text.substr(at,end==std::string::npos?std::string::npos:end-at);
+                Check(row.find(" name=\"")!=std::string::npos && row.find("\" metadata_only=1")!=std::string::npos);
+            }
+        }
         enabled=true;
         for (unsigned i=0;i<100000;++i) SupportLog_Event("test.burst",i);
         Await(path,"logging.queue_dropped");
@@ -277,12 +294,43 @@ int main() {
         Check(SupportLog_Start(directory.c_str(),blocked.c_str()));
         SupportLog_Event("mirror.locked",1);
         Await(path,"mirror.locked value=1");
-        Sleep(200); Check(SupportLog_LastError()!=0);
+        // A held destination is retried for ~1 s (a brief reader looks the
+        // same to Windows) before the failure is reported.
+        {
+            const auto deadline=GetTickCount64()+3000;
+            while(SupportLog_LastError()==0 && GetTickCount64()<deadline) Sleep(25);
+        }
+        Check(SupportLog_LastError()!=0);
         CloseHandle(lock);
         Await(blockedLog,"mirror.locked value=1");
         Check(SupportLog_LastError()==0);
         Check(SupportLog_Stop());
         DeleteFileW(blockedLog.c_str()); RemoveDirectoryW(blocked.c_str());
+        // A reader holding the log (Open log, an editor, antivirus) blocks the
+        // atomic replace. That brief lock must not push the rewrite into the
+        // 5 s failure backoff: the snapshot completes soon after the reader closes.
+        Check(SupportLog_Start(directory.c_str()));
+        SupportLog_Event("reader.race",1);
+        Await(path,"reader.race value=1");
+        {
+            // Busy reader: holds the log 20 ms of every 30 ms for 2.5 s, which
+            // covers the rewrite whenever the worker reaches it.
+            std::atomic<bool> polling{true};
+            std::thread reader([&] {
+                while(polling.load()) {
+                    { std::ifstream holder{std::filesystem::path(path)}; Sleep(20); }
+                    Sleep(10);
+                }
+            });
+            const auto request=SupportLog_RequestSnapshot();
+            Sleep(2500);
+            polling=false; reader.join();
+            const auto deadline=GetTickCount64()+2000; // completes well before a 5 s backoff
+            while(SupportLog_CompletedSnapshot()<request && GetTickCount64()<deadline) Sleep(25);
+            Check(SupportLog_CompletedSnapshot()>=request);
+            Check(SupportLog_LastError()==0);
+        }
+        Check(SupportLog_Stop());
         // Portable paths coincide: one writer, no duplicated session records.
         Check(SupportLog_Start(directory.c_str(),directory.c_str()));
         Check(SupportLog_Stop());

@@ -1,6 +1,9 @@
 #pragma once
+#include "../HallJoy/test_thread_desktop.h"
 #include "../HallJoy/tray_window.h"
 #include "../HallJoy/ui_activity.h"
+#include <stdexcept>
+#include <string>
 #include <thread>
 
 namespace halljoy::tray::test {
@@ -25,80 +28,77 @@ inline BOOL WINAPI Notify(DWORD action, PNOTIFYICONDATAW data) {
 }
 inline bool Run() {
     bool ok = false;
-    std::thread thread([&] {
-        HDESK previous = GetThreadDesktop(GetCurrentThreadId());
-        wchar_t name[80]{};
-        swprintf_s(name, L"HallJoyTrayTest.%lu.%lu", GetCurrentProcessId(), GetCurrentThreadId());
-        HDESK desktop = CreateDesktopW(name, nullptr, nullptr, 0, GENERIC_ALL, nullptr);
-        if (!desktop) return;
-        if (!SetThreadDesktop(desktop)) { CloseDesktop(desktop); return; }
+    int failedLine = 0; // first failing check, reported instead of a bare false
+    const auto check = [&](bool value, int line) { if (!value && !failedLine) failedLine = line; return value; };
+    // Fresh thread on a private desktop that it never leaves (see RunOnPrivateDesktop).
+    halljoy::test_desktop::RunOnPrivateDesktop(L"HallJoyTrayTest", [&]() -> bool {
         WNDCLASSW cls{}; cls.lpfnWndProc = FixtureProc;
         cls.hInstance = GetModuleHandleW(nullptr); cls.lpszClassName = L"WootingVigemGui";
         const ATOM registered = RegisterClassW(&cls);
         HWND window = registered ? CreateWindowExW(0, cls.lpszClassName, L"Tray lifecycle test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr) : nullptr;
+        check(window != nullptr, __LINE__);
         if (window) {
             Window tray(Notify); tray.Attach(window, LoadIconW(nullptr, IDI_APPLICATION));
             SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&tray));
             failAdd = false; adds = deletes = 0;
             ShowWindow(window, SW_SHOWNORMAL);
-            ok = tray.Hide() && tray.Hidden() && !IsWindowVisible(window) && adds == 1;
-            ok &= tray.Hide() && adds == 1; // Idempotent close while already hidden.
+            ok = check(tray.Hide() && tray.Hidden() && !IsWindowVisible(window) && adds == 1, __LINE__);
+            ok &= check(tray.Hide() && adds == 1, __LINE__); // Idempotent close while already hidden.
             tray.ShellRestarted();
-            ok &= tray.Hidden() && !IsWindowVisible(window) && adds == 2;
-            ok &= ShowExisting(); // Same restore handshake used by a second EXE invocation.
-            ok &= !tray.Hidden() && IsWindowVisible(window) && !IsIconic(window) && deletes == 1;
+            ok &= check(tray.Hidden() && !IsWindowVisible(window) && adds == 2, __LINE__);
+            ok &= check(ShowExisting(), __LINE__); // Same restore handshake used by a second EXE invocation.
+            ok &= check(!tray.Hidden() && IsWindowVisible(window) && !IsIconic(window) && deletes == 1, __LINE__);
             failAdd = true;
-            ok &= !tray.Hide() && IsWindowVisible(window) && !tray.Hidden();
+            ok &= check(!tray.Hide() && IsWindowVisible(window) && !tray.Hidden(), __LINE__);
             failAdd = false;
             ShowWindow(window, SW_SHOWMAXIMIZED);
-            ok &= tray.Hide(); tray.Restore();
-            ok &= IsZoomed(window) != FALSE;
-            ok &= tray.Hide(); failAdd = true; tray.ShellRestarted();
-            ok &= !tray.Hidden() && IsWindowVisible(window) && IsZoomed(window);
+            ok &= check(tray.Hide(), __LINE__); tray.Restore();
+            ok &= check(IsZoomed(window) != FALSE, __LINE__);
+            ok &= check(tray.Hide(), __LINE__); failAdd = true; tray.ShellRestarted();
+            ok &= check(!tray.Hidden() && IsWindowVisible(window) && IsZoomed(window), __LINE__);
             ShowWindow(window, SW_MINIMIZE); tray.Restore();
-            ok &= IsWindowVisible(window) && !IsIconic(window);
+            ok &= check(IsWindowVisible(window) && !IsIconic(window), __LINE__);
             failAdd = false;
-            ok &= tray.Hide();
+            ok &= check(tray.Hide(), __LINE__);
             const HICON activeIcon = lastIcon.hIcon;
             const int beforeModify = modifies;
             tray.SetPaused(true);
-            ok &= lastIcon.hIcon && lastIcon.hIcon != activeIcon &&
-                wcscmp(lastIcon.szTip, L"HallJoy - Paused") == 0 && tray.Hidden();
+            ok &= check(lastIcon.hIcon && lastIcon.hIcon != activeIcon &&
+                wcscmp(lastIcon.szTip, L"HallJoy - Paused") == 0 && tray.Hidden(), __LINE__);
             const HICON pauseIcon = lastIcon.hIcon;
             tray.SetPaused(true);
-            ok &= modifies == beforeModify + 1;
+            ok &= check(modifies == beforeModify + 1, __LINE__);
             tray.ShellRestarted();
-            ok &= lastIcon.hIcon == pauseIcon && wcscmp(lastIcon.szTip, L"HallJoy - Paused") == 0;
+            ok &= check(lastIcon.hIcon == pauseIcon && wcscmp(lastIcon.szTip, L"HallJoy - Paused") == 0, __LINE__);
             tray.SetPaused(false);
-            ok &= lastIcon.hIcon == activeIcon && wcscmp(lastIcon.szTip, L"HallJoy") == 0;
+            ok &= check(lastIcon.hIcon == activeIcon && wcscmp(lastIcon.szTip, L"HallJoy") == 0, __LINE__);
             const int before = deletes;
             tray.Remove(); tray.Remove();
-            ok &= deletes == before + 1;
+            ok &= check(deletes == before + 1, __LINE__);
             for (const auto& state : { MenuState{ L"Pause HallJoy", true, false, false },
                 MenuState{ L"Resume HallJoy", true, true, true },
                 MenuState{ L"Restart required", false, false, true } }) {
                 HMENU menu = CreateMenu(state);
-                ok &= menu != nullptr;
+                ok &= check(menu != nullptr, __LINE__);
                 if (menu) {
                     const UINT engine = static_cast<UINT>(state.paused ? Action::Resume : Action::Pause);
                     const UINT overlay = static_cast<UINT>(state.overlayRunning ? Action::StopOverlay : Action::StartOverlay);
                     wchar_t text[80]{};
                     GetMenuStringW(menu, engine, text, 80, MF_BYCOMMAND);
-                    ok &= wcscmp(text, state.engineText) == 0;
-                    ok &= ((GetMenuState(menu, engine, MF_BYCOMMAND) & MF_GRAYED) == 0) == state.engineEnabled;
-                    ok &= GetMenuState(menu, overlay, MF_BYCOMMAND) != static_cast<UINT>(-1);
-                    ok &= GetMenuItemCount(menu) == 6;
+                    ok &= check(wcscmp(text, state.engineText) == 0, __LINE__);
+                    ok &= check(((GetMenuState(menu, engine, MF_BYCOMMAND) & MF_GRAYED) == 0) == state.engineEnabled, __LINE__);
+                    ok &= check(GetMenuState(menu, overlay, MF_BYCOMMAND) != static_cast<UINT>(-1), __LINE__);
+                    ok &= check(GetMenuItemCount(menu) == 6, __LINE__);
                     DestroyMenu(menu);
                 }
             }
             DestroyWindow(window);
         }
         if (registered) UnregisterClassW(cls.lpszClassName, cls.hInstance);
-        ok &= SetThreadDesktop(previous) != FALSE;
-        CloseDesktop(desktop);
+        return ok;
     });
-    thread.join();
+    if (!ok) throw std::runtime_error("tray lifecycle failed at tray_window_test.h line " + std::to_string(failedLine));
     return ok;
 }
 }

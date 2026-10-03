@@ -328,6 +328,18 @@
           "sha256": "01bb1d76a03b0b94ced68e792e944db12369d4bb01910ccbc7f239149b524619",
           "products": [],
           "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "nuphy_field75_he_ansi",
+          "brand": "NuPhy",
+          "model": "Field75 HE",
+          "variant": "ANSI",
+          "count": 82,
+          "source": "docs/research/supported-gap-layout-reports/nuphy_field75_he_ansi.json",
+          "sha256": "c1eae88bdf7814d95221b74a20d55ea6e53dfece21620a166ed349c2893829e6",
+          "products": [],
+          "url": ""
         }
       ],
       "pending": []
@@ -742,10 +754,146 @@
             "HEX80-ANSI"
           ],
           "url": ""
+        },
+        {
+          "id": "atk_68v2pro_ansi",
+          "model": "68 V2 Pro",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 67,
+          "source": "docs/research/atk-family-layout-reports/atk_68v2pro_ansi.json",
+          "sha256": "34816c2f3b52125677a98e98c4c868625b9b8fc8b1483baebce92d2df21c8c55",
+          "products": [
+            "ATK-68V2PRO"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_68v3_ansi",
+          "model": "68 V3 + RS6+ + RS6 Ultra+ + RS6 Cube + 68 RX",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 68,
+          "source": "docs/research/atk-family-layout-reports/atk_68v3_ansi.json",
+          "sha256": "3d5b5fc7733ab827d9f3fb2d9cc2c3f0578c5fdb1a8c65a3a50d175aaf1dfd6d",
+          "products": [
+            "ATK-68V3",
+            "ATK-RS6CUBE",
+            "ATK-68RX"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_edge60_ansi",
+          "model": "EDGE 60 HE + 60 RX",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 61,
+          "source": "docs/research/atk-family-layout-reports/atk_edge60_ansi.json",
+          "sha256": "6fa25a61bdd51e03a6fb7dd19b900ae3dbcf6a56de0eea1e30877f17081b5f91",
+          "products": [
+            "ATK-EDGE60",
+            "ATK-60RX"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_edge63_ansi",
+          "model": "EDGE 63 HE + RS63 Air",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 64,
+          "source": "docs/research/atk-family-layout-reports/atk_edge63_ansi.json",
+          "sha256": "1baf717b9503fdbee90778abad35c7ba8021418123a074247dd99c4f8da29d3d",
+          "products": [
+            "ATK-EDGE63",
+            "ATK-RS63AIR"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_edge75_ansi",
+          "model": "EDGE 75 HE",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 81,
+          "source": "docs/research/atk-family-layout-reports/atk_edge75_ansi.json",
+          "sha256": "8ec93e720f3ffbd0eeb4c8ffb90a2cccdfe9ff4aeefc98843c174abfdda85903",
+          "products": [
+            "ATK-EDGE75"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_rs6_ansi",
+          "model": "RS6 + RS6 Ultra + RS6 Air",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 68,
+          "source": "docs/research/atk-family-layout-reports/atk_rs6_ansi.json",
+          "sha256": "00bccc5d0b9687f9ff064066ca3ebe7e9b68a655b67ffae51375fd62cc1ebfad",
+          "products": [
+            "ATK-RS6",
+            "ATK-RS6AIR"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_rs7_ansi",
+          "model": "RS7",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 80,
+          "source": "docs/research/atk-family-layout-reports/atk_rs7_ansi.json",
+          "sha256": "ae56875655e57b62b28b7d08bc25ef6559b69b512463e3d58e69afc698022450",
+          "products": [
+            "ATK-RS7"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_rs7airiso_iso",
+          "model": "RS7 Air",
+          "brand": "ATK",
+          "variant": "ISO",
+          "count": 81,
+          "source": "docs/research/atk-family-layout-reports/atk_rs7airiso_iso.json",
+          "sha256": "4a9ca46398b233b00d9f12b88fbd2b3085b5ced22b684bc5834496e74061df1c",
+          "products": [
+            "ATK-RS7AIR-ISO"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_rs7turbo_ansi",
+          "model": "RS7 Turbo",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 80,
+          "source": "docs/research/atk-family-layout-reports/atk_rs7turbo_ansi.json",
+          "sha256": "005e329ac3d2ffacc8518aa93c756b0226a5b6abfe828fbf7b70461fcf11b48e",
+          "products": [
+            "ATK-RS7TURBO"
+          ],
+          "url": ""
+        },
+        {
+          "id": "atk_rs7v2_ansi",
+          "model": "RS7 V2 + RS7 Air",
+          "brand": "ATK",
+          "variant": "ANSI",
+          "count": 80,
+          "source": "docs/research/atk-family-layout-reports/atk_rs7v2_ansi.json",
+          "sha256": "644ac65200ba1e05dbe4701022d4ec822d4d731ca4a62b2b24307053ff2fd517",
+          "products": [
+            "ATK-RS7V2"
+          ],
+          "url": ""
         }
       ],
       "excluded": [
-        "Other ATK models and Hex80 V2: not inferred from shared branding or similar geometry."
+        "ATK 68 / 68 V2 / 68 V2 S / 75 / RS7 Pro: no Hex80-protocol hub entry (ATK68 V2 uses the ARBITER controller).",
+        "Other ATK models: not inferred from shared branding or similar geometry."
       ]
     },
     "IPI": {
@@ -1425,6 +1573,20 @@
             "RY1B-2810"
           ],
           "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "ajazz_ak820_max_he_ansi",
+          "brand": "AJAZZ",
+          "model": "AK820 MAX HE",
+          "variant": "ANSI",
+          "count": 82,
+          "source": "docs/research/supported-gap-layout-reports/ajazz_ak820_max_he_ansi.json",
+          "sha256": "bbc231bf7cbc535319a9b04322d5ef8be8044da470762f137ab2aa6d1fdaa4b3",
+          "products": [
+            "SG8994HERGB"
+          ],
+          "url": ""
         }
       ]
     },
@@ -1636,6 +1798,24 @@
             "RY1B-2780",
             "RY1B-3294"
           ],
+          "url": ""
+        }
+      ]
+    },
+    "Everglide": {
+      "adapter": "reviewed-report",
+      "runtime": true,
+      "guide": "docs/current/EVERGLIDE_SU75PRO_2026-10-02.md",
+      "models": [
+        {
+          "id": "everglide_su75_pro_ansi",
+          "brand": "Everglide",
+          "model": "SU75 Pro",
+          "variant": "ANSI",
+          "count": 81,
+          "source": "docs/research/everglide-layout-reports/everglide_su75_pro_ansi.json",
+          "sha256": "a266b840b407ed631e7bdca4853650979eaa748aa2b67b3d5cf69a7480f2547b",
+          "products": [],
           "url": ""
         }
       ]
@@ -1905,6 +2085,168 @@
           "sha256": "5e2a915c68b79f79b8be67d9c02628068ce2d8c6169c8c5cc0261c222f0b5bc2",
           "products": [
             "ANSI"
+          ],
+          "url": ""
+        }
+      ]
+    },
+    "MCHOSE": {
+      "adapter": "reviewed-report",
+      "runtime": true,
+      "guide": "docs/current/SUPPORTED_LAYOUT_COVERAGE_2026-09-30.md",
+      "models": [
+        {
+          "adapter": "reviewed-report",
+          "id": "mchose_mix_87_iii_ansi",
+          "brand": "MCHOSE",
+          "model": "Mix 87 III",
+          "variant": "ANSI",
+          "count": 87,
+          "source": "docs/research/supported-gap-layout-reports/mchose_mix_87_iii_ansi.json",
+          "sha256": "7eba70e978a921a71d1a0ea058e9ba75492721172aec4c31384c97dc8bb6ad7f",
+          "products": [
+            "MIX87III-3837-300D",
+            "MIX87I-41E4-2122"
+          ],
+          "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "mchose_jet_75_ii_ansi",
+          "brand": "MCHOSE",
+          "model": "Jet 75 II",
+          "variant": "ANSI",
+          "count": 80,
+          "source": "docs/research/supported-gap-layout-reports/mchose_jet_75_ii_ansi.json",
+          "sha256": "3cf931e4490f964539daf4623c8cb9a94e940edfbde3bfa71d0fbb27a07d0e91",
+          "products": [
+            "JET75II-41E4-211A",
+            "ZERO75X-41E4-211C",
+            "JET75I-41E4-2118"
+          ],
+          "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "mchose_ace_68_ansi",
+          "brand": "MCHOSE",
+          "model": "Ace 68",
+          "variant": "ANSI",
+          "count": 68,
+          "source": "docs/research/supported-gap-layout-reports/mchose_ace_68_ansi.json",
+          "sha256": "44cfe12e3b08c0d8d89ff9bd443bf1ecdcd84438ca8619176d1822b8143d7e75",
+          "products": [
+            "ACE68II-41E4-2116",
+            "ACE68I-41E4-2114",
+            "ACE68AIRII-41E4-2120",
+            "ACE68III-3837-3003",
+            "ACE68AIRIII-41E4-2132",
+            "ACE68AIR2-3837-300A",
+            "ACE68V2III-3837-3024",
+            "ACE68TURBO8K-3837-3028"
+          ],
+          "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "mchose_ace_60_ansi",
+          "brand": "MCHOSE",
+          "model": "Ace 60",
+          "variant": "ANSI",
+          "count": 61,
+          "source": "docs/research/supported-gap-layout-reports/mchose_ace_60_ansi.json",
+          "sha256": "ebe681d869ca3215a744ffc394bb67df3cf637d5c91563e80bc4d4ca293c6608",
+          "products": [
+            "ACE60PRO-41E4-2103",
+            "ACE60XI-41E4-2126",
+            "ACE60XII-41E4-2112"
+          ],
+          "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "mchose_ace_60_pro_nordic_iso",
+          "brand": "MCHOSE",
+          "model": "Ace 60 Pro Nordic",
+          "variant": "ISO",
+          "count": 62,
+          "source": "docs/research/supported-gap-layout-reports/mchose_ace_60_pro_nordic_iso.json",
+          "sha256": "a08966cf6555e1380e84d247a417ed44b9a48e781f48c3dd59dcab57bed51464",
+          "products": [
+            "ACE60PRONORDIC-3837-3002"
+          ],
+          "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "mchose_ace_75_8k_ansi",
+          "brand": "MCHOSE",
+          "model": "Ace 75 8K",
+          "variant": "ANSI",
+          "count": 81,
+          "source": "docs/research/supported-gap-layout-reports/mchose_ace_75_8k_ansi.json",
+          "sha256": "a5dd46d0383fdea35ef1091618c84541cbacd2c0b5013c06b023ba28fa3aa09e",
+          "products": [
+            "ACE758K-3837-303C"
+          ],
+          "url": ""
+        }
+      ]
+    },
+    "SteelSeries": {
+      "adapter": "reviewed-report",
+      "runtime": true,
+      "guide": "docs/current/SUPPORTED_LAYOUT_COVERAGE_2026-09-30.md",
+      "models": [
+        {
+          "adapter": "reviewed-report",
+          "id": "steelseries_apex_pro_ansi",
+          "brand": "SteelSeries",
+          "model": "Apex Pro",
+          "variant": "ANSI",
+          "count": 104,
+          "source": "docs/research/supported-gap-layout-reports/steelseries_apex_pro_ansi.json",
+          "sha256": "0ddd369d0388fb50580b12436ff1a4da4fa32a3aec17bbcd05d0a513f8869d43",
+          "products": [
+            "APEXPRO-1038-1610"
+          ],
+          "url": ""
+        }
+      ],
+      "excluded": [
+        "Other Apex Pro generations (TKL, Mini, 2022/2024): not supported and not aliased."
+      ]
+    },
+    "Royal Kludge": {
+      "adapter": "reviewed-report",
+      "runtime": true,
+      "guide": "docs/current/RK68HE_HUBX_2026-10-02.md",
+      "models": [
+        {
+          "adapter": "reviewed-report",
+          "id": "royal_kludge_rk68_he_ansi",
+          "brand": "Royal Kludge",
+          "model": "RK68 HE",
+          "variant": "ANSI",
+          "count": 68,
+          "source": "docs/research/supported-gap-layout-reports/royal_kludge_rk68_he_ansi.json",
+          "sha256": "e7043edc1ff958af9616bab630eaf694505bb2c3a091f7b2228e025f083c2aa1",
+          "products": [
+            "110000000002"
+          ],
+          "url": ""
+        },
+        {
+          "adapter": "reviewed-report",
+          "id": "royal_kludge_rk68_he_iso",
+          "brand": "Royal Kludge",
+          "model": "RK68 HE",
+          "variant": "ISO",
+          "count": 69,
+          "source": "docs/research/supported-gap-layout-reports/royal_kludge_rk68_he_iso.json",
+          "sha256": "abbf75f59e85fdfe9dda9b89fcf015dc41d4c3d8c7da0bdc9994cdcd9cf17c91",
+          "products": [
+            "11000000003C"
           ],
           "url": ""
         }

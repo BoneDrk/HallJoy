@@ -16,6 +16,7 @@
 #include "hid_io_operation.h"
 #include "support_log.h"
 #include "keyboard_support_status.h"
+#include "generated/layout_pipeline/identities.h"
 #pragma comment(lib,"setupapi.lib")
 #pragma comment(lib,"hid.lib")
 #pragma comment(lib,"bcrypt.lib")
@@ -30,14 +31,16 @@ struct Handle {
     Handle(const Handle&)=delete;Handle& operator=(const Handle&)=delete;
     explicit operator bool()const{return v && v!=INVALID_HANDLE_VALUE;}
 };
-struct Candidate {std::wstring path;};
+struct Candidate {std::wstring path;const tp::Model* model=&tp::Models[0];};
 std::atomic<bool> g_stop{false},g_running{false},g_present{false},g_connected{false};
-std::atomic<unsigned> g_deviceChanges{0};
 std::atomic<std::uint64_t> g_good{0},g_bad{0},g_last{0};
 std::array<std::atomic<std::uint16_t>,256> g_values{};
 std::array<std::atomic<bool>,256> g_owned{};
 std::mutex g_service,g_control;
 HANDLE g_thread=nullptr,g_wake=nullptr;
+// Model of the last enumerated keyboard (telemetry name, layout, key count).
+std::atomic<const tp::Model*> g_model{&tp::Models[0]};
+std::atomic<unsigned> g_keyCount{0};
 Mix87ModeSnapshot g_mode{Mix87ModeState::Absent,0,0};
 tp::Base g_base{};
 int g_request=-1;
@@ -64,14 +67,15 @@ std::vector<Candidate> Enumerate(){
         Handle h(CreateFileW(detail->DevicePath,0,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr));
         if(!h)continue;
         HIDD_ATTRIBUTES a{};a.Size=sizeof(a);
-        if(!HidD_GetAttributes(h.v,&a) || a.VendorID!=tp::Vid || a.ProductID!=tp::Pid)continue;
+        if(!HidD_GetAttributes(h.v,&a))continue;
+        const auto* model=tp::FindModel(a.VendorID,a.ProductID);if(!model)continue;
         PHIDP_PREPARSED_DATA data=nullptr;if(!HidD_GetPreparsedData(h.v,&data))continue;
         HIDP_CAPS caps{};const auto status=HidP_GetCaps(data,&caps);HidD_FreePreparsedData(data);
         if(status!=HIDP_STATUS_SUCCESS)continue;
         // Stock descriptor: unnumbered 64-byte IN/OUT => Windows includes ID0.
         SupportLog_Event("mix87.hid_caps",(static_cast<std::uint64_t>(caps.UsagePage)<<48)|(static_cast<std::uint64_t>(caps.Usage)<<32)|(caps.InputReportByteLength<<16)|caps.OutputReportByteLength);
         if(caps.UsagePage==1 && caps.Usage==0 && caps.InputReportByteLength==65 && caps.OutputReportByteLength==65)
-            out.push_back({detail->DevicePath});
+            out.push_back({detail->DevicePath,model});
     }
     return out;
 }
@@ -148,8 +152,18 @@ bool MatchesHash(std::vector<std::uint8_t>& bytes,const char* expected){
     for(unsigned i=0;i<32;++i)if(expected[i*2]!=hex[digest[i]>>4] || expected[i*2+1]!=hex[digest[i]&15])return false;
     return true;
 }
-bool Verify(Session& session,std::array<bool,256>& map){
+bool Verify(Session& session,const tp::Model& model,std::array<bool,256>& map){
     Report info{},reply{};info[0]=0x55;info[1]=3;info[4]=31;info[3]=tp::Checksum(info);
+    if(!model.fingerprinted){
+        // Not version-bound (owner decision for the M HUB family, 2026-10-02):
+        // the protocol answer is required, the version is logged, and safety
+        // comes from the settings/base checks, readback and A0 validation.
+        if(!session.Exchange(info,reply))return false;
+        SupportLog_Event("mix87.model",model.pid);
+        SupportLog_Event("mix87.firmware_version",static_cast<unsigned>(reply[8]|(reply[9]<<8)));
+        for(std::size_t i=0;i<model.keyCount;++i)map[model.keys[i]]=true;
+        return true;
+    }
     if(!session.Exchange(info,reply) || reply[8]!=0x22 || reply[9]!=1){SupportLog_Event("mix87.version_unreviewed",1);return false;}
     for(const auto& f:fingerprints){
         std::vector<std::uint8_t> bytes(f.size);
@@ -193,10 +207,12 @@ void Run(const Candidate& c){
     Clear();for(auto& owned:g_owned)owned.store(false);
     {std::lock_guard<std::mutex> l(g_control);++g_mode.session;g_mode.state=Mix87ModeState::Checking;g_request=-1;}
     struct End{~End(){Clear();std::lock_guard<std::mutex> l(g_control);g_request=-1;++g_mode.session;g_mode.state=Mix87ModeState::Failed;}} end;
+    const auto& model=*c.model;g_model.store(c.model);g_keyCount.store(0);
     Session session(c);if(!session.Valid()){Failure("mix87.open_failed",SupportLog_Win32(GetLastError()));return;}
     std::array<bool,256> map{};
-    if(!Verify(session,map)){SupportLog_Event("mix87.admission_failed",1);return;}
-    if(!NativeAnalogRouting_Claim(tp::Vid,tp::Pid,c.path.c_str(),NativeAnalogProtocol::MchoseMix87) &&
+    if(!Verify(session,model,map)){SupportLog_Event("mix87.admission_failed",1);return;}
+    g_keyCount.store(static_cast<unsigned>(std::count(map.begin(),map.end(),true)));
+    if(!NativeAnalogRouting_Claim(model.vid,model.pid,c.path.c_str(),NativeAnalogProtocol::MchoseMix87) &&
        !NativeAnalogRouting_IsClaimedBy(c.path.c_str(),NativeAnalogProtocol::MchoseMix87))return;
     bool enabled=false;unsigned profile=0;tp::Base base{};
     if(!LoadMode(session,base,enabled,profile))return;
@@ -216,8 +232,13 @@ void Run(const Candidate& c){
     {std::lock_guard<std::mutex> l(g_control);g_base=base;g_mode.profile=profile;g_mode.state=enabled?Mix87ModeState::Enabled:Mix87ModeState::Disabled;}
     SupportLog_Event("mix87.mode_enabled",enabled);
     SupportLog_Event("mix87.profile",profile);
-    const auto changes=g_deviceChanges.load();
-    while(!g_stop.load() && changes==g_deviceChanges.load()){
+    // The stream is event-only: an untouched keyboard sends nothing. An
+    // admitted session with the mode on is a live source with all keys at 0.
+    g_connected.store(enabled);
+    // Device-change notifications are system-wide (another USB device, our own
+    // virtual gamepad appearing) and do not end a healthy session: removal of
+    // this keyboard fails the next read (stream_failed) instead.
+    while(!g_stop.load()){
         int request=-1;tp::Base consent{};
         {std::lock_guard<std::mutex> l(g_control);request=g_request;g_request=-1;consent=g_base;}
         if(request>=0){
@@ -230,6 +251,7 @@ void Run(const Candidate& c){
             SupportLog_Event("mix87.explicit_mode_result",static_cast<unsigned>(result));
             if(result!=tp::ChangeResult::Verified && result!=tp::ChangeResult::Unchanged)return;
             enabled=request!=0;SetState(enabled?Mix87ModeState::Enabled:Mix87ModeState::Disabled);
+            g_connected.store(enabled);
         }
         Report report{};
         if(!session.Receive(report,50)){
@@ -243,7 +265,7 @@ void Run(const Candidate& c){
         }
         if(!enabled)continue;
         tp::Sample sample{};
-        if(tp::Decode(report,map,sample)){
+        if(tp::Decode(report,map,sample,model.fingerprinted)){
             g_values[sample.hid].store(sample.milli);g_last.store(GetTickCount64());++g_good;g_connected.store(true);
         }else if(report[0]==0xa0 && report[1]==0x10){Failure("mix87.invalid_analog",SupportLog_Protocol(1));return;}
     }
@@ -253,7 +275,7 @@ unsigned __stdcall Worker(void*) noexcept{
         while(!g_stop.load()){
             const auto candidates=Enumerate();g_present.store(!candidates.empty());
             if(candidates.size()==1)Run(candidates[0]);
-            else if(candidates.size()>1){SetState(Mix87ModeState::Failed);SupportLog_Event("mix87.multiple_devices",candidates.size());}
+            else if(candidates.size()>1){g_model.store(candidates[0].model);SetState(Mix87ModeState::Failed);SupportLog_Event("mix87.multiple_devices",candidates.size());}
             else SetState(Mix87ModeState::Absent);
             if(!g_stop.load())WaitForSingleObject(g_wake,candidates.empty()?INFINITE:5000);
         }
@@ -272,21 +294,25 @@ halljoy::lifecycle::StopResult Stop(halljoy::lifecycle::GenerationId generation)
     if(wait!=WAIT_OBJECT_0)return NativeAnalogBackendStopFailed(generation,halljoy::lifecycle::LifecycleErrorCode::StopTimedOut,WAIT_TIMEOUT);
     CloseHandle(g_thread);g_thread=nullptr;CloseHandle(g_wake);g_wake=nullptr;Clear();return NativeAnalogBackendStopJoined(generation);
 }
-void Notify(){std::lock_guard<std::mutex> l(g_service);++g_deviceChanges;if(g_wake)SetEvent(g_wake);}
+void Notify(){std::lock_guard<std::mutex> l(g_service);if(g_wake)SetEvent(g_wake);}
 bool Present(){return g_present.load();}bool Connected(){return g_connected.load();}
 bool Owns(std::uint16_t hid){return hid<256 && Connected() && g_owned[hid].load();}
 std::uint16_t Get(std::uint16_t hid){return Owns(hid)?g_values[hid].load():0;}
 void Telemetry(NativeAnalogBackendTelemetry* out){
-    if(!out)return;*out={};out->present=Present();out->connected=Connected();out->vendorId=tp::Vid;out->productId=tp::Pid;out->usagePage=1;
+    if(!out)return;
+    *out={};const auto& model=*g_model.load();
+    out->present=Present();out->connected=Connected();out->vendorId=model.vid;out->productId=model.pid;out->usagePage=1;
     out->inputReportBytes=65;out->outputReportBytes=65;out->successfulUpdates=g_good.load();out->failedUpdates=g_bad.load();
-    out->nominalRawLevels=342;out->mappedKeys=Connected()?86:0;
+    out->nominalRawLevels=342;out->mappedKeys=Connected()?g_keyCount.load():0;
     for(unsigned i=0;i<256;++i)if(Get(static_cast<std::uint16_t>(i)))++out->activeKeys;
     const auto last=g_last.load();out->lastUpdateAgeMs=last?static_cast<unsigned>(std::min<ULONGLONG>(0xffffffff,GetTickCount64()-last)):0;
-    wcscpy_s(out->deviceName,L"MCHOSE Mix87 III");
+    wcscpy_s(out->deviceName,model.name);
+    // Published only after firmware admission; selects the official M HUB layout.
+    if(out->connected)out->verifiedLayoutToken=halljoy::layout_identity::Token(model.layoutProtocol,model.layoutProduct);
     const auto state=MchoseMix87_GetMode().state;
-    wcscpy_s(out->status,state==Mix87ModeState::Enabled?L"Mix87 III: analog active; automatically disabled on pause or exit":
-        state==Mix87ModeState::Disabled?L"Mix87 III: analog disabled":
-        state==Mix87ModeState::Failed?L"Mix87 III: admission/communication failed; see log; pause and resume to retry activation":L"Mix87 III: checking firmware / preparing analog");
+    swprintf_s(out->status,L"%ls: %ls",model.shortName,state==Mix87ModeState::Enabled?L"analog active; automatically disabled on pause or exit":
+        state==Mix87ModeState::Disabled?L"analog disabled":
+        state==Mix87ModeState::Failed?L"admission/communication failed; see log; pause and resume to retry activation":L"checking firmware / preparing analog");
 }
 }
 Mix87ModeSnapshot MchoseMix87_GetMode(){std::lock_guard<std::mutex> l(g_control);return g_mode;}
@@ -298,7 +324,7 @@ bool MchoseMix87_RequestMode(Mix87ModeSnapshot expected,bool enabled){
 }
 const NativeAnalogBackendDescriptor& MchoseMix87_GetNativeBackendDescriptor(){
     static const NativeAnalogBackendDescriptor d{kNativeAnalogBackendAbiVersion,sizeof(NativeAnalogBackendDescriptor),
-        "mchose_mix87",L"MCHOSE Mix87 III limited analog",NativeAnalogProtocol::MchoseMix87,
+        "mchose_mix87",L"MCHOSE M HUB (Mix87 III family) analog",NativeAnalogProtocol::MchoseMix87,
         NativeAnalogStartPhase::AfterRealtime,NativeAnalogBackendFlag_StreamTransport|NativeAnalogBackendFlag_ReadOnlyProbe,
         nullptr,&Start,&Stop,&Notify,&Present,&Connected,&Owns,&Get,&Telemetry};return d;
 }

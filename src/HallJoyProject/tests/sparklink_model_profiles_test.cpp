@@ -23,6 +23,9 @@ int main(){
   assert(!sparklink::ExperimentalToken(0x1ca6,pid,0xffa0));
  }
  assert(!sparklink::ExperimentalToken(0x1ca6,0x529,0xffb0)); // confirmed MG75 Max
+ assert(!sparklink::ExperimentalToken(0x1ca6,0x3002,0xffb0)); // Supported SU75 Pro
+ assert(sparklink::ProbeInterface(0x1ca6,0x3002,0xffb0,1));
+ assert(!sparklink::ProbeInterface(0x1ca6,0x3002,0xffa0,1));
  assert(!keyboard_support::NativeNotice(4,0,true));
  assert(sparklink::DecodeKey(0xf101)==0x409 && sparklink::DecodeKey(0xf102)==0);
  for(unsigned key=4;key<256;++key)assert(sparklink::DecodeKey(key)==key);

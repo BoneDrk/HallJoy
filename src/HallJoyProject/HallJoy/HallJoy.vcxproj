@@ -138,6 +138,8 @@
       <PreprocessorDefinitions>HALLJOY_DEBUG_BUILD;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <!-- Compile translation units in parallel (cl /MP); output is unchanged. -->
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalIncludeDirectories>$(ProjectDir)..\third_party\WootingAnalogSDK091\include;$(ProjectDir)..\third_party\ViGEmClient\include;$(ProjectDir)..\..\..\third_party\UniversalAnalogPluginFixed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
@@ -163,6 +165,8 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <!-- Compile translation units in parallel (cl /MP); output is unchanged. -->
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalIncludeDirectories>$(ProjectDir)..\third_party\WootingAnalogSDK091\include;$(ProjectDir)..\third_party\ViGEmClient\include;$(ProjectDir)..\..\..\third_party\UniversalAnalogPluginFixed;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
@@ -421,7 +425,9 @@
     <ClInclude Include="generated\layout_pipeline\*.inc" />
     <ClInclude Include="keychron_layout_identities.h" />
     <ClInclude Include="keyboard_profiles.h" />
+    <ClInclude Include="keyboard_canvas.h" />
     <ClInclude Include="keyboard_render.h" />
+    <ClInclude Include="perf_trace.h" />
     <ClInclude Include="keyboard_ui.h" />
     <ClInclude Include="keyboard_ui_internal.h" />
     <ClInclude Include="keyboard_ui_state.h" />
@@ -589,7 +595,9 @@
     <ClCompile Include="keyboard_support_status.cpp" />
     <ClCompile Include="keyboard_page_main.cpp" />
     <ClCompile Include="keyboard_profiles.cpp" />
+    <ClCompile Include="keyboard_canvas.cpp" />
     <ClCompile Include="keyboard_render.cpp" />
+    <ClCompile Include="perf_trace.cpp" />
     <ClCompile Include="keyboard_subpages.cpp" />
     <ClCompile Include="keyboard_ui.cpp" />
     <ClCompile Include="key_settings.cpp" />
@@ -642,6 +650,9 @@
     <ClCompile Include="mchose_mix87_backend.cpp" />
     <ClInclude Include="mchose_mix87_backend.h" />
     <ClInclude Include="mchose_mix87_protocol.h" />
+    <ClCompile Include="mchose_jet75_backend.cpp" />
+    <ClInclude Include="mchose_jet75_backend.h" />
+    <ClInclude Include="mchose_jet75_protocol.h" />
     <ClCompile Include="steelseries_apex_backend.cpp" />
     <ClInclude Include="steelseries_apex_backend.h" />
     <ClInclude Include="steelseries_apex_protocol.h" />

@@ -34,4 +34,8 @@ foreach ($check in @('--halljoy-require-full-catalog', '--halljoy-require-k4-onb
 }
 & python (Join-Path $root 'tools/verify_embedded_licenses.py') $candidate
 if ($LASTEXITCODE -ne 0) { throw 'Embedded legal resources verification failed.' }
+# Rebuilds the simulator from the same sources and checks the compiled layout
+# catalog, including "no Supported keyboard without a layout".
+& (Join-Path $PSScriptRoot 'run_profile_transaction_tests.ps1')
+if (-not $?) { throw 'Production-linked profile/layout tests failed; running HallJoy was not touched.' }
 & (Join-Path $PSScriptRoot 'publish_halljoy_build.ps1') -CandidatePath $candidate -TargetPath $target

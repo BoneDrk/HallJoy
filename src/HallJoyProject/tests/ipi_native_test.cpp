@@ -24,7 +24,13 @@ int main() {
         std::set<unsigned> ids(model.ids,model.ids+model.count);
         assert(ids.size()==model.count && *ids.begin()>0 && *ids.rbegin()<256);
     }
-    assert(uuids.size()==8 && tokens.size()==4 && !ipi::FindModel(0x11000000005Bull));
+    assert(uuids.size()==10 && tokens.size()==6 && !ipi::FindModel(0x11000000005Bull));
+    // Royal Kludge RK68 HE (configurator evidence): exact UUIDs, own presets.
+    const auto* rk=ipi::FindModel(0x110000000002ull);const auto* uk=ipi::FindModel(0x11000000003Cull);
+    assert(rk && uk && rk->count==68 && uk->count==69 && !ipi::FindModel(0x110000000001ull));
+    assert(rk->ids[0]==1 && rk->ids[rk->count-1]==103 && uk->ids[uk->count-1]==105);
+    assert(ipi::factoryHids[100]==0x4A && ipi::factoryHids[99]==0x4C && ipi::factoryHids[105]==0x64 && ipi::factoryHids[72]==0x409);
+    assert(halljoy::layout_identity::Token("ipi-addressed",rk->product)!=halljoy::layout_identity::Token("ipi-addressed",uk->product));
     auto uuid=ipi::UuidRequest();assert(ipi::Header(uuid,0x82,1,6));
     const std::uint64_t wanted=0x11000000002Cull;
     for (unsigned i=0;i<6;++i) uuid[7+i]=std::uint8_t(wanted>>(40-8*i));
@@ -78,5 +84,5 @@ int main() {
     std::thread writer([&]{for(unsigned i=0;i<10000;++i)pub.Publish(30,i%1001,3000+i);});
     for(unsigned i=0;i<10000;++i)assert(pub.Read(26,3000+i).milli<=1000);
     writer.join();assert(pub.Clear());assert(!pub.Read(26,13000).fresh && pub.Active(13000)==0);
-    std::cout<<"IPI_NATIVE_TEST=PASS models=8 exact_maps=1 calibration=1 framing=1 aliases=1 fn=1 freshness=1\n";
+    std::cout<<"IPI_NATIVE_TEST=PASS models=10 rk68he=2 exact_maps=1 calibration=1 framing=1 aliases=1 fn=1 freshness=1\n";
 }

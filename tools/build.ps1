@@ -339,7 +339,7 @@ if ($hexProtocolText -notmatch 'kTravelBuffer = 0x1C' -or
     $hexBackendText -notmatch 'BuildTravelBufferPayload\(0, 4\)' -or
     $hexBackendText -notmatch 'NativeAnalogRouting_Claim' -or
     $hexBackendText -notmatch 'NativeAnalogRouting_IsClaimed' -or
-    $hexBackendText -notmatch '!hex80::IsKnownProductId\(candidate.attributes.ProductID\)' -or
+    $hexBackendText -notmatch 'candidate\.model = hex80::FindModel\(candidate\.attributes\.ProductID\);\s+if \(!candidate\.model\)\s+continue;' -or
     $hexBackendText -notmatch 'RealtimeLoop_NotifyInputChangedAt' -or
     $hexBackendText -notmatch 'SwitchToThread' -or
     $hexBackendText -notmatch 'Hex80_GetNativeBackendDescriptor' -or

@@ -1,4 +1,5 @@
 // settings_ini.cpp
+#include "perf_trace.h"
 #include "block_keys_policy.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -376,6 +377,8 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
 
     halljoy::ini::ReadFile inputFile(path);
     if (!inputFile) return false;
+    // The lease pins the file: serve every key from one parse per section.
+    halljoy::ini::ReadSnapshot snapshot(path);
     std::wstring schema, kind, bundle;
     if (!halljoy::ini::Read(path, L"HallJoyPersistence", L"SchemaVersion", schema) ||
         !halljoy::ini::Read(path, L"HallJoyPersistence", L"Kind", kind) ||
@@ -598,6 +601,7 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     }
 
     auto apply = [=, keys = std::move(preparedKeys)]() mutable {
+    halljoy::perf::Mark("apply.begin");
     Settings_SetInputDeadzoneLow(low);
     Settings_SetInputDeadzoneHigh(high);
 
@@ -618,6 +622,7 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     Settings_SetLastKeyPrioritySensitivity(lastKeyPrioritySensitivity);
     Settings_SetBlockBoundKeys(blockBoundKeys != 0);
     Settings_SetBlockMouseInput(blockMouseInput != 0);
+    halljoy::perf::Mark("apply.input");
 
     Settings_SetVirtualGamepadCount(vpadCount);
     Settings_SetVirtualGamepadsEnabled(vpadEnabled != 0);
@@ -629,13 +634,16 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
     Settings_SetMouseToStickAggressiveness(mouseToStickAggressiveness);
     Settings_SetMouseToStickMaxOffset(mouseToStickMaxOffset);
     Settings_SetMouseToStickFollowSpeed(mouseToStickFollowSpeed);
+    halljoy::perf::Mark("apply.pads");
     if (!profileOnly)
     {
         OverlayServer_SetAutoStart(overlayAutoStart != 0);
         wchar_t overlayLayoutName[260]{};
         GetPrivateProfileStringW(L"InputOverlay", L"LayoutPresetName", L"",
             overlayLayoutName, (DWORD)_countof(overlayLayoutName), path);
+        halljoy::perf::Mark("apply.overlay_name_read");
         KeyboardLayout_SetOverlayPresetName(overlayLayoutName);
+        halljoy::perf::Mark("apply.overlay_preset");
         Settings_SetDiagnosticLogging(diagnosticLogging != 0);
         Settings_SetBlockKeysAllowAltTab(blockAllowAltTab != 0);
         Settings_SetBlockKeysHotkey(blockHotkey);
@@ -658,6 +666,7 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
         OverlayServer_SetLabelSizePx(overlayLabelSize);
         OverlayServer_SetLabelShadowPercent(overlayLabelShadow);
         OverlayServer_SetLabelColor(overlayLabelColor);
+        halljoy::perf::Mark("apply.overlay");
     }
     if (loadWindow)
     {
@@ -672,19 +681,25 @@ static bool SettingsIni_Load_Core(const wchar_t* path, bool loadWindow, bool loa
         Settings_SetCloseToTray(closeToTray);
     }
 
+    halljoy::perf::Mark("apply.window");
     KeySettings_ApplyPrepared(keys);
+    halljoy::perf::Mark("apply.keys");
     };
     if (preparedApply) {
         *preparedApply = std::move(apply);
         return true;
     }
+    halljoy::perf::Mark("settings.load.parsed");
     {
         halljoy::profile_runtime::CommitLease commit;
         if (!commit) return false;
         apply();
     }
+    halljoy::perf::Mark("settings.load.applied");
     if (loadActiveProfileKey) GlobalProfiles_InitFromSettingsIni(path);
+    halljoy::perf::Mark("settings.load.profiles_key");
     if (loadLayout) KeyboardLayout_LoadFromIni(path);
+    halljoy::perf::Mark("settings.load.layout");
     return true;
 }
 

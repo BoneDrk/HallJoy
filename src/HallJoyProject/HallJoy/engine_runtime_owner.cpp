@@ -8,6 +8,7 @@
 
 #include "engine_runtime_transaction.h"
 #include "stability_trace.h"
+#include "perf_trace.h"
 #include "worker_exception_barrier.h"
 
 namespace halljoy::engine_runtime
@@ -24,6 +25,25 @@ struct CallbackOperations final
 {
     const OperationsV1& table;
 
+    const char* PerfLabel(Operation operation) const noexcept
+    {
+        if (operation == table.closeAdmission) return "op.close_admission";
+        if (operation == table.stopRecoverySupervisor) return "op.stop_recovery_supervisor";
+        if (operation == table.publishNeutral) return "op.publish_neutral";
+        if (operation == table.stopRealtime) return "op.stop_realtime";
+        if (operation == table.releaseUiInput) return "op.release_ui_input";
+        if (operation == table.stopNativeProviders) return "op.stop_native_providers";
+        if (operation == table.releaseBackendLeases) return "op.release_backend_leases";
+        if (operation == table.enumerateFresh) return "op.enumerate_fresh";
+        if (operation == table.proveCapabilities) return "op.prove_capabilities";
+        if (operation == table.startFreshGeneration) return "op.start_fresh_generation";
+        if (operation == table.publishNeutralGeneration) return "op.publish_neutral_generation";
+        if (operation == table.restoreUiInput) return "op.restore_ui_input";
+        if (operation == table.openAdmission) return "op.open_admission";
+        if (operation == table.releaseFailedResume) return "op.release_failed_resume";
+        return "op.other";
+    }
+
     bool Invoke(Operation operation, std::uint32_t& error) noexcept
     {
         if (!operation)
@@ -31,6 +51,7 @@ struct CallbackOperations final
             error = ERROR_INVALID_PARAMETER;
             return false;
         }
+        halljoy::perf::Scope perfScope(PerfLabel(operation));
 #if defined(HALLJOY_AJAZZ_DIAGNOSTIC)
         const wchar_t* label=L"other";
         if(operation==table.enumerateFresh)label=L"enumerate";
@@ -105,6 +126,7 @@ bool IsComplete(const OperationsV1& o) noexcept
 void Execute(Command command) noexcept
 {
     const std::lock_guard<std::mutex> stateLock(g_stateMutex);
+    halljoy::perf::Scope perfScope(command == Command::Pause ? "engine.pause" : "engine.resume");
     std::uint32_t error = ERROR_SUCCESS;
     CallbackOperations operations{ g_operations };
     const TransactionResult result = command == Command::Pause

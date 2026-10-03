@@ -41,9 +41,12 @@
 // NEW: gear animation invalidation
 #include "keyboard_render.h"
 #include "ui_paint_audit.h"
+#include "perf_trace.h"
 
 // created in keyboard_page_main.cpp
 extern "C" HWND KeyboardPageMain_CreatePage(HWND hParent, HINSTANCE hInst);
+// One Direct2D frame for the whole keyboard view (no-op without the canvas).
+extern "C" void KeyboardPageMain_RequestCanvasFrame();
 static constexpr UINT WM_APP_SYNC_MOUSE_SLOTS = WM_APP + 360;
 static constexpr UINT WM_APP_ANALOG_SOURCE_STATUS_CHANGED = WM_APP + 361;
 
@@ -92,6 +95,7 @@ void KeyboardUI_SetDragHoverHid(uint16_t hid)
         InvalidateRect(g_btnByHid[old], nullptr, FALSE);
     if (halljoy::keycode::IsSupported(hid) && g_btnByHid[hid])
         InvalidateRect(g_btnByHid[hid], nullptr, FALSE);
+    KeyboardPageMain_RequestCanvasFrame();
 }
 
 bool KeyboardUI_HasHid(uint16_t hid)
@@ -197,6 +201,7 @@ static void TickOverrideGearAnim()
         if (halljoy::keycode::IsSupported(hid) && g_btnByHid[hid])
             InvalidateRect(g_btnByHid[hid], nullptr, FALSE);
     }
+    if (n > 0) KeyboardPageMain_RequestCanvasFrame();
 }
 
 static uint32_t HashGamepadReports()
@@ -288,9 +293,11 @@ static bool ObserveCommunication(const BackendAnalogTelemetry& t,bool running) {
 
 void KeyboardUI_OnAnalogPreview()
 {
+    halljoy::perf::Scope perfScope("ui.analog_preview_tick");
     if (!g_hPageRemap) return;
     const HWND root=GetAncestor(g_hPageRemap,GA_ROOT);
     if (!root || !IsWindowVisible(root) || IsIconic(root)) return;
+    bool anyDirty = false;
     for (int chunk = 0;
         chunk < static_cast<int>(halljoy::keycode::kMaskChunkCount); ++chunk)
     {
@@ -301,13 +308,18 @@ void KeyboardUI_OnAnalogPreview()
         // every tab. Consuming backend dirtiness without invalidating its key
         // windows loses release transitions until another repaint happens.
         InvalidateDirtyBits(bits, chunk);
+        anyDirty = true;
+        halljoy::perf::Mark("ui.dirty_keys", static_cast<std::uint64_t>(__popcnt64(bits)));
     }
+    // All dirty keys of this tick share one canvas frame.
+    if (anyDirty) KeyboardPageMain_RequestCanvasFrame();
 
     TickConfigLiveMarker();
 }
 
 void KeyboardUI_OnTimerTick(HWND)
 {
+    halljoy::perf::Scope perfScope("ui.timer_tick");
     HWND root = nullptr;
     if (g_hPageRemap) root = GetAncestor(g_hPageRemap, GA_ROOT);
     BackendAnalogTelemetry telemetry{};

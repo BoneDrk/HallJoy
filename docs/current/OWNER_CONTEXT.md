@@ -1,3 +1,115 @@
+> 2026-10-02 OWNER RULE: when all Supported criteria are met (working path, built-in layout,
+> supported_layouts.json, check_supported_layouts PASS), the agent sets Supported itself; trust the
+> tester's model name, do not ask for more logs. Applied: Everglide SU75 Pro (tester log 13: 126 keys,
+> 0 failures; new 81-key layout from the official driver key map) and Royal Kludge RK68 HE -> Supported
+> in README, SUPPORTED_HARDWARE, Sheet; yellow notices removed. See EVERGLIDE_SU75PRO / RK68HE_HUBX.
+> 2026-10-02 OWNER: checks too slow. Parallel test compiles + exact-input binary cache, parallel
+> research replays/layout checks, MSVC /MP. Same checks. See FAST_CHECKS_2026-10-02.md.
+> 2026-10-02 OWNER: support log names keyboards. `hid.candidate` rows now carry
+> `name="..."` = USB bus-reported product string (metadata only, no device open;
+> sanitized, max 48 chars). Next tester logs show the model name, not only VID:PID.
+> See SUPPORT_LOG_PRODUCT_NAMES_2026-10-02.md.
+> 2026-10-02 Everglide follow-up: the log proves only an unnamed SparkLink V2 keyboard
+> `1CA6:3002`; model name SU75 Pro is unconfirmed (tester may not own one). Ask the
+> tester for the exact model / Device Manager product name before trusting the name.
+> 2026-10-02 RK68 HE tester log: works (connected, 68 keys, 17982 updates, 0 failures).
+> Still yellow pending owner decision on Supported.
+> 2026-10-02 Everglide SU75 Pro (`1CA6:3002`): SparkLink V2 (xsyd.top / sparklinkplayjoy
+> catalog: public v2 FFB0), same 01 02 / 03 01 / 04 03 01 commands as IROK/EWEADN; only
+> missing from the exact identity list. Added + notice + Sheet brand row (283 yellow PASS).
+> See EVERGLIDE_SU75PRO_2026-10-02.md.
+> 2026-10-02 IO/Pwnage recheck: IO manifest, configurator and Disk unchanged (no
+> Magnetic Pro firmware). Pwnage hub 3.4.4 re-uploaded (47 bytes differ), same PIDs, no
+> live-travel read; community macOS app v0.1 also none; drivers page timed out. See
+> IO_PWNAGE_RECHECK_2026-10-02.md.
+> 2026-10-02 OWNER: RK68 HE tester build. 372E:10BF/10C0 admitted to the existing
+> read-only IPI UUID path; catalog entries 0x110000000002/...3C from the official RK
+> driver (configurator evidence, equal to 3 BY firmware ID tables); ANSI + ISO
+> layouts; yellow notice; Sheet row RK68 HE inserted (282 yellow PASS). No physical
+> test. See RK68HE_HUBX_2026-10-02.md.
+> 2026-10-02 GitHub sidebar still lists `claude` under Contributors, but main, all 17
+> tags and all 5 PR refs contain NO Claude/Anthropic co-author trailer (checked via API).
+> Stale contributors cache from before the 09-27 history cleanup; only GitHub Support
+> can clear it. Do not rewrite or force-push history for this.
+> 2026-10-02 RK68 HE log (`372E:10BF`): Addressed backend sees it, never connects
+> (IPI UUID path admits only 105C/106C). Official driver rk.hubx.pro = BY/IPI platform,
+> UUID 0x110000000002 (UK 10C0 = ...3C). No RK68 HE image published; 24 sibling BY
+> images downloaded (.local) all have HallJoy's 94/02 live read; RK68 HE ID set equals
+> 3 firmware tables. Support not started. See RK68HE_HUBX_2026-10-02.md.
+> 2026-10-02 OWNER: yellow support for every MCHOSE model we can. Done locally:
+> 9 more RISC-V boards on the Jet 75 backend (Zero75X, Jet 75 I, Ace 68 I, Air II,
+> Ace 60 Pro/Nordic, Ace 60X I/II, Mix 87 I) and 6 ARM boards on the Mix 87 backend
+> (Ace 68 III/Air III/Air 2/V2 III/Turbo 8K, Ace 75 8K; emulator replay of 03/E0/06).
+> Jet 75 II / Mix 87 III unchanged (Supported). Not done: Ace 60 ARM, GT, Turbo 16K.
+> Sheet synchronized (Google Sheets connector): rows 526..542, 281 yellow PASS. build_release +
+> diagnostics + native gates PASS, EXE 53e7d826. See MCHOSE_RISCV/ARM_FAMILY docs.
+> 2026-10-02 tools/build.ps1 passes again: stale Hex80 text check and two unused
+> locals fixed. See BUILD_PS1_FIXES_2026-10-02.md.
+> 2026-10-02 OWNER: tester build for MCHOSE Ace 68 `41E4:2116` (USB "Ace68-II",
+> M HUB "Ace 68 Pro"). Firmware 1.21 reviewed at base 0x5000: same commands,
+> writer, reboot rule, A0 report and byte-7 bit-3 flag as Jet 75 II. The Jet 75
+> backend now has a model table; automatic 68-key layout; yellow notice
+> `MchoseAce68`. Live Sheet row "Ace 68" NOT changed (owner decision).
+> No physical test. See MCHOSE_ACE68II_2026-10-02.md.
+> 2026-10-02 Ace 68 attempt log (`previous (2)`): PID 2116, only matched=0,
+> no command ever sent; the red Ace 68 row rests on attempts that never
+> reached the keyboard. 2116 = Ace 68 Pro / USB "Ace68-II", sold as Ace 68.
+> 2026-10-02 MCHOSE all-model static survey (33 M HUB images, no device).
+> Every magnetic model with an image uses the Jet75/Mix87 analog design
+> (A0 + profile byte 7 bit 3, 55/AA transport): 11 WCH RISC-V images like
+> Jet 75 II, 7 ARM like Mix87 III (+ Ace 60 ARM variant), and a new WCH core
+> for Ace 68 GT / Turbo 16K. Old RISC-V generation reloads 32 B (flag still
+> applies). Sheet unchanged; red "Ace 68" capture was PID 2116 = Ace 68 Pro.
+> No support work started. See MCHOSE_FAMILY_SURVEY_2026-10-02.md.
+> 2026-10-02 Jet 75 II log8: analog WORKS on fw 1.17 (79 keys, 113 updates, 0
+> failures). Fixed idle start: Jet75/Mix87 now report connected right after
+> admission, not after the first key press (no false missing-analog banner).
+> 2026-10-02 Jet 75 II log7: firmware 1.17 (version binding removal was needed);
+> enable Verified, then a system device-change notification ended the session.
+> Fixed in Jet75 AND Mix87: device changes no longer end a healthy session
+> (unplug ends it via read error). Awaiting the next tester log.
+> 2026-10-02 MCHOSE Jet 75 II (`41E4:211A`, stock 1.16) implemented with a yellow notice.
+>
+> - Same analog design as Mix87 III (A0 stream + saved flag, profile byte 7 bit 3),
+>   same automatic enable/disable lifecycle; automatic 80-key layout.
+> - OWNER (same day): no firmware-version binding. Any version is admitted;
+>   safety comes from data checks (layout before write, readback, A0 checks).
+> - New restriction: if the keyboard was just flashed or factory reset, a
+>   settings write reboots it once; handled.
+> - Owner allowed downloading all M HUB firmware/layouts locally (33 images).
+> - Live Sheet B535:C535 -> Jet 75 (II revision) / Implemented; 272 yellow PASS.
+> - No physical test yet. See MCHOSE_JET75_2026-10-02.md.
+> 2026-10-01 OWNER: yellow support for every ATK keyboard on the Hex80 protocol.
+>
+> - Implemented 15 hub models (19 Sheet rows: EDGE 60/63/75 HE, 60 RX, RS63 Air,
+>   RS6 family, 68 V3/RX, RS6 Air/Cube, RS7 / V2 / Air / Turbo, 68 V2 Pro).
+>   They are read-only (no SET), with automatic layouts and the `AtkHex80Family`
+>   notice.
+> - The live Sheet is synchronized.
+> - See ATK_HEX80_FAMILY_2026-10-01.md.
+> 2026-10-01 Build closing of an elevated HallJoy is fixed.
+>
+> - HallJoy now accepts the exit request from an unelevated build.
+> - Older elevated builds are closed through a single UAC prompt.
+> - The picker shows "MAD68 HE V2 Flagship".
+> - See BUILD_CLOSE_ELEVATED_HALLJOY_2026-10-01.md.
+> 2026-10-01 OWNER RULE: no Supported status without a built-in layout. The
+> check is enforced by `check_supported_layouts.py` in every build and with
+> `--sheet`.
+>
+> - Added layouts: AK820 MAX HE, Mix 87 III, Field75 HE and Apex Pro.
+> - Automatic selection works for three of them; Field75 is manual.
+> - See SUPPORTED_LAYOUT_COVERAGE_2026-09-30.md.
+> 2026-09-30 IO check (owner request: all models and all firmware; this
+> supersedes the 09-21 catalog-only note).
+>
+> - The manifest is unchanged: Type 68 Magnetic V1.37, Type 84 Magnetic V1.17.
+>   No Magnetic Pro firmware is published.
+> - The published images handle only `0x64..0x67`: no new analog.
+> - The configurator has a frameVersion-1 addressed multi-key getter `0x68`
+>   (used during calibration V2), which is likely for the Magnetic Pro models.
+> - The Sheet is missing Type 84 Magnetic Pro (configurator only).
+> - See IO_CATALOG_FIRMWARE_2026-09-30.md.
 > 2026-09-30 PUBLISHED stable/latest 1.6.6: https://github.com/PashOK7/HallJoy/releases/tag/v1.6.6 .
 > - Source: a3ec1db306ac731a4ac4f567e596b17ed9dba080.
 > - EXE SHA256 4c5887c5…e846; the downloaded assets match.

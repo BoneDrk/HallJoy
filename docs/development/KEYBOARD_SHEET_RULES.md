@@ -11,9 +11,10 @@ Main: A brand, B model, C short support status. Verify live metadata and rows; p
 - Catalog inclusion is separate from HallJoy compatibility. Manufacturer-announced magnetic models may be included. Sharing a configuration app does not establish analog compatibility.
 - Reconcile product catalogs with official driver/HUB lists and announcements so distinct MAX/PRO/Ultra/Air/XS versions are not omitted. Deduplicate naming aliases, colorways and layouts appropriately.
 - Supported requires an implemented and justified path. Physical testing of every model is not mandatory, but known unimplemented admission or mapping must not be labeled Supported. Yellow requires a COMPLETE enabled path: detection, independent analog input, bindings and gamepad output. It may indicate remaining range/firmware nuances, never unfinished integration. A tester is NOT an admission prerequisite.
+- **No Supported without a layout (owner rule, 2026-10-01).** A model may be set to any Supported status only after HallJoy ships a built-in layout for it. Order: add the layout, add the model to `docs/development/supported_layouts.json`, run `python tools/check_supported_layouts.py <layout-catalog.tsv> --sheet <fresh snapshot>` on the intended state, then change the Sheet. After the Sheet change, read it again and require `SUPPORTED_LAYOUTS=PASS`. Every release build enforces the catalog half automatically.
 - Keep every yellow row synchronized with `keyboard_support_notices.json` and the generated runtime notices. Compare a freshly read Sheet snapshot using `python tools/support_notice_catalog.py --sheet <snapshot.json>`; do not use stale snapshots to claim a live check.
 - Follow [support-status synchronization](SUPPORT_STATUS_SYNC.md) for README, hardware documentation, runtime and Sheet consistency. Do not change compatibility merely because a row was added.
-- Owner explicitly requested IO Type 68 Magnetic Pro Wireless catalog-only on 2026-09-21: do not investigate its firmware as part of this task.
+- Owner explicitly requested IO Type 68 Magnetic Pro Wireless catalog-only on 2026-09-21: do not investigate its firmware as part of this task. Superseded 2026-09-30: the owner asked for all IO firmware to be checked (see IO_CATALOG_FIRMWARE_2026-09-30.md).
 
 
 ## Mandatory structural check after every row insertion (2026-09-24)

@@ -79,7 +79,8 @@ struct Model
 {
     const wchar_t* name = nullptr;
     const char* layoutProduct = nullptr;     // verified identity for the "hex80" layout protocol
-    std::array<std::uint16_t, 3> productIds{};
+    const std::uint16_t* productIds = nullptr;
+    std::size_t productCount = 0;
     std::size_t slots = 0;
     const std::uint16_t* slotToHid = nullptr;
     std::uint16_t fixedTravelMax = 0;        // 0: read the scale with 02 96 24
@@ -88,19 +89,33 @@ struct Model
 };
 
 inline constexpr Model kHex80Model{
-    L"ATK x QK Hex80", "HEX80-ANSI", kKnownProductIds, kTotalSlots, kSlotToHid.data(),
+    L"ATK x QK Hex80", "HEX80-ANSI", kKnownProductIds.data(), kKnownProductIds.size(), kTotalSlots, kSlotToHid.data(),
     0, kRawDeadzone, true };
 // 0.03 mm deadzone in 0.01 mm units; no SET command of any kind is sent.
+inline constexpr std::array<std::uint16_t, 1> kMad68V2ProductIds{{ 0x1125 }};
 inline constexpr Model kMad68V2Model{
-    L"MADLIONS MAD68 HE V2", "MAD68HEV2-1125", {{ 0x1125, 0x1125, 0x1125 }}, kMad68V2Slots,
+    L"MADLIONS MAD68 HE V2", "MAD68HEV2-1125", kMad68V2ProductIds.data(), kMad68V2ProductIds.size(), kMad68V2Slots,
     kMad68V2SlotToHid.data(), 330, 3, false };
-inline constexpr std::array<const Model*, 2> kModels{{ &kHex80Model, &kMad68V2Model }};
+}
+
+// Other ATK keyboards on this protocol (implemented, awaiting hardware testing).
+#include "generated/atk_hex80_family.h"
+
+namespace hex80
+{
+inline constexpr auto kModels = [] {
+    std::array<const Model*, 2 + kAtkFamilyModels.size()> models{};
+    models[0] = &kHex80Model;
+    models[1] = &kMad68V2Model;
+    for (std::size_t i = 0; i < kAtkFamilyModels.size(); ++i) models[2 + i] = kAtkFamilyModels[i];
+    return models;
+}();
 
 constexpr const Model* FindModel(std::uint16_t productId) noexcept
 {
     for (const auto* model : kModels)
-        for (const auto candidate : model->productIds)
-            if (candidate == productId) return model;
+        for (std::size_t i = 0; i < model->productCount; ++i)
+            if (model->productIds[i] == productId) return model;
     return nullptr;
 }
 

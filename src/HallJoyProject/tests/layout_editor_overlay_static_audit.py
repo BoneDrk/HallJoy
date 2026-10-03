@@ -59,7 +59,10 @@ assert 'document += L"Brand=' in layout and 'actual.brand == expected.brand' in 
 assert 'g_keychronK4HeKeys' not in layout
 assert 'FindPresetByName(ResolveSavedPresetName(nameBuf))' in layout
 assert 'FindPresetByName(ResolveSavedPresetName(name))' in layout
-assert 'FileNamePolicy_Equivalent(e.path().stem().wstring(), L"Keychron K4 HE")' in layout
+# The retired K4 HE file is skipped by canonical-name equivalence. The catalog
+# memoises the canonical keys (NamesEquivalent) with FileNamePolicy semantics.
+assert 'NamesEquivalent(e.path().stem().wstring(), L"Keychron K4 HE")' in layout
+assert 'FileNamePolicy_CanonicalKey(name)' in layout and 'FileNamePolicy_Equivalent(' not in layout
 assert 'Click the same delete icon again to confirm.' not in ui
 assert 'PremiumCombo::GetDeleteConfirmation(source) != index' in ui
 print("LAYOUT_EDITOR_OVERLAY_STATIC_AUDIT=PASS")

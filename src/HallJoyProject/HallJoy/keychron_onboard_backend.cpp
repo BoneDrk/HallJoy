@@ -6,6 +6,7 @@
 #include <windows.h>
 #include <process.h>
 #include "keychron_onboard_backend.h"
+#include "perf_trace.h"
 #include "input_shortcuts_runtime.h"
 #include "keychron_onboard_channel.h"
 #include "keychron_onboard_host_profile.h"
@@ -124,16 +125,39 @@ public:
     PadMonitor(const PadMonitor&)=delete;
     PadMonitor& operator=(const PadMonitor&)=delete;
 };
+// Forwards to the real channel; with --halljoy-perf-log it also records each
+// control exchange (request, ok, phase, native) and reconnect wait.
+struct PerfTracedChannel final : Channel {
+    WindowsChannel& inner;
+    explicit PerfTracedChannel(WindowsChannel& channel):inner(channel){}
+    bool Exchange(const Packet& request,Packet& reply) override {
+        const auto start=halljoy::perf::Enabled()?halljoy::perf::Now():0;
+        const bool ok=inner.Exchange(request,reply);
+        if(start && request[1]!=0x73 && request[1]!=0x74 && request[1]!=0x76 && request[1]!=0x7A)
+            halljoy::perf::Span("k4.xchg",(std::uint64_t(request[1])<<24)|(std::uint64_t(ok)<<16)|
+                (std::uint64_t(reply[3])<<8)|reply[16],start);
+        return ok;
+    }
+    bool Read(Packet& reply) override {return inner.Read(reply);}
+    bool Reconnect(std::uint16_t revision) override {
+        halljoy::perf::Scope scope("k4.reconnect",revision);
+        return inner.Reconnect(revision);
+    }
+    std::uint64_t NowMs() const override {return inner.NowMs();}
+    bool Cancelled() const override {return inner.Cancelled();}
+};
 unsigned Body() {
     PadMonitor padMonitor;
 
     while(!stopping.load()) {
         WindowsChannel channel(chosen,cancel);
+        halljoy::perf::Mark("k4.session.connect");
         if(!channel.Connect()) {
             Clear();state.store(1);
             if(!channel.Reconnect(0x1212)) {WaitForSingleObject(cancel,500);continue;}
         }
-        Client client(channel,&committedProfile);Packet status{};
+        PerfTracedChannel traced(channel);
+        Client client(traced,&committedProfile);Packet status{};
         const auto parked=[&]{return status[3]==HJO_PARKED && status[16];};
         if(!client.Status(status) || ((status[3] || status[16]) && !parked())) {
             // Never hijack an existing session. Its owner/watchdog must release it.
@@ -187,6 +211,7 @@ unsigned Body() {
             // still needs analog input. Pause/exit stop this worker entirely.
             if(healthy && GetTickCount64()>=monitorUntil.load() && !shortcutsNeedAnalog) WaitForSingleObject(cancel,20);
         }
+        halljoy::perf::Mark("k4.loop_exit",healthy?1:0);
         Clear();
         if(!healthy) {failures.fetch_add(1);state.store(5);}
         // Cancel only the in-flight operation, then permit bounded orderly STOP.
@@ -196,9 +221,26 @@ unsigned Body() {
         // itself falls back to the orderly STOP when the firmware refuses.
         if(stopping.load() && parkOnStop.load() && client.SupportsPark()) {
             const bool hadSession=client.Token()!=0;
-            if(client.Park() && hadSession) parkedSession.store(true);
+            halljoy::perf::Scope parkScope("k4.stop.park",hadSession?1:0);
+            // Closing admission makes the loop park first; the stop can cancel
+            // that park's retry after the firmware already parked (lost reply),
+            // and the cancelled fallback closes the handle. Ask the firmware
+            // before parking again: STOP + re-enumeration wait would only time
+            // out (3.5 s) against a session that is already parked.
+            // The cancelled request's reply may still arrive in the reopened
+            // handle: each Status attempt consumes one reply, so a stale one is
+            // skipped by the next attempt.
+            Packet current{};
+            bool known=client.Status(current);
+            if(!known && channel.Connect())
+                for(unsigned attempt=0;attempt<3 && !known;++attempt) known=client.Status(current);
+            if(known && current[3]==HJO_PARKED && current[16]) parkedSession.store(true);
+            else if(client.Park() && hadSession) parkedSession.store(true);
         }
-        else (void)client.Close();
+        else {
+            halljoy::perf::Scope closeScope("k4.stop.close",client.Token()!=0?1:0);
+            (void)client.Close();
+        }
         if(!stopping.load()) WaitForSingleObject(cancel,500);
     }
     state.store(0);return 0;
@@ -220,6 +262,7 @@ bool Start() {
 }
 halljoy::lifecycle::StopResult Stop(halljoy::lifecycle::GenerationId generation) {
     std::lock_guard<std::mutex> lock(service);
+    halljoy::perf::Mark("k4.stop.requested");
     stopping.store(true);admitted.store(false);
     if(cancel) SetEvent(cancel);
     if(thread) {
@@ -262,7 +305,6 @@ bool KeychronOnboard_OwnsOutput() noexcept {return reserved.load();}
 void KeychronOnboard_SetAdmission(bool on) noexcept {admitted.store(on);}
 void KeychronOnboard_SetParkOnStop(bool park) noexcept {parkOnStop.store(park);}
 void KeychronOnboard_ReleaseParked() noexcept {
-    parkOnStop.store(false);
     if(!parkedSession.exchange(false)) return;
     try {
         const auto devices=EnumerateDevices();

@@ -1,3 +1,4 @@
+#include "perf_trace.h"
 #include "keychron_onboard_backend.h"
 #include "input_path_diagnostics.h"
 // app.cpp
@@ -17,6 +18,7 @@
 #include "native_layout_devices.h"
 #include "window_placement_windows.h"
 #include "main_keyboard_input.h"
+#include "keyboard_canvas.h"
 #include <dbt.h>
 #include <commctrl.h>
 #include <shellapi.h>
@@ -96,6 +98,7 @@ static constexpr UINT WM_APP_APPLY_TIMING = WM_APP + 2;
 static constexpr UINT WM_APP_FACTORY_RESET_RESTART = WM_APP + 3;
 static constexpr UINT WM_APP_KEYBOARD_LAYOUT_CHANGED = WM_APP + 260;
 static constexpr UINT WM_APP_ENGINE_RUNTIME_UI_OPERATION = WM_APP + 261;
+extern "C" UINT KeyboardPageMain_PerfCurveSweepMessage(); // perf profiling only
 static constexpr UINT WM_APP_ENGINE_RUNTIME_TOGGLE = WM_APP + 262;
 static constexpr UINT WM_APP_ENGINE_RUNTIME_STATE_CHANGED = WM_APP + 362;
 
@@ -625,16 +628,22 @@ static bool EngineRuntimeUiOperationHandler(
         return true;
 
     case halljoy::engine_runtime::ui_bridge::Operation::RestoreInput:
+    {
+        halljoy::perf::Scope restoreScope("ui.bridge.restore_input");
         if (!MouseIpc_InitPublisher())
         {
             nativeError = GetLastError();
             return false;
         }
         g_engineUiInputPassThrough.store(false, std::memory_order_release);
-        RefreshLowLevelHooks();
+        {
+            halljoy::perf::Scope hooksScope("ui.bridge.refresh_hooks");
+            RefreshLowLevelHooks();
+        }
         PublishMouseIpcState();
         nativeError = ERROR_SUCCESS;
         return true;
+    }
 
     case halljoy::engine_runtime::ui_bridge::Operation::DependencyGuidance:
     {
@@ -1189,7 +1198,10 @@ static bool EngineRuntimeEnumerateFresh(void*, std::uint32_t& nativeError) noexc
     }
     // A false result means no native protocol is currently present. It is not
     // an error: UAP/Soup may still own a valid fresh universal session.
-    (void)NativeAnalogBackends_PrepareRouting();
+    {
+        halljoy::perf::Scope prepare("native.prepare_routing.all");
+        (void)NativeAnalogBackends_PrepareRouting();
+    }
     nativeError = ERROR_SUCCESS;
     return true;
 }
@@ -1300,9 +1312,6 @@ static void AppShutdownNoThrow(HWND hwnd) noexcept
 {
     if (g_shutdownStarted.exchange(true, std::memory_order_acq_rel))
         return;
-    // Exit closes the K4 onboard session fully; only pause parks it.
-    KeychronOnboard_SetParkOnStop(false);
-
     // Arm before the first cleanup/logging call. Even a broken HID driver or a
     // poisoned dependency lock cannot leave HallJoy requiring Task Manager.
     if (ArmShutdownWatchdog())
@@ -1339,7 +1348,9 @@ static void AppShutdownNoThrow(HWND hwnd) noexcept
         UnhookWindowsHookEx(g_hMouseHook);
         g_hMouseHook = nullptr;
     }
+    const auto ownerStopStart = halljoy::perf::Now();
     const auto ownerStop = halljoy::engine_runtime::EngineRuntimeOwner_Stop();
+    halljoy::perf::Span("shutdown.engine_owner_stop", 0, ownerStopStart);
     if (!ownerStop.RestartSafe())
     {
         g_immediateProcessExitRequired.store(true, std::memory_order_release);
@@ -1351,13 +1362,23 @@ static void AppShutdownNoThrow(HWND hwnd) noexcept
             static_cast<unsigned long>(ownerStop.error.native_error));
         return;
     }
+    {
+        // The stop parked the K4 onboard session (or an earlier pause did).
+        // One STOP from PARKED returns the keyboard to ordinary mode without
+        // waiting for USB re-enumeration, unlike closing an active session.
+        halljoy::perf::Scope releaseScope("shutdown.k4_release_parked");
+        KeychronOnboard_ReleaseParked();
+    }
+    const auto overlayStopStart = halljoy::perf::Now();
     const auto overlayStop = OverlayServer_Stop();
+    halljoy::perf::Span("shutdown.overlay_stop", 0, overlayStopStart);
     if (!overlayStop.RestartSafe())
     {
         g_immediateProcessExitRequired.store(true, std::memory_order_release);
         return;
     }
     MouseIpc_ShutdownPublisher();
+    halljoy::perf::Scope saveScope("shutdown.settings_save");
     if (!SaveSettingsByActiveGlobalProfile())
     {
         StabilityTrace_WriteCritical(L"ERROR", L"app", L"shutdown.settings_save_failed",
@@ -1375,11 +1396,27 @@ static void AppShutdownNoThrow(HWND hwnd) noexcept
 
 static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (halljoy::perf::Enabled()) {
+        switch (msg) {
+        case WM_INPUT: halljoy::perf::Mark("msg.input", GET_RAWINPUT_CODE_WPARAM(wParam)); break;
+        case WM_NCLBUTTONDOWN: halljoy::perf::Mark("msg.nclbuttondown", wParam); break;
+        case WM_ENTERSIZEMOVE: halljoy::perf::Mark("msg.entersizemove"); break;
+        case WM_EXITSIZEMOVE: halljoy::perf::Mark("msg.exitsizemove"); break;
+        case WM_MOVE: halljoy::perf::Mark("msg.move", static_cast<std::uint64_t>(static_cast<std::int16_t>(LOWORD(lParam)) + 100000)); break;
+        default: break;
+        }
+    }
     if (msg == halljoy::tray::ShowMessage()) {
         g_tray.Restore();
         return halljoy::tray::ShowAcknowledged;
     }
     if (msg == halljoy::tray::TaskbarMessage()) { g_tray.ShellRestarted(); return 0; }
+    if (halljoy::perf::Enabled()) {
+        if (msg == KeyboardPageMain_PerfCurveSweepMessage()) {
+            if (g_hPageMain) PostMessageW(g_hPageMain, msg, wParam, lParam);
+            return 0;
+        }
+    }
     if (msg == halljoy::tray::ExitMessage()) {
         if (KeyboardUI_CloseLayoutEditor()) DestroyWindow(hwnd);
         return 0;
@@ -1453,6 +1490,17 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         SetPropW(hwnd, L"HallJoy.TrayLifecycle.v1", reinterpret_cast<HANDLE>(1));
         ChangeWindowMessageFilterEx(hwnd, halljoy::tray::ShowMessage(), MSGFLT_ALLOW, nullptr);
         ChangeWindowMessageFilterEx(hwnd, halljoy::tray::TaskbarMessage(), MSGFLT_ALLOW, nullptr);
+        // The build publisher runs unelevated: let it request a normal exit
+        // even when HallJoy itself runs as administrator.
+        ChangeWindowMessageFilterEx(hwnd, halljoy::tray::ExitMessage(), MSGFLT_ALLOW, nullptr);
+        // Perf profiling only (--halljoy-perf-log): the unelevated profiler
+        // drives pause/resume cycles. Normal runs keep the default filter.
+        if (halljoy::perf::Enabled())
+        {
+            ChangeWindowMessageFilterEx(hwnd, WM_APP_ENGINE_RUNTIME_TOGGLE, MSGFLT_ALLOW, nullptr);
+            ChangeWindowMessageFilterEx(hwnd, WM_SYSCOMMAND, MSGFLT_ALLOW, nullptr);
+            ChangeWindowMessageFilterEx(hwnd, KeyboardPageMain_PerfCurveSweepMessage(), MSGFLT_ALLOW, nullptr);
+        }
         g_mouseBlockPauseByRShift.store(false, std::memory_order_relaxed);
         g_engineUiInputPassThrough.store(false, std::memory_order_release);
         g_mouseCursorLocked = false;
@@ -1466,18 +1514,10 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
         HINSTANCE hInst = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
 
-        // Create the main keyboard UI page directly (no top-level tabs anymore)
-        g_hPageMain = KeyboardUI_CreatePage(hwnd, hInst);
-        if (!g_hPageMain)
-        {
-            DebugLog_Write(L"[app] KeyboardUI_CreatePage failed");
-            MessageBoxW(hwnd, L"Failed to create main UI page.", L"Error", MB_ICONERROR);
-            return -1; // abort window creation
-        }
-
-        ResizeChildren(hwnd);
-        ShowWindow(g_hPageMain, SW_SHOW);
-
+        // Start the engine before building the keyboard page: provider
+        // discovery, UAP and ViGEm initialisation (owner thread) then overlap
+        // page creation instead of waiting for it. Everything the engine needs
+        // (timing, admission gate, raw input) is set up first, as before.
         ApplyTimingSettings(hwnd);
         Backend_SetRuntimeAdmission(false);
         g_backendReady.store(false, std::memory_order_release);
@@ -1513,6 +1553,7 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 #if defined(HALLJOY_TITAN68_TURBO_DIAGNOSTIC)
         Titan68TurboDiagnostic_NotifyRawInputReady(rawInputRegistered);
 #endif
+        halljoy::perf::Mark("engine.owner_start");
         if (!halljoy::engine_runtime::EngineRuntimeOwner_Start(BuildEngineRuntimeOperations(hwnd)))
         {
             DebugLog_Write(L"[engine-runtime] owner start failed err=%lu", GetLastError());
@@ -1524,6 +1565,21 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             DebugLog_Write(L"[engine-runtime] initial resume request rejected");
             return -1;
         }
+
+        // Create the main keyboard UI page directly (no top-level tabs anymore)
+        const auto createPageStart = halljoy::perf::Now();
+        g_hPageMain = KeyboardUI_CreatePage(hwnd, hInst);
+        halljoy::perf::Span("ui.create_page", 0, createPageStart);
+        if (!g_hPageMain)
+        {
+            DebugLog_Write(L"[app] KeyboardUI_CreatePage failed");
+            MessageBoxW(hwnd, L"Failed to create main UI page.", L"Error", MB_ICONERROR);
+            return -1; // abort window creation
+        }
+
+        ResizeChildren(hwnd);
+        ShowWindow(g_hPageMain, SW_SHOW);
+
 
         DebugLog_Write(L"[app] init complete");
 
@@ -2071,7 +2127,13 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
     }
 #endif
 
+    // Real UI run from here on (test modes returned above): the first D3D
+    // device and DirectWrite fonts load in parallel with settings, profiles
+    // and window creation instead of blocking the first UI frame.
+    halljoy::keyboard_canvas::WarmUpAsync();
+    const auto profileStart = halljoy::perf::Now();
     const auto startupProfile = GlobalProfiles_InitializeStartup();
+    halljoy::perf::Span("app.profiles_startup", 0, profileStart);
     if (startupProfile.firstRun) KeyboardLayout_ArmFirstRunSelection();
     g_profileReadyForAutosave = startupProfile.writable;
 #if defined(HALLJOY_ANALOG_SIMULATOR)
@@ -2149,6 +2211,7 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
     initial = halljoy::window_placement::FitToDesktop(initial);
     x = initial.x; y = initial.y; w = initial.w; h = initial.h;
 
+    halljoy::perf::Mark("app.create_window.begin");
     HWND hwnd = CreateWindowExW(
         0,
         wc.lpszClassName,
@@ -2162,6 +2225,7 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
         w, h,
         nullptr, nullptr, hInst, nullptr);
 
+    halljoy::perf::Mark("app.create_window.end");
     if (!hwnd) { DebugLog_Write(L"[app] CreateWindowEx failed err=%lu", GetLastError()); return 2; }
     g_hMainWnd = hwnd;
     halljoy::redsquare_probe::BindWindow(hwnd);
@@ -2193,8 +2257,15 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
     const bool startMinimized = g_cmdStartMinimized || nCmdShow == SW_SHOWMINIMIZED || nCmdShow == SW_MINIMIZE || nCmdShow == SW_SHOWMINNOACTIVE;
     const bool startMaximized = Settings_GetMainWindowMaximized() || nCmdShow == SW_SHOWMAXIMIZED;
     const UINT showCmd = startMinimized ? SW_SHOWMINIMIZED : startMaximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+    if (!startMinimized) {
+        halljoy::perf::Scope waitScope("app.wait_canvas_warmup");
+        // The engine's UI bridge (posted to this window) keeps being served,
+        // so engine readiness does not wait for the first visible frame.
+        halljoy::keyboard_canvas::WaitForWarmUp(500, hwnd, WM_APP_ENGINE_RUNTIME_UI_OPERATION);
+    }
     if (!halljoy::window_placement::Apply(hwnd, initial, showCmd, startMaximized)) ShowWindow(hwnd, showCmd);
     g_windowPlacementReady = true;
+    halljoy::perf::Mark("app.window_shown");
     DebugLog_Write(L"[app] ShowWindow done");
 #if !defined(HALLJOY_ANALOG_SIMULATOR)
     if (startupProfile.recovered || !startupProfile.writable) {
@@ -2220,6 +2291,7 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
     RefreshLowLevelHooks();
     DebugLog_Write(L"[app] RefreshLowLevelHooks done");
 
+    halljoy::perf::Mark("app.message_loop.enter");
     DebugLog_Write(L"[app] message loop enter");
     MSG msg{};
     uint32_t msgCount = 0;
@@ -2245,7 +2317,17 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
         // main-window button, slider, tab, combo or implicit profile shortcut.
         if (!halljoy::main_input::Allow(msg,hwnd)) continue;
         TranslateMessage(&msg);
+        const auto dispatchStart = halljoy::perf::Enabled() ? halljoy::perf::Now() : 0;
         DispatchMessageW(&msg);
+        if (dispatchStart && halljoy::perf::Now() - dispatchStart > 0) {
+            static LARGE_INTEGER frequency{};
+            if (!frequency.QuadPart) QueryPerformanceFrequency(&frequency);
+            if ((halljoy::perf::Now() - dispatchStart) * 1000 > frequency.QuadPart) { // > 1 ms
+                char cls[64]{};
+                GetClassNameA(msg.hwnd, cls, sizeof(cls));
+                halljoy::perf::Span("ui.dispatch", msg.message, dispatchStart, halljoy::perf::Intern(cls));
+            }
+        }
         DebugLog_SetCheckpoint(L"ui: message loop idle");
     }
 
@@ -2256,6 +2338,7 @@ int App_Run(HINSTANCE hInst, int nCmdShow)
         g_hMouseHook = nullptr;
     }
     g_hMainWnd = nullptr;
+    halljoy::perf::Mark("app.message_loop.exit");
     DebugLog_Write(L"[app] message loop exit code=%d", (int)msg.wParam);
 
     return (int)msg.wParam;

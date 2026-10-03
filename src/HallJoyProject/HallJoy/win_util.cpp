@@ -9,11 +9,12 @@
 
 UINT WinUtil_GetDpiForWindowCompat(HWND hwnd)
 {
-    HMODULE u32 = GetModuleHandleW(L"user32.dll");
+    // Resolved once: layout code calls this hundreds of times per frame.
+    static const HMODULE u32 = GetModuleHandleW(L"user32.dll");
     if (!u32)
         return 96;
     using Fn = UINT(WINAPI*)(HWND);
-    auto p = (Fn)GetProcAddress(u32, "GetDpiForWindow");
+    static const Fn p = (Fn)GetProcAddress(u32, "GetDpiForWindow");
     if (p) return p(hwnd);
 
     HDC dc = GetDC(hwnd);

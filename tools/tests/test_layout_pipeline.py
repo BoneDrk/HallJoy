@@ -152,7 +152,7 @@ class LayoutPipelineTests(unittest.TestCase):
 
 class FinalLayoutBatchTests(unittest.TestCase):
     def test_reviewed_reports_offline(self):
-        expected={'Razer':[61,62,65,104,61,104,84,108,108,88,105],'NuPhy':[61,83],
+        expected={'Razer':[61,62,65,104,61,104,84,108,108,88,105],'NuPhy':[61,83,82],
                   'Wooting':[61,62,61,62,84,85,88,87,88,108,109,108,109,61,62,63,64,3,84,85,86,87]}
         catalog=p.read_catalog()
         with patch('urllib.request.urlopen',side_effect=AssertionError('Unexpected network')):

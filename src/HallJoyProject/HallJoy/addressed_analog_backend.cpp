@@ -481,8 +481,11 @@ IpiProfileResult ReadIpiProfile(const HidPath& path, Transport& transport,
                                 HANDLE handle, DeviceProfile& profile)
 {
     // Other addressed devices retain their previous protocol proof path.
+    // 105C/106C: IPI boards; 10BF/10C0: Royal Kludge RK68 HE / RK68 HE UK on the
+    // same BY platform (exact UUID still required; RK68HE_HUBX_2026-10-02.md).
     if (path.attrs.VendorID != 0x372E ||
-        (path.attrs.ProductID != 0x105C && path.attrs.ProductID != 0x106C))
+        (path.attrs.ProductID != 0x105C && path.attrs.ProductID != 0x106C &&
+         path.attrs.ProductID != 0x10BF && path.attrs.ProductID != 0x10C0))
         return IpiProfileResult::Unidentified;
     std::uint64_t uuid = 0;
     for (unsigned attempt = 0; attempt < 2 && !uuid; ++attempt)

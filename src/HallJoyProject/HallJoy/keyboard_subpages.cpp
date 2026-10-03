@@ -4,6 +4,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include "test_thread_desktop.h"
 #include "input_shortcuts_runtime.h"
 #include "keyboard_scan_hid.h"
 #include "legal_notices.h"
@@ -3291,11 +3292,7 @@ static LRESULT OverlayCustom_PageProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 // No physical input, user clipboard, profile writes or running overlay server.
 bool KeyboardSubpages_TestOverlayTextEditing()
 {
-    HDESK previous = GetThreadDesktop(GetCurrentThreadId());
-    wchar_t name[64]{}; swprintf_s(name, L"HallJoyEditTest-%lu", GetCurrentProcessId());
-    HDESK desktop = CreateDesktopW(name, nullptr, nullptr, 0, GENERIC_ALL, nullptr);
-    if (!desktop) return false;
-    if (!SetThreadDesktop(desktop)) { CloseDesktop(desktop); return false; }
+    return halljoy::test_desktop::RunOnPrivateDesktop(L"HallJoyEditTest", []() -> bool {
     const auto oldPort = OverlayServer_GetConfiguredPort();
     const auto oldColor = OverlayServer_GetAccentColor();
     OverlayServer_SetConfiguredPort(8765);
@@ -3306,6 +3303,7 @@ bool KeyboardSubpages_TestOverlayTextEditing()
     HWND parent = CreateWindowW(L"STATIC", L"", WS_OVERLAPPEDWINDOW, 0, 0, 800, 800, nullptr, nullptr, wc.hInstance, nullptr);
     HWND page = CreateWindowW(wc.lpszClassName, L"", WS_CHILD | WS_VISIBLE, 0, 0, 780, 740, parent, nullptr, wc.hInstance, nullptr);
     bool ok = page != nullptr;
+    if (!page) throw std::runtime_error("overlay edit: page window creation failed " + std::to_string(GetLastError()));
     BYTE originalKeys[256]{}; GetKeyboardState(originalKeys);
     // SetThreadDesktop does not reset this thread's keyboard-state table.
     // Synthetic WM_CHAR must not inherit a held Ctrl/Shift from the caller.
@@ -3425,9 +3423,9 @@ bool KeyboardSubpages_TestOverlayTextEditing()
     if (parent) DestroyWindow(parent);
     UnregisterClassW(wc.lpszClassName, wc.hInstance);
     OverlayServer_SetConfiguredPort(oldPort); OverlayServer_SetAccentColor(oldColor);
-    ok &= SetThreadDesktop(previous) != FALSE;
-    CloseDesktop(desktop);
+    if (!ok) throw std::runtime_error("overlay edit: final state check failed");
     return ok;
+    });
 }
 #endif
 
@@ -5359,8 +5357,6 @@ LRESULT CALLBACK KeyboardSubpages_LayoutPageProc(HWND hWnd, UINT msg, WPARAM wPa
     {
         PAINTSTRUCT ps{};
         HDC memDC = nullptr;
-        HBITMAP bmp = nullptr;
-        HGDIOBJ oldBmp = nullptr;
         HDC target = BeginPaint(hWnd, &ps);
         RECT client{}; GetClientRect(hWnd, &client);
         const bool buffered = st && st->renderBuffer.Ensure(client.right, client.bottom);
@@ -6357,11 +6353,7 @@ bool KeyboardSubpages_TestLayoutEditor()
     if (AppPaths_Mode() != AppDataMode::SimulatorOverride) return false;
     if (!KeyboardLayout_TestFirstRunSelection()) return false;
     if (!BackendUI_TestTrackedUnion()) return false;
-    HDESK previous = GetThreadDesktop(GetCurrentThreadId());
-    wchar_t name[64]{}; swprintf_s(name, L"HallJoyLayoutTest-%lu", GetCurrentProcessId());
-    HDESK desktop = CreateDesktopW(name, nullptr, nullptr, 0, GENERIC_ALL, nullptr);
-    if (!desktop) return false;
-    if (!SetThreadDesktop(desktop)) { CloseDesktop(desktop); return false; }
+    return halljoy::test_desktop::RunOnPrivateDesktop(L"HallJoyLayoutTest", []() -> bool {
     HWND owner = CreateWindowW(L"STATIC", L"", WS_OVERLAPPEDWINDOW,
         0, 0, 900, 700, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     bool ok = owner != nullptr;
@@ -6884,9 +6876,8 @@ bool KeyboardSubpages_TestLayoutEditor()
         g_layoutTestDecision = 0;
         DestroyWindow(owner);
     }
-    ok &= SetThreadDesktop(previous) != FALSE;
-    CloseDesktop(desktop);
     return ok;
+    });
 }
 #endif
 
@@ -8884,11 +8875,7 @@ LRESULT CALLBACK KeyboardSubpages_GlobalSettingsPageProc(HWND hWnd, UINT msg, WP
 bool KeyboardSubpages_TestLayoutPicker()
 {
     if (AppPaths_Mode() != AppDataMode::SimulatorOverride) return false;
-    HDESK previous = GetThreadDesktop(GetCurrentThreadId());
-    wchar_t name[80]{}; swprintf_s(name, L"HallJoyPickerTest-%lu", GetCurrentProcessId());
-    HDESK desktop = CreateDesktopW(name, nullptr, nullptr, 0, GENERIC_ALL, nullptr);
-    if (!desktop) return false;
-    if (!SetThreadDesktop(desktop)) { CloseDesktop(desktop); return false; }
+    return halljoy::test_desktop::RunOnPrivateDesktop(L"HallJoyPickerTest", []() -> bool {
     const int saved = KeyboardLayout_GetCurrentPresetIndex();
     KeyboardLayout_SetPresetIndex(0);
     WNDCLASSW wc{}; wc.lpfnWndProc = KeyboardSubpages_GlobalSettingsPageProc;
@@ -9156,9 +9143,8 @@ bool KeyboardSubpages_TestLayoutPicker()
     if (owner) DestroyWindow(owner);
     UnregisterClassW(wc.lpszClassName, wc.hInstance);
     KeyboardLayout_SetPresetIndex(saved);
-    ok &= SetThreadDesktop(previous) != FALSE;
-    CloseDesktop(desktop);
     return ok;
+    });
 }
 #endif
 
@@ -10799,6 +10785,11 @@ struct ConfigPageState
 
     // vertical scroll state for Configuration page
     CustomPageSurface surface;
+    // Persistent paint back buffer: graph and live-status repaints arrive at
+    // display rate, so the client-sized bitmap is kept instead of recreated.
+    HBITMAP paintBuffer = nullptr;
+    int paintBufferW = 0;
+    int paintBufferH = 0;
     CustomPageScrollController scroll;
     int scrollY = 0;
     int contentHeight = 0;
@@ -12980,9 +12971,37 @@ LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wPa
         GetClientRect(hWnd, &rc);
 
         HDC memDC = CreateCompatibleDC(hdc);
-        HBITMAP bmp = CreateCompatibleBitmap(hdc, std::max(1, (int)(rc.right - rc.left)), std::max(1, (int)(rc.bottom - rc.top)));
+        const int bufferW = std::max(1, (int)(rc.right - rc.left));
+        const int bufferH = std::max(1, (int)(rc.bottom - rc.top));
+        HBITMAP bmp = nullptr;
+        if (st)
+        {
+            if (!st->paintBuffer || st->paintBufferW != bufferW || st->paintBufferH != bufferH)
+            {
+                if (st->paintBuffer) DeleteObject(st->paintBuffer);
+                // A top-down 32bpp DIB: GDI+ antialiasing then writes the
+                // pixels directly instead of reading back a device bitmap.
+                BITMAPINFO bi{};
+                bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+                bi.bmiHeader.biWidth = bufferW;
+                bi.bmiHeader.biHeight = -bufferH;
+                bi.bmiHeader.biPlanes = 1;
+                bi.bmiHeader.biBitCount = 32;
+                bi.bmiHeader.biCompression = BI_RGB;
+                void* bits = nullptr;
+                st->paintBuffer = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+                st->paintBufferW = st->paintBuffer ? bufferW : 0;
+                st->paintBufferH = st->paintBuffer ? bufferH : 0;
+            }
+            bmp = st->paintBuffer;
+        }
+        const bool ownBuffer = !bmp;
+        if (ownBuffer) bmp = CreateCompatibleBitmap(hdc, bufferW, bufferH);
         HGDIOBJ oldBmp = SelectObject(memDC, bmp);
-        FillRect(memDC, &rc, UiTheme::Brush_PanelBg());
+        // Only ps.rcPaint reaches the screen, so all composition is clipped to
+        // it; buffer pixels outside it are never copied out.
+        IntersectClipRect(memDC, ps.rcPaint.left, ps.rcPaint.top, ps.rcPaint.right, ps.rcPaint.bottom);
+        FillRect(memDC, &ps.rcPaint, UiTheme::Brush_PanelBg());
 
         if (st && st->customControls)
         {
@@ -13012,7 +13031,7 @@ LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wPa
             BitBlt(hdc, dirty.left, dirty.top, dirty.right - dirty.left, dirty.bottom - dirty.top,
                 memDC, dirty.left, dirty.top, SRCCOPY);
         SelectObject(memDC, oldBmp);
-        DeleteObject(bmp);
+        if (ownBuffer) DeleteObject(bmp);
         DeleteDC(memDC);
         EndPaint(hWnd, &ps);
         if (st && st->customControls && st->surface.scrollSampleStartMs != 0)
@@ -13525,6 +13544,7 @@ LRESULT CALLBACK KeyboardSubpages_ConfigPageProc(HWND hWnd, UINT msg, WPARAM wPa
                 SnappyToggle_Free(st->chkLastKeyPriority);
             }
             CustomPageSurface_Destroy(&st->surface);
+            if (st->paintBuffer) DeleteObject(st->paintBuffer);
             delete st;
             SetWindowLongPtrW(hWnd, GWLP_USERDATA, 0);
         }

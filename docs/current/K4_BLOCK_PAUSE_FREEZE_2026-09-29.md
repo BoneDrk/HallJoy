@@ -96,3 +96,16 @@ neutral.
   | Exit release | 16 ms; afterwards phase 0, native 0 |
 
 Backup before changes: `.local/backups/src-before-k4-r8-2026-09-29.tgz`.
+
+## Update 2026-10-01
+
+The `Backend_Shutdown` placement above was a defect: pause also runs that
+function, so every pause released the park immediately and disabled parking for
+the rest of the process. Since 2026-10-01:
+
+- release runs only at exit, after the engine owner stopped;
+- exit parks, then releases (no re-enumeration wait);
+- the stop path detects a session that the firmware already parked.
+
+Measured pause 170–290 ms, exit ~250 ms. See
+[PERF_PROFILE_2026-10-01.md](PERF_PROFILE_2026-10-01.md).

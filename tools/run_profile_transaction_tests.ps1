@@ -38,6 +38,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Production layout catalog audit failed.' }
 Write-Output 'LAYOUT_CATALOG=PASS all aliases round-trip, no cross-brand merges, no exact same-brand duplicates'
 & python (Join-Path $root 'tools/audit_yellow_layouts.py') (Join-Path $testRoot 'layout-catalog.tsv') --output (Join-Path $testRoot 'yellow-layout-coverage.json')
 if ($LASTEXITCODE -ne 0) { throw 'Experimental-model layout coverage audit failed.' }
+# A Supported keyboard must ship a layout (docs/development/supported_layouts.json).
+& python (Join-Path $root 'tools/check_supported_layouts.py') (Join-Path $testRoot 'layout-catalog.tsv')
+if ($LASTEXITCODE -ne 0) { throw 'A Supported keyboard has no built-in layout.' }
 
 # Recovery must start successfully and preserve original files in a verified backup.
 $badRoot = Join-Path $testRoot 'rejected-startup'

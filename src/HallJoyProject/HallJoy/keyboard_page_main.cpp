@@ -1,3 +1,4 @@
+#include "perf_trace.h"
 #include "ui_activity.h"
 // keyboard_page_main.cpp
 #ifndef _WIN32_IE
@@ -7,6 +8,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include "test_thread_desktop.h"
 #include "support_log.h"
 #include "mchose_mix87_backend.h"
 #include "engine_runtime_owner.h"
@@ -16,6 +18,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -28,6 +31,7 @@
 #include "key_shape_win.h"
 #include "analog_key_codes.h"
 #include "keyboard_render.h"
+#include "keyboard_canvas.h"
 #include "backend.h"
 #include "bindings.h"
 #include "profile_ini.h"
@@ -79,6 +83,9 @@ static const wchar_t* FrozenSupportTitle() {
     case RongYuan: return L"MonsGeek / EPOMAKER: hardware testing incomplete";
     case TartarusPro: return L"Tartarus Pro: hardware testing incomplete";
     case SteelSeriesApex: return L"SteelSeries Apex Pro: hardware testing incomplete";
+    case AtkHex80Family: return L"ATK: hardware testing incomplete";
+    case MchoseFamily: return L"MCHOSE: hardware testing incomplete";
+    case RoyalKludgeHe: return L"Royal Kludge RK68 HE: hardware testing incomplete";
     case Neo65: return L"Neo65 SONIC HE+: hardware testing incomplete";
     case SparkLinkV2: return L"Keyboard: hardware testing incomplete";
     case RongYuanStream: return L"Keyboard: hardware testing incomplete";
@@ -139,6 +146,32 @@ static constexpr uint16_t kMouseSlotHids[] = {
 };
 static std::vector<HWND> g_mouseButtons;
 static bool g_mouseSlotsVisible = false;
+
+// Direct2D canvas that renders the keyboard and the mouse panel in one pass.
+// Key and mouse buttons below it only take input; their WM_PAINT asks for a
+// canvas frame. Without a canvas (Direct2D unavailable) they owner-draw.
+static HWND g_keyboardCanvas = nullptr;
+static bool g_canvasOrderDirty = true;
+// Per-key data the canvas needs every frame. It changes only with layout,
+// labels, enable/visibility state, so it is cached instead of five window
+// queries per key per frame; key-window events mark it dirty.
+static bool g_canvasKeysDirty = true;
+static void MarkCanvasKeysDirty() { g_canvasKeysDirty = true; }
+
+static void RequestKeyboardCanvasFrame()
+{
+    if (g_keyboardCanvas) halljoy::keyboard_canvas::RequestFrame(g_keyboardCanvas);
+}
+
+extern "C" void KeyboardPageMain_RequestCanvasFrame()
+{
+    RequestKeyboardCanvasFrame();
+}
+
+static bool KeyDrawnByCanvas(HWND button)
+{
+    return g_keyboardCanvas && GetParent(button) == GetParent(g_keyboardCanvas);
+}
 
 static bool MouseSlotsShouldBeVisible()
 {
@@ -560,8 +593,34 @@ static void ComputeMousePanelRect(HWND hWnd, RECT& outRc)
         outRc.left = S(hWnd, 8);
 }
 
+// Covers the keyboard and the mouse panel. The input windows sit directly
+// below it; every other sibling (tabs, banner, pause card) stays above.
+static void LayoutKeyboardCanvas(HWND hWnd)
+{
+    if (!g_keyboardCanvas) return;
+    RECT client{};
+    GetClientRect(hWnd, &client);
+    KeyboardViewMetrics m{};
+    ComputeKeyboardViewMetrics(hWnd, m);
+    LONG bottom = m.offsetY + m.scaledH;
+    if (g_mouseSlotsVisible && !g_mouseButtons.empty()) {
+        RECT panel{};
+        ComputeMousePanelRect(hWnd, panel);
+        bottom = std::max(bottom, panel.bottom);
+    }
+    bottom = std::min<LONG>(client.bottom, bottom + S(hWnd, 4));
+    halljoy::keyboard_canvas::Place(g_keyboardCanvas, RECT{ 0, 0, client.right, bottom });
+    if (g_canvasOrderDirty) {
+        g_canvasOrderDirty = false;
+        halljoy::keyboard_canvas::SendToBottom(g_keyboardCanvas);
+        for (HWND b : g_keyButtons) halljoy::keyboard_canvas::KeepAbove(g_keyboardCanvas, b);
+        for (HWND b : g_mouseButtons) halljoy::keyboard_canvas::KeepAbove(g_keyboardCanvas, b);
+    }
+}
+
 static void DestroyKeyboardButtons()
 {
+    MarkCanvasKeysDirty();
     for (HWND b : g_keyButtons)
     {
         if (b && IsWindow(b))
@@ -574,6 +633,7 @@ static void DestroyKeyboardButtons()
 
 static void DestroyMouseButtons()
 {
+    MarkCanvasKeysDirty();
     for (HWND b : g_mouseButtons)
     {
         if (b && IsWindow(b))
@@ -619,6 +679,8 @@ static void EnsureMouseButtons(HWND hWnd)
             g_btnByHid[hid] = b;
     }
     g_mouseSlotsVisible = true;
+    g_canvasOrderDirty = true;
+    MarkCanvasKeysDirty();
 }
 
 static void LayoutMouseButtons(HWND hWnd)
@@ -870,6 +932,8 @@ static void LayoutKeyboardButtons(HWND hWnd)
 {
     const KeyDef* keys = KeyboardLayout_Data();
     int n = KeyboardLayout_Count();
+    MarkCanvasKeysDirty();
+    LayoutKeyboardCanvas(hWnd);
     if (!keys || n <= 0 || g_keyButtons.empty()) return;
 
     KeyboardViewMetrics m{};
@@ -951,6 +1015,7 @@ static void RebuildKeyboardButtons(HWND hWnd)
         SetWindowLongPtrW(b, GWLP_USERDATA, (LONG_PTR)k.hid);
         SetWindowSubclass(b, KeyBtnSubclassProc, 1, (DWORD_PTR)k.hid);
         g_keyButtons.push_back(b);
+        g_canvasOrderDirty = true;
 
         if (halljoy::keycode::IsSupported(k.hid))
         {
@@ -999,6 +1064,7 @@ static void SetSelectedHid(uint16_t hid)
         InvalidateRect(bOld, nullptr, FALSE);
     if (HWND bNew = GetBtnForHid(g_selectedHid))
         InvalidateRect(bNew, nullptr, FALSE);
+    RequestKeyboardCanvasFrame();
 }
 
 static void ShowSubPage(int idx)
@@ -1086,6 +1152,20 @@ static void ResizeSubUi(HWND hWnd)
 static constexpr UINT_PTR KEYDRAG_TIMER_ID = 9101;
 static constexpr UINT_PTR KEYSWAP_TIMER_ID = 9102;
 static constexpr UINT_PTR KEYDELETE_TIMER_ID = 9103;
+static constexpr UINT_PTR PERF_CURVE_SWEEP_TIMER_ID = 9190;
+
+// Perf profiling only (--halljoy-perf-log): sweep the global curve's start
+// point like a user dragging it on the Configuration tab (every key animates).
+void KeySettingsPanel_PerfCurveBegin();
+void KeySettingsPanel_PerfCurveStep(float y);
+void KeySettingsPanel_PerfCurveEnd();
+static ULONGLONG g_perfSweepStart = 0;
+static DWORD g_perfSweepDurationMs = 0;
+extern "C" UINT KeyboardPageMain_PerfCurveSweepMessage()
+{
+    static const UINT message = RegisterWindowMessageW(L"HallJoy.Perf.CurveSweep.v1");
+    return message;
+}
 
 // -----------------------------------------------------------------------------
 // Helpers for action type
@@ -2342,6 +2422,19 @@ static LRESULT CALLBACK KeyBtnSubclassProc(HWND hBtn, UINT msg, WPARAM wParam, L
     // That destroys neighbour pixels before the compound renderer can clip.
     // Retain native input/capture semantics, but never invoke its paint path.
     if (msg == WM_ERASEBKGND) return 1;
+    if (KeyDrawnByCanvas(hBtn)) {
+        if (msg == WM_PAINT) {
+            ValidateRect(hBtn, nullptr);
+            RequestKeyboardCanvasFrame();
+            return 0;
+        }
+        if (msg == WM_WINDOWPOSCHANGED || msg == WM_SHOWWINDOW || msg == WM_ENABLE || msg == WM_SETTEXT ||
+            msg == BM_SETSTATE)
+        {
+            if (msg != BM_SETSTATE) MarkCanvasKeysDirty();
+            RequestKeyboardCanvasFrame();
+        }
+    }
     if (msg == WM_PAINT || msg == WM_PRINTCLIENT) {
         PAINTSTRUCT ps{};
         HDC dc = msg == WM_PAINT ? BeginPaint(hBtn,&ps) : reinterpret_cast<HDC>(wParam);
@@ -2584,8 +2677,149 @@ static void DrawDropHoverOutline(const DRAWITEMSTRUCT* dis)
     SelectObject(hdc, oldPen);
 }
 
+struct CanvasKey
+{
+    HWND button = nullptr;
+    RECT rc{};          // page coordinates
+    POINT notch{};
+    UINT dpi = 96;
+    uint16_t hid = 0;
+    bool enabled = true;
+    wchar_t label[64]{};
+};
+static std::vector<CanvasKey> g_canvasKeys;
+// Live animation: while displayed key values keep changing, the canvas draws at
+// display rate and samples fresh values every frame instead of waiting for the
+// UI timer (~15.6 ms Windows timer granularity made a sweep of every key judder).
+static std::array<uint16_t, halljoy::keycode::kCount> g_canvasDrawnMilli = [] {
+    std::array<uint16_t, halljoy::keycode::kCount> values{};
+    values.fill(0xFFFF);
+    return values;
+}();
+static ULONGLONG g_canvasLastValueChange = 0;
+static constexpr ULONGLONG kCanvasLiveHoldMs = 150;
+
+static void RefreshCanvasKeys(HWND page)
+{
+    if (!g_canvasKeysDirty) return;
+    g_canvasKeysDirty = false;
+    g_canvasKeys.clear();
+    g_canvasKeys.reserve(g_keyButtons.size() + g_mouseButtons.size());
+    const auto add = [&](HWND button) {
+        // Own WS_VISIBLE only: the canvas is not drawn while the page is hidden.
+        if (!button || !IsWindow(button) || !(GetWindowLongPtrW(button, GWL_STYLE) & WS_VISIBLE)) return;
+        CanvasKey key{};
+        key.button = button;
+        GetWindowRect(button, &key.rc);
+        MapWindowPoints(nullptr, page, reinterpret_cast<POINT*>(&key.rc), 2);
+        key.notch = KeyShape_Get(button);
+        key.dpi = WinUtil_GetDpiForWindowCompat(button);
+        key.hid = (uint16_t)GetWindowLongPtrW(button, GWLP_USERDATA);
+        key.enabled = IsWindowEnabled(button) != FALSE;
+        GetWindowTextW(button, key.label, 63);
+        g_canvasKeys.push_back(key);
+    };
+    for (HWND b : g_keyButtons) add(b);
+    for (HWND b : g_mouseButtons) add(b);
+}
+
+// Returns true when the key's displayed analog value changed since it was last drawn.
+static bool DrawCanvasButton(ID2D1RenderTarget* rt, const CanvasKey& cached)
+{
+    const uint16_t hid = cached.hid;
+    const uint16_t milli = halljoy::keycode::IsSupported(hid) ? BackendUI_GetAnalogMilli(hid) : 0;
+    bool valueChanged = false;
+    if (halljoy::keycode::IsSupported(hid) && g_canvasDrawnMilli[hid] != milli)
+    {
+        valueChanged = g_canvasDrawnMilli[hid] != 0xFFFF;
+        g_canvasDrawnMilli[hid] = milli;
+    }
+    bool suppressDraggedMiniIcon = false;
+    if (g_kdrag.dragging && hid != 0 && hid == g_kdrag.srcHid)
+    {
+        bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        suppressDraggedMiniIcon = !(ctrl && IsButtonAction(g_kdrag.action));
+    }
+    KeyboardRender_ClearSuppressedBinding();
+    if (suppressDraggedMiniIcon)
+        KeyboardRender_SetSuppressedBinding(g_kdrag.srcHid, g_kdrag.srcPadIndex, g_kdrag.action);
+
+    KeyboardRenderKey key{};
+    key.dpiWindow = cached.button;
+    key.dpi = cached.dpi;
+    key.rc = cached.rc;
+    key.notch = cached.notch;
+    key.hid = hid;
+    key.actualHid = hid;
+    key.label = cached.label;
+    // Selection highlight only in Configuration tab
+    key.selected = g_activeSubTab == 1 && hid != 0 && hid == g_selectedHid;
+    key.disabled = !cached.enabled;
+    key.dropHover = hid != 0 && hid == g_dragHoverHid;
+    key.v01 = hid != 0 ? static_cast<float>(milli) / 1000.0f : 0.0f; // same value as KeyboardRender_ReadAnalog01
+    KeyboardRender_DrawKeyD2D(rt, key);
+    if (suppressDraggedMiniIcon) KeyboardRender_ClearSuppressedBinding();
+    return valueChanged;
+}
+
+// Whole keyboard view in page coordinates: background, mouse panel, keys.
+static bool PaintKeyboardCanvas(HWND canvas, ID2D1RenderTarget* rt, void*)
+{
+    HWND page = GetParent(canvas);
+    RECT bounds{};
+    GetWindowRect(canvas, &bounds);
+    MapWindowPoints(nullptr, page, reinterpret_cast<POINT*>(&bounds), 2);
+    rt->SetTransform(D2D1::Matrix3x2F::Translation((float)-bounds.left, (float)-bounds.top));
+    const COLORREF bg = UiTheme::Color_PanelBg();
+    rt->Clear(D2D1::ColorF(GetRValue(bg) / 255.0f, GetGValue(bg) / 255.0f, GetBValue(bg) / 255.0f));
+
+    if (g_mouseSlotsVisible && !g_mouseButtons.empty())
+    {
+        RECT mr{};
+        ComputeMousePanelRect(page, mr);
+        ID2D1SolidColorBrush* brush = nullptr;
+        const COLORREF border = UiTheme::Color_Border();
+        if (SUCCEEDED(rt->CreateSolidColorBrush(D2D1::ColorF(GetRValue(border) / 255.0f,
+                GetGValue(border) / 255.0f, GetBValue(border) / 255.0f), &brush))) {
+            const float radius = S(page, 26) * 0.5f;
+            rt->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(mr.left + 0.5f, mr.top + 0.5f,
+                mr.right - 0.5f, mr.bottom - 0.5f), radius, radius), brush, 1.0f);
+            brush->Release();
+        }
+        RECT tr = mr;
+        tr.top += S(page, 6);
+        tr.bottom = tr.top + S(page, 18);
+        KeyboardRender_DrawTextD2D(rt, L"Mouse Bindings", tr, UiTheme::Color_TextMuted(), (float)S(page, 12));
+    }
+
+    {
+        halljoy::perf::Scope keysScope("canvas.keys");
+        RefreshCanvasKeys(page);
+        bool valuesChanged = false;
+        for (const auto& key : g_canvasKeys) valuesChanged |= DrawCanvasButton(rt, key);
+        if (valuesChanged) g_canvasLastValueChange = GetTickCount64();
+    }
+    rt->SetTransform(D2D1::Matrix3x2F::Identity());
+    // Keep drawing at display rate while values move (and shortly after, so a
+    // pause between two mouse moves does not drop back to timer pacing).
+    const bool liveValues = g_canvasLastValueChange != 0 &&
+        GetTickCount64() - g_canvasLastValueChange < kCanvasLiveHoldMs;
+    return KeyboardRender_AnyAnimationActive() || liveValues;
+}
+
 static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (halljoy::perf::Enabled() && msg == KeyboardPageMain_PerfCurveSweepMessage())
+    {
+        if (g_hSubTab) TabCtrl_SetCurSel(g_hSubTab, 1);
+        ShowSubPage(1);
+        KeySettingsPanel_PerfCurveBegin();
+        g_perfSweepStart = GetTickCount64();
+        g_perfSweepDurationMs = wParam ? static_cast<DWORD>(wParam) : 5000u;
+        halljoy::perf::Mark("perf.curve_sweep.begin");
+        SetTimer(hWnd, PERF_CURVE_SWEEP_TIMER_ID, 8, nullptr);
+        return 0;
+    }
     if (msg == TabDark::MsgSelChanged())
     {
         HWND hTab = (HWND)wParam;
@@ -2612,7 +2846,10 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         RECT rc{};
         GetClientRect(hWnd, &rc);
         FillRect(hdc, &rc, UiTheme::Brush_PanelBg());
-        if (g_mouseSlotsVisible && !g_mouseButtons.empty())
+        // The canvas covers this area; a page repaint (theme, panel change)
+        // must also refresh it.
+        RequestKeyboardCanvasFrame();
+        if (!g_keyboardCanvas && g_mouseSlotsVisible && !g_mouseButtons.empty())
         {
             RECT mr{};
             ComputeMousePanelRect(hWnd, mr);
@@ -2641,6 +2878,13 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
         Profile_LoadIni(AppPaths_ActiveBindingsIni().c_str());
 
+        halljoy::perf::Mark("ui.page.canvas.begin");
+        // Perf A/B only: --halljoy-perf-no-canvas keeps the owner-draw path.
+        const bool perfNoCanvas = halljoy::perf::Enabled() && wcsstr(GetCommandLineW(), L"--halljoy-perf-no-canvas");
+        g_keyboardCanvas = perfNoCanvas ? nullptr : halljoy::keyboard_canvas::Create(hWnd, PaintKeyboardCanvas, nullptr);
+        halljoy::perf::Mark("ui.page.keys.begin");
+        g_canvasOrderDirty = true;
+        DebugLog_Write(L"[ui.keyboard] canvas=%ls", g_keyboardCanvas ? L"direct2d" : L"owner-draw fallback");
         RebuildKeyboardButtons(hWnd);
 
         static bool supportBannerRegistered = false;
@@ -2658,6 +2902,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         g_hSupportBanner = CreateWindowW(L"HallJoyKeyboardSupportBanner", L"",
             WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 100, 100, hWnd, nullptr, hInst, nullptr);
 
+        halljoy::perf::Mark("ui.page.subtabs.begin");
         g_hSubTab = CreateWindowW(WC_TABCONTROLW, L"",
             WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
             0, 0, 100, 100,
@@ -2697,6 +2942,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             TabCtrl_InsertItem(g_hSubTab, kProfilesPageEnabled ? 6 : 5, &tie);
         }
 
+        halljoy::perf::Mark("ui.page.remap.begin");
         g_hPageRemap = RemapPanel_Create(g_hSubTab, hInst, hWnd);
 
         static bool cfgReg = false;
@@ -2711,6 +2957,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             RegisterClassW(&wc);
             cfgReg = true;
         }
+        halljoy::perf::Mark("ui.page.config.begin");
         g_hPageConfig = CreateWindowW(L"KeyboardSubConfigPage", L"",
             WS_CHILD | WS_CLIPCHILDREN, 0, 0, 100, 100, g_hSubTab, nullptr, hInst, nullptr);
 
@@ -2726,6 +2973,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             RegisterClassW(&wc);
             tstReg = true;
         }
+        halljoy::perf::Mark("ui.page.tester.begin");
         g_hPageTester = CreateWindowW(L"KeyboardSubTesterPage", L"",
             WS_CHILD | WS_CLIPCHILDREN, 0, 0, 100, 100, g_hSubTab, nullptr, hInst, nullptr);
 
@@ -2741,6 +2989,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             RegisterClassW(&wc);
             glbReg = true;
         }
+        halljoy::perf::Mark("ui.page.global.begin");
         g_hPageGlobal = CreateWindowW(L"KeyboardSubGlobalSettingsPage", L"",
             WS_CHILD | WS_CLIPCHILDREN, 0, 0, 100, 100, g_hSubTab, nullptr, hInst, nullptr);
 
@@ -2757,6 +3006,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             RegisterClassW(&wc);
             overlayReg = true;
         }
+        halljoy::perf::Mark("ui.page.overlay.begin");
         g_hPageInputOverlay = CreateWindowW(L"KeyboardSubInputOverlayPage", L"",
             WS_CHILD | WS_CLIPCHILDREN, 0, 0, 100, 100, g_hSubTab, nullptr, hInst, nullptr);
 
@@ -2778,9 +3028,11 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 WS_CHILD | WS_CLIPCHILDREN, 0, 0, 100, 100, g_hSubTab, nullptr, hInst, nullptr);
         }
 
+        halljoy::perf::Mark("ui.page.layout.begin");
         ResizeSubUi(hWnd);
         TabCtrl_SetCurSel(g_hSubTab, 0);
         ShowSubPage(0);
+        halljoy::perf::Mark("ui.page.layout.end");
 
         for (uint16_t hid2 : g_hids)
             InvalidateRect(g_btnByHid[hid2], nullptr, FALSE);
@@ -2836,6 +3088,25 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         return 0;
 
     case WM_TIMER:
+        if (wParam == PERF_CURVE_SWEEP_TIMER_ID)
+        {
+            const ULONGLONG elapsed = GetTickCount64() - g_perfSweepStart;
+            if (elapsed >= g_perfSweepDurationMs)
+            {
+                KillTimer(hWnd, PERF_CURVE_SWEEP_TIMER_ID);
+                KeySettingsPanel_PerfCurveEnd();
+                halljoy::perf::Mark("perf.curve_sweep.end");
+            }
+            else
+            {
+                const float phase = static_cast<float>(elapsed % 1200) / 1200.0f;
+                KeySettingsPanel_PerfCurveStep(0.5f + 0.45f * std::sin(phase * 6.2831853f));
+            }
+            RECT graph{};
+            if (g_hPageConfig && KeySettingsPanel_GetGraphRect(g_hPageConfig, &graph))
+                InvalidateRect(g_hPageConfig, &graph, FALSE);
+            return 0;
+        }
         if (!HallJoyUiVisible(hWnd)) return 0;
         if (wParam == KEYDRAG_TIMER_ID)
         {
@@ -3090,6 +3361,7 @@ static LRESULT CALLBACK PageMainProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
     }
 
     case WM_DESTROY:
+        g_keyboardCanvas = nullptr; // destroyed with the page as its child
         g_hSupportBanner = nullptr;
         g_hPausePreview = nullptr; // The child destroys its timer/fonts with the parent.
         KeyDrag_Stop();
@@ -3148,13 +3420,7 @@ extern "C" HWND KeyboardPageMain_CreatePage(HWND hParent, HINSTANCE hInst)
 
 #if defined(HALLJOY_ANALOG_SIMULATOR)
 bool ProfilesPage_Test() {
-    bool passed=false;
-    std::thread worker([&] {
-        const auto previous=GetThreadDesktop(GetCurrentThreadId());
-        const auto name=L"HallJoyProfilesTest-"+std::to_wstring(GetCurrentProcessId());
-        HDESK desktop=CreateDesktopW(name.c_str(),nullptr,nullptr,0,GENERIC_ALL,nullptr);
-        if(!desktop)return;
-        if(!SetThreadDesktop(desktop)){CloseDesktop(desktop);return;}
+    return halljoy::test_desktop::RunOnPrivateDesktop(L"HallJoyProfilesTest", []() -> bool {
         using namespace halljoy::profiles;
         using namespace halljoy::profiles::ui;
         const auto active=GlobalProfiles_GetActiveName();
@@ -3185,7 +3451,7 @@ bool ProfilesPage_Test() {
             ok &= page==nullptr && hook==nullptr;
         }
         DestroyWindow(root);
-        ok &= SetThreadDesktop(previous)!=FALSE;CloseDesktop(desktop);passed=ok;
-    });worker.join();return passed;
+        return ok;
+    });
 }
 #endif

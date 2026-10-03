@@ -1,45 +1,15 @@
 #pragma once
 #include "bounded_ini.h"
-#include <map>
 
 namespace halljoy::layout_storage {
 // Win32 retains legacy ANSI/UTF-16 parsing and case-insensitive INI semantics.
 // One section read replaces hundreds of per-key profile API calls. The caller
 // holds ini::ReadFile throughout acquisition to prevent a mixed file generation.
 class Section {
-    struct Less {
-        bool operator()(const std::wstring& a, const std::wstring& b) const {
-            return _wcsicmp(a.c_str(), b.c_str()) < 0;
-        }
-    };
-    std::map<std::wstring, std::wstring, Less> values_;
+    ini::SectionValues values_;
 public:
     bool Load(const wchar_t* path, const wchar_t* section) {
-        values_.clear();
-        constexpr size_t maximum = static_cast<size_t>(ini::kMaxFileBytes) + 2;
-        std::vector<wchar_t> buffer(4096);
-        for (;;) {
-            const DWORD size = GetPrivateProfileSectionW(section, buffer.data(),
-                static_cast<DWORD>(buffer.size()), path);
-            if (size < buffer.size() - 2) break;
-            if (buffer.size() == maximum) return false;
-            buffer.resize((std::min)(buffer.size() * 2, maximum));
-        }
-        for (const wchar_t* entry = buffer.data(); *entry; entry += wcslen(entry) + 1) {
-            const wchar_t* equals = wcschr(entry, L'=');
-            if (!equals) continue;
-            std::wstring key(entry, equals);
-            while (!key.empty() && (key.back() == L' ' || key.back() == L'\t')) key.pop_back();
-            std::wstring value(equals + 1);
-            const auto first = value.find_first_not_of(L" \t");
-            value = first == std::wstring::npos ? L"" : value.substr(first);
-            const auto last = value.find_last_not_of(L" \t");
-            if (last != std::wstring::npos) value.resize(last + 1);
-            if (value.size() >= 2 && (value.front() == L'\"' || value.front() == L'\'') && value.back() == value.front())
-                value = value.substr(1, value.size() - 2);
-            values_.emplace(std::move(key), std::move(value)); // First duplicate wins, like Win32.
-        }
-        return true;
+        return ini::LoadSectionValues(path, section, values_);
     }
     const std::wstring& Get(const wchar_t* key) const {
         static const std::wstring empty;

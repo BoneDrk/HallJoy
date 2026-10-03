@@ -17,6 +17,7 @@
 #include "support_log.h"
 #include "hid_io_operation.h"
 #include "physical_analog_state.h"
+#include "generated/layout_pipeline/identities.h"
 
 
 namespace {
@@ -247,6 +248,9 @@ void Telemetry(NativeAnalogBackendTelemetry* out) {
  out->successfulUpdates=g_ok.load();out->failedUpdates=g_bad.load();
  out->lastUpdateAgeMs=last && now>=last?static_cast<std::uint32_t>(std::min<std::uint64_t>(0xffffffff,now-last)):0;
  wcscpy_s(out->deviceName,tp::ModelName(out->productId));
+ // Only the original full-size Apex Pro has a verified layout (official GG geometry).
+ if(Connected() && out->productId==tp::kPid)
+  out->verifiedLayoutToken=halljoy::layout_identity::Token("steelseries-apex","APEXPRO-1038-1610");
  wcscpy_s(out->status,Connected()?L"Apex Pro: analog sensors connected":
                               L"Apex Pro: waiting for firmware 4.16.8 and calibrated sensor data");
 }

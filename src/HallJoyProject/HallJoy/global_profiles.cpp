@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "perf_trace.h"
 #include "global_profiles.h"
 #include "app_paths.h"
 #include "file_name_policy.h"
@@ -385,14 +386,19 @@ ProfileStartupResult GlobalProfiles_InitializeStartup() {
 
     // Validate both halves before applying anything. A rejected profile must
     // not leave partially applied settings behind for the recovery/default path.
+    halljoy::perf::Mark("profiles.check_files");
     const bool baseValid = SettingsIni_CanLoad(settings.c_str());
+    halljoy::perf::Mark("profiles.validated");
     if (baseValid) {
         GlobalProfiles_InitFromSettingsIni(settings.c_str());
+        halljoy::perf::Mark("profiles.catalog_ready");
         std::function<void()> apply;
-        if (GlobalProfiles_Prepare(GlobalProfiles_GetActiveName(), apply) &&
-            SettingsIni_Load(settings.c_str())) {
+        const bool prepared = GlobalProfiles_Prepare(GlobalProfiles_GetActiveName(), apply);
+        halljoy::perf::Mark("profiles.prepared");
+        if (prepared && SettingsIni_Load(settings.c_str())) {
+            halljoy::perf::Mark("profiles.settings_loaded");
             halljoy::profile_runtime::CommitLease commit;
-            if (commit) { apply(); return result; }
+            if (commit) { apply(); halljoy::perf::Mark("profiles.applied"); return result; }
         }
     }
 

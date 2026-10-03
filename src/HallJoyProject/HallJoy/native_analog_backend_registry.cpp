@@ -1,3 +1,4 @@
+#include "perf_trace.h"
 #include "native_analog_backend_registry.h"
 
 #include "native_analog_routing.h"
@@ -104,7 +105,9 @@ bool NativeAnalogBackends_PrepareRouting()
 #if defined(HALLJOY_AJAZZ_DIAGNOSTIC)
         StabilityTrace_Write(L"INFO",L"ajazz-startup",L"provider.probe.begin",L"provider=%hs",d.id);
 #endif
+        const auto prepareStart = halljoy::perf::Now();
         const bool found=d.prepareRouting();
+        halljoy::perf::Span("native.prepare_routing", i, prepareStart, d.id);
 #if defined(HALLJOY_AJAZZ_DIAGNOSTIC)
         StabilityTrace_Write(L"INFO",L"ajazz-startup",L"provider.probe.end",L"provider=%hs found=%u",d.id,found?1u:0u);
 #endif
@@ -132,7 +135,9 @@ NativeAnalogPhaseStartResult NativeAnalogBackends_StartPhase(NativeAnalogStartPh
         }
         if (decision.invokeBackend)
         {
+            const auto startStart = halljoy::perf::Now();
             const bool started = d.start();
+            halljoy::perf::Span("native.start", i, startStart, d.id);
             const std::lock_guard lock(g_lifecycleMutex);
             decision.result = g_lifecycle.CompleteStart(
                 i, CurrentOwnerToken(), decision.result.generation, started);
@@ -191,7 +196,9 @@ bool NativeAnalogBackends_StopPhase(NativeAnalogStartPhase phase)
         }
         if (decision.invokeBackend)
         {
+            const auto stopStart = halljoy::perf::Now();
             const auto backendResult = d.stop(decision.result.generation);
+            halljoy::perf::Span("native.stop", i, stopStart, d.id);
             const std::lock_guard lock(g_lifecycleMutex);
             decision.result = g_lifecycle.CompleteStop(
                 i, CurrentOwnerToken(), decision.result.generation, backendResult);
@@ -224,7 +231,9 @@ bool NativeAnalogBackends_StopAll()
         }
         if (decision.invokeBackend)
         {
+            const auto stopStart = halljoy::perf::Now();
             const auto backendResult = kCatalog[i]->stop(decision.result.generation);
+            halljoy::perf::Span("native.stop", i, stopStart, kCatalog[i]->id);
             const std::lock_guard lock(g_lifecycleMutex);
             decision.result = g_lifecycle.CompleteStop(
                 i, CurrentOwnerToken(), decision.result.generation, backendResult);

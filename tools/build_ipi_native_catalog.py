@@ -5,6 +5,13 @@ import prepare_ipi_layouts
 ROOT=Path(__file__).resolve().parents[1]
 AUDIT=ROOT/'docs/research/ipi-firmware-20260914/firmware-audit.json'
 AUDIT_SHA='05101e1b6938b722a1cba8b4822e37e26ee2a4c8dcbbf5444a584183d436aaea'
+# Configurator evidence (no published firmware for these UUIDs): physical-ID
+# lists from the official web driver, each equal to the firmware ID table of
+# published BY 68-key images (docs/current/RK68HE_HUBX_2026-10-02.md). Factory
+# codes must agree with factoryHids; kept separate from firmware-locked models.
+CONFIGURATOR=ROOT/'docs/research/supported-gap-layout-sources/rk-rk68he-keys.json'
+CONFIGURATOR_SHA='e69f09c7c14f95ce3187f8e82434e9bcb97a3ff82c05e002f4486c197d376045'
+CONFIGURATOR_MODELS=(('110000000002','RK68 HE','ANSI'),('11000000003C','RK68 HE (UK)','UK'))
 def generate():
  assert hashlib.sha256(AUDIT.read_bytes()).hexdigest()==AUDIT_SHA
  rows=json.loads(AUDIT.read_bytes());reports=prepare_ipi_layouts.prepare()
@@ -33,6 +40,16 @@ def generate():
    symbol='ids_'+product
    lines.append('inline constexpr std::uint8_t '+symbol+'[] = {'+', '.join(str(i) for i in ids)+'};')
    models.append('    {0x'+product+'ull, L"'+report['model']+'", "'+product+'", '+symbol+', '+str(len(ids))+'},')
+ assert hashlib.sha256(CONFIGURATOR.read_bytes()).hexdigest()==CONFIGURATOR_SHA
+ layouts=json.loads(CONFIGURATOR.read_bytes())['layouts']
+ lines.append('// Configurator evidence (official RK web driver); firmware not published.')
+ for product,name,layout in CONFIGURATOR_MODELS:
+  keys=layouts[layout];ids=sorted(k['id'] for k in keys)
+  assert len(ids)==len(set(ids)) and all(0<i<256 for i in ids)
+  for k in keys:assert hid(int(k['value'],16))==factory[k['id']],(product,k)
+  symbol='ids_'+product
+  lines.append('inline constexpr std::uint8_t '+symbol+'[] = {'+', '.join(str(i) for i in ids)+'};')
+  models.append('    {0x'+product+'ull, L"'+name+'", "'+product+'", '+symbol+', '+str(len(ids))+'},')
  lines+=['inline constexpr Model models[] = {']+models+['};',
  'inline constexpr const Model* FindModel(std::uint64_t uuid) noexcept {',
  '    for (const auto& model : models) if (model.uuid == uuid) return &model;',
@@ -43,5 +60,5 @@ def main():
  if '--write-new' in sys.argv:
   with out.open('xb') as f:f.write(data)
  else:assert out.read_bytes()==data,'IPI native catalog drift'
- print('IPI_NATIVE_CATALOG=PASS models=8 source_hashes=18')
+ print('IPI_NATIVE_CATALOG=PASS models=10 source_hashes=18 configurator=1')
 if __name__=='__main__':main()

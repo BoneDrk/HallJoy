@@ -9,15 +9,16 @@
 #include <cstring>
 #include <unordered_map>
 #include <array>
+#include <string>
 #include <vector>
 
-#include <objidl.h>
-#include <gdiplus.h>
-#pragma comment(lib, "gdiplus.lib")
-
-#pragma comment(lib, "Msimg32.lib")
+#include <d2d1.h>
+#include <dwrite.h>
+#pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "dwrite.lib")
 
 #include "keyboard_render.h"
+#include "keyboard_canvas.h"
 #include "key_shape_win.h"
 #include "analog_key_codes.h"
 #include "digital_keyboard_state.h"
@@ -30,8 +31,6 @@
 #include "remap_icons.h"
 #include "win_util.h"
 #include "key_settings.h"
-
-using namespace Gdiplus;
 
 static constexpr COLORREF KEY_INNER_BG = RGB(28, 28, 28);
 
@@ -401,10 +400,9 @@ int KeyboardRender_GetAnimatingHids(uint16_t* outHids, int cap)
             }
         }
 
-        if (!halljoy::keycode::IsStandardHid(hid) &&
-            hid != halljoy::keycode::kOem1 && hid != halljoy::keycode::kFn &&
-            !halljoy::wooting_physical::IsCode(hid) && !halljoy::keycode::IsO3c(hid))
-            continue;
+        // Every drawable code animates, including extended vendor keys such as
+        // Keychron RGB (0x404) and Wooting Profile/Mode keys. A shorter allow
+        // list left their impact flash frozen until an unrelated repaint.
         // gear state (fast-path)
         bool overrideOn = KeySettings_GetUseUnique(hid);
         GearAnim_NotifyOverrideState(hid, overrideOn, now);
@@ -465,44 +463,6 @@ float KeyboardRender_ReadAnalog01(uint16_t hid)
     if (halljoy::keycode::IsSupported(hid))
         return (float)BackendUI_GetAnalogMilli(hid) / 1000.0f;
     return 0.0f;
-}
-
-static Color GpColorFromColorRef(COLORREF c, BYTE a = 255)
-{
-    return Color(a, GetRValue(c), GetGValue(c), GetBValue(c));
-}
-
-static void DrawKeyLabelTextAA(HDC hdc, const RECT& rc, const wchar_t* text, COLORREF color)
-{
-    if (!text || !*text) return;
-
-    Graphics g(hdc);
-    g.SetSmoothingMode(SmoothingModeHighQuality);
-    g.SetPixelOffsetMode(PixelOffsetModeHighQuality);
-    g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
-
-    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-    LOGFONTW lf{};
-    if (!hFont || GetObjectW(hFont, sizeof(lf), &lf) == 0)
-    {
-        wcscpy_s(lf.lfFaceName, L"Segoe UI");
-        lf.lfHeight = -12;
-        lf.lfWeight = FW_NORMAL;
-    }
-
-    Font font(hdc, &lf);
-    SolidBrush br(GpColorFromColorRef(color, 255));
-
-    RectF r((float)rc.left, (float)rc.top,
-        (float)(rc.right - rc.left), (float)(rc.bottom - rc.top));
-
-    StringFormat fmt;
-    fmt.SetAlignment(StringAlignmentCenter);
-    fmt.SetLineAlignment(StringAlignmentCenter);
-    fmt.SetTrimming(StringTrimmingNone);
-    fmt.SetFormatFlags(StringFormatFlagsNoWrap);
-
-    g.DrawString(text, -1, &font, r, &fmt, &br);
 }
 
 static int FindIconIndexByAction(BindAction a)
@@ -691,519 +651,568 @@ static CachedGlyph* Glyph_GetOrCreate(int iconIdx, int size, int styleVariant)
     return &insIt->second;
 }
 
-static bool DrawBoundIconOnKey_Cached(HWND hwndForDpi, HDC hdc, const RECT& keyRectForIcon, uint16_t hid)
+// =============================================================================
+// Direct2D key renderer
+// =============================================================================
+// One drawing path for the keyboard canvas (ID2D1HwndRenderTarget) and for
+// owner-draw users such as the layout editor (ID2D1DCRenderTarget). Fills on
+// whole pixels are aliased (crisp, and pixels outside a key stay untouched);
+// strokes, text, the gear and the fractional analog edge are anti-aliased.
+
+namespace {
+
+D2D1_COLOR_F Rgb(COLORREF c, float alpha = 1.0f)
 {
-    BoundIconEntry entries[4]{};
-    int iconCount = CollectDisplayedIconsByHid(hid, entries);
-    if (iconCount <= 0)
-        return false;
+    return D2D1::ColorF(GetRValue(c) / 255.0f, GetGValue(c) / 255.0f, GetBValue(c) / 255.0f, alpha);
+}
 
-    int iw = keyRectForIcon.right - keyRectForIcon.left;
-    int ih = keyRectForIcon.bottom - keyRectForIcon.top;
-    if (iw <= 10 || ih <= 10)
-        return true;
+template <class T>
+void SafeRelease(T*& p)
+{
+    if (p) { p->Release(); p = nullptr; }
+}
 
-    int want = (int)Settings_GetBoundKeyIconSizePx();
-    int baseSize = WinUtil_ScalePx(hwndForDpi, want);
-    baseSize = std::clamp(baseSize, 8, std::min(iw, ih));
+IDWriteFactory* DWrite()
+{
+    static IDWriteFactory* factory = [] {
+        IDWriteFactory* created = nullptr;
+        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+                reinterpret_cast<IUnknown**>(&created))))
+            created = nullptr;
+        return created;
+    }();
+    return factory;
+}
 
-    auto drawIconAt = [&](const BoundIconEntry& e, int x, int y, int size)
-    {
+// Device-independent text resources, shared by every target.
+IDWriteTextFormat* LabelFormat(float sizePx)
+{
+    static std::unordered_map<int, IDWriteTextFormat*> formats;
+    const int key = (int)lroundf(sizePx * 4.0f);
+    auto found = formats.find(key);
+    if (found != formats.end()) return found->second;
+    IDWriteTextFormat* format = nullptr;
+    if (DWrite() && SUCCEEDED(DWrite()->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, sizePx, L"", &format))) {
+        format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+        format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    }
+    formats.emplace(key, format);
+    return format;
+}
+
+IDWriteTextLayout* LabelLayout(const wchar_t* text, float sizePx, float w, float h)
+{
+    // Called for every labelled key in every frame: look up by a hash of the
+    // text and box without building a string; the stored text is compared in
+    // full, so a hash collision only costs a miss, never a wrong label.
+    struct Entry { std::wstring text; int size, width, height; IDWriteTextLayout* layout; };
+    static std::unordered_multimap<std::uint64_t, Entry> layouts;
+    const int size = (int)lroundf(sizePx * 4), width = (int)w, height = (int)h;
+    std::uint64_t hash = 1469598103934665603ull;
+    for (const wchar_t* c = text; *c; ++c) { hash ^= static_cast<std::uint16_t>(*c); hash *= 1099511628211ull; }
+    for (int v : { size, width, height }) { hash ^= static_cast<std::uint32_t>(v); hash *= 1099511628211ull; }
+    const auto range = layouts.equal_range(hash);
+    for (auto it = range.first; it != range.second; ++it)
+        if (it->second.size == size && it->second.width == width && it->second.height == height &&
+            it->second.text == text)
+            return it->second.layout;
+    if (layouts.size() > 2048) {
+        for (auto& entry : layouts) SafeRelease(entry.second.layout);
+        layouts.clear();
+    }
+    IDWriteTextLayout* layout = nullptr;
+    IDWriteTextFormat* format = LabelFormat(sizePx);
+    if (!format || FAILED(DWrite()->CreateTextLayout(text, (UINT32)wcslen(text), format, w, h, &layout)))
+        layout = nullptr;
+    layouts.emplace(hash, Entry{ text, size, width, height, layout });
+    return layout;
+}
+
+// Per-target resources. A target releases its entry before it is destroyed.
+// Brushes are never mutated after creation: changing a brush that a pending
+// Direct2D batch still references forces that batch to flush, and the old
+// "one brush, SetColor per primitive" pattern flushed several times per key.
+struct TargetResources {
+    std::unordered_map<std::uint32_t, ID2D1SolidColorBrush*> solid;   // by RGBA8
+    std::array<ID2D1LinearGradientBrush*, 64> flash{};                // by opacity level
+    std::unordered_map<uint64_t, ID2D1Bitmap*> glyphs;
+};
+std::unordered_map<ID2D1RenderTarget*, TargetResources> g_targets;
+
+TargetResources& Res(ID2D1RenderTarget* rt)
+{
+    return g_targets[rt];
+}
+
+std::uint32_t PackRgba8(const D2D1_COLOR_F& c)
+{
+    const auto q = [](float v) { return static_cast<std::uint32_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
+    return (q(c.r) << 24) | (q(c.g) << 16) | (q(c.b) << 8) | q(c.a);
+}
+
+ID2D1SolidColorBrush* Brush(ID2D1RenderTarget* rt, const D2D1_COLOR_F& color)
+{
+    auto& solid = Res(rt).solid;
+    const std::uint32_t key = PackRgba8(color);
+    const auto found = solid.find(key);
+    if (found != solid.end()) return found->second;
+    if (solid.size() > 1024) {   // e.g. many glow fade levels; rebuild lazily
+        for (auto& entry : solid) SafeRelease(entry.second);
+        solid.clear();
+    }
+    ID2D1SolidColorBrush* brush = nullptr;
+    const auto quantized = D2D1::ColorF(((key >> 24) & 255) / 255.0f, ((key >> 16) & 255) / 255.0f,
+        ((key >> 8) & 255) / 255.0f, (key & 255) / 255.0f);
+    if (FAILED(rt->CreateSolidColorBrush(quantized, &brush))) brush = nullptr;
+    solid.emplace(key, brush);
+    return brush;
+}
+
+// Vertical white -> transparent gradient over the unit square, at a fixed
+// opacity level; callers map it onto a rectangle with the target transform.
+ID2D1LinearGradientBrush* FlashBrush(ID2D1RenderTarget* rt, float opacity)
+{
+    auto& flash = Res(rt).flash;
+    const std::size_t level = static_cast<std::size_t>(std::lround(std::clamp(opacity, 0.0f, 1.0f) * (flash.size() - 1)));
+    if (!flash[level]) {
+        const D2D1_GRADIENT_STOP stops[2] = {
+            { 0.0f, D2D1::ColorF(1, 1, 1, 1) }, { 1.0f, D2D1::ColorF(1, 1, 1, 0) } };
+        ID2D1GradientStopCollection* collection = nullptr;
+        if (SUCCEEDED(rt->CreateGradientStopCollection(stops, 2, &collection))) {
+            rt->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(), D2D1::Point2F(0, 1)),
+                D2D1::BrushProperties(static_cast<float>(level) / (flash.size() - 1)), collection, &flash[level]);
+            collection->Release();
+        }
+    }
+    return flash[level];
+}
+
+ID2D1Bitmap* GlyphBitmap(ID2D1RenderTarget* rt, int iconIdx, int size, int styleVariant)
+{
+    auto& glyphs = Res(rt).glyphs;
+    const uint64_t key = MakeGlyphKey(iconIdx, size, styleVariant);
+    auto found = glyphs.find(key);
+    if (found != glyphs.end()) return found->second;
+    ID2D1Bitmap* bitmap = nullptr;
+    // The GDI+ glyph is rendered once into a premultiplied 32-bit DIB.
+    if (CachedGlyph* glyph = Glyph_GetOrCreate(iconIdx, size, styleVariant); glyph && glyph->bits) {
+        const auto props = D2D1::BitmapProperties(
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+        if (FAILED(rt->CreateBitmap(D2D1::SizeU(size, size), glyph->bits, size * 4, props, &bitmap)))
+            bitmap = nullptr;
+    }
+    if (glyphs.size() > 512) {
+        for (auto& entry : glyphs) SafeRelease(entry.second);
+        glyphs.clear();
+    }
+    glyphs.emplace(key, bitmap);
+    return bitmap;
+}
+
+ID2D1PathGeometry* Polygon(const POINT* points, int count, float offset)
+{
+    ID2D1Factory* factory = halljoy::keyboard_canvas::Factory();
+    ID2D1PathGeometry* path = nullptr;
+    if (!factory || FAILED(factory->CreatePathGeometry(&path))) return nullptr;
+    ID2D1GeometrySink* sink = nullptr;
+    if (SUCCEEDED(path->Open(&sink))) {
+        sink->BeginFigure(D2D1::Point2F(points[0].x + offset, points[0].y + offset), D2D1_FIGURE_BEGIN_FILLED);
+        for (int i = 1; i < count; ++i) sink->AddLine(D2D1::Point2F(points[i].x + offset, points[i].y + offset));
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        sink->Close();
+        sink->Release();
+    }
+    return path;
+}
+
+ID2D1StrokeStyle* RoundJoin()
+{
+    static ID2D1StrokeStyle* style = [] {
+        ID2D1StrokeStyle* created = nullptr;
+        const auto props = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT,
+            D2D1_CAP_STYLE_FLAT, D2D1_LINE_JOIN_ROUND);
+        if (ID2D1Factory* factory = halljoy::keyboard_canvas::Factory())
+            if (FAILED(factory->CreateStrokeStyle(props, nullptr, 0, &created))) created = nullptr;
+        return created;
+    }();
+    return style;
+}
+
+D2D1_RECT_F RectF(const RECT& r) { return D2D1::RectF((float)r.left, (float)r.top, (float)r.right, (float)r.bottom); }
+
+// Pixel-aligned 1 px outline of a rectangle (GDI Rectangle equivalent).
+// Four pixel-aligned fills cover exactly the pixels of a half-pixel 1 px
+// stroke, without Direct2D's geometry stroking (a hot path for every key).
+void Outline(ID2D1RenderTarget* rt, const RECT& r, const D2D1_COLOR_F& color)
+{
+    if (r.right - r.left < 2 || r.bottom - r.top < 2) {
+        rt->FillRectangle(RectF(r), Brush(rt, color));
+        return;
+    }
+    auto* brush = Brush(rt, color);
+    const float l = (float)r.left, t = (float)r.top, rr = (float)r.right, b = (float)r.bottom;
+    rt->FillRectangle(D2D1::RectF(l, t, rr, t + 1.0f), brush);
+    rt->FillRectangle(D2D1::RectF(l, b - 1.0f, rr, b), brush);
+    rt->FillRectangle(D2D1::RectF(l, t + 1.0f, l + 1.0f, b - 1.0f), brush);
+    rt->FillRectangle(D2D1::RectF(rr - 1.0f, t + 1.0f, rr, b - 1.0f), brush);
+}
+
+void DrawBoundIcons(ID2D1RenderTarget* rt, UINT dpi, const RECT& area, uint16_t hid, int iconCount,
+    const BoundIconEntry* entries)
+{
+    const int iw = area.right - area.left, ih = area.bottom - area.top;
+    if (iw <= 10 || ih <= 10) return;
+    const int baseSize = std::clamp(MulDiv((int)Settings_GetBoundKeyIconSizePx(), (int)dpi, 96), 8, std::min(iw, ih));
+    const int gap = std::clamp(MulDiv(2, (int)dpi, 96), 1, 5);
+    auto drawAt = [&](const BoundIconEntry& e, int x, int y, int size) {
         size = std::clamp(size, 8, std::min(iw, ih));
-        CachedGlyph* cg = Glyph_GetOrCreate(e.iconIdx, size, e.styleVariant);
-        if (!cg || !cg->dc || !cg->bmp)
-        {
-            RECT rcIcon{ x, y, x + size, y + size };
-            RemapIcons_DrawGlyphAA(hdc, rcIcon, e.iconIdx, false, 0.075f, e.styleVariant);
-            return;
-        }
-
-        BLENDFUNCTION bf{};
-        bf.BlendOp = AC_SRC_OVER;
-        bf.BlendFlags = 0;
-        bf.SourceConstantAlpha = 255;
-        bf.AlphaFormat = AC_SRC_ALPHA;
-        AlphaBlend(hdc, x, y, size, size, cg->dc, 0, 0, size, size, bf);
+        if (ID2D1Bitmap* bitmap = GlyphBitmap(rt, e.iconIdx, size, e.styleVariant))
+            rt->DrawBitmap(bitmap, D2D1::RectF((float)x, (float)y, (float)(x + size), (float)(y + size)));
     };
-
-    int gap = std::clamp(WinUtil_ScalePx(hwndForDpi, 2), 1, 5);
-
-    if (iconCount == 1)
-    {
-        int size = std::clamp(baseSize, 8, std::min(iw, ih));
-        int x = (keyRectForIcon.left + keyRectForIcon.right - size) / 2;
-        int y = (keyRectForIcon.top + keyRectForIcon.bottom - size) / 2;
-        drawIconAt(entries[0], x, y, size);
-        return true;
-    }
-
-    if (iconCount == 2)
-    {
-        int cellW = std::max(8, (iw - gap) / 2);
-        int size = std::clamp(baseSize, 8, std::min(cellW, ih));
-        int y = keyRectForIcon.top + (ih - size) / 2;
-        int x0 = keyRectForIcon.left + (cellW - size) / 2;
-        int x1 = keyRectForIcon.left + cellW + gap + (cellW - size) / 2;
-        drawIconAt(entries[0], x0, y, size);
-        drawIconAt(entries[1], x1, y, size);
-        return true;
-    }
-
-    if (iconCount == 3)
-    {
-        int rowH = std::max(8, (ih - gap) / 2);
-        int topCellW = std::max(8, (iw - gap) / 2);
-        int size = std::clamp(baseSize, 8, std::min(topCellW, rowH));
-
-        int topY = keyRectForIcon.top + (rowH - size) / 2;
-        int x0 = keyRectForIcon.left + (topCellW - size) / 2;
-        int x1 = keyRectForIcon.left + topCellW + gap + (topCellW - size) / 2;
-        drawIconAt(entries[0], x0, topY, size);
-        drawIconAt(entries[1], x1, topY, size);
-
-        int botY = keyRectForIcon.top + rowH + gap + (rowH - size) / 2;
-        int x2 = keyRectForIcon.left + (iw - size) / 2;
-        drawIconAt(entries[2], x2, botY, size);
-        return true;
-    }
-
-    // 4+ icons: compact 2x2 grid
-    int cellW = std::max(8, (iw - gap) / 2);
-    int cellH = std::max(8, (ih - gap) / 2);
-    int size = std::clamp(baseSize, 8, std::min(cellW, cellH));
-    for (int i = 0; i < 4 && i < iconCount; ++i)
-    {
-        int col = i % 2;
-        int row = i / 2;
-        int cellX = keyRectForIcon.left + col * (cellW + gap);
-        int cellY = keyRectForIcon.top + row * (cellH + gap);
-        int x = cellX + (cellW - size) / 2;
-        int y = cellY + (cellH - size) / 2;
-        drawIconAt(entries[i], x, y, size);
-    }
-    return true;
-}
-
-// ---------------- brushes ----------------
-static HBRUSH BrushKeyBg()
-{
-    return UiTheme::Brush_ControlBg();
-}
-
-static HBRUSH BrushKeyInnerBg()
-{
-    static HBRUSH b = CreateSolidBrush(KEY_INNER_BG);
-    return b;
-}
-
-static HBRUSH BrushFill()
-{
-    static HBRUSH b = CreateSolidBrush(UiTheme::Color_Accent());
-    return b;
-}
-
-static void DrawOverrideGearMarkerAA(HWND hwndForDpi, HDC hdc, const RECT& innerKeyRect, bool selected, uint16_t hid)
-{
-    constexpr int   sizePx96 = 11;
-    constexpr int   insetPx96 = 0;
-
-    constexpr int   teeth = 6;
-    constexpr float toothWidth01 = 0.5f;
-    constexpr float innerRatio = 0.6f;
-    constexpr float holeRatio = 0.23f;
-    constexpr float outlineW = 1.2f;
-
-    constexpr DWORD APPEAR_MS = 180;
-    constexpr DWORD SPIN_MS = 1000;
-    constexpr DWORD DISAPPEAR_MS = 160;
-
-    int d = WinUtil_ScalePx(hwndForDpi, sizePx96);
-    d = std::clamp(d, 7, 24);
-
-    int pad = WinUtil_ScalePx(hwndForDpi, insetPx96);
-    pad = std::clamp(pad, 0, 24);
-
-    DWORD now = GetTickCount();
-
-    float scale = 1.0f;
-    float ang = 0.0f;
-
-    if (halljoy::keycode::IsSupported(hid))
-    {
-        uint8_t mode = g_gearMode[hid];
-        if (mode != GEAR_NONE)
-        {
-            DWORD dt = now - g_gearStartTick[hid];
-
-            if (mode == GEAR_APPEAR)
-            {
-                scale = EaseOutCubic((float)dt / (float)APPEAR_MS);
-
-                float tR = EaseOutCubic((float)dt / (float)SPIN_MS);
-                constexpr float totalAngle = 4.0f * 3.14159265f;
-                ang = totalAngle * tR;
-            }
-            else if (mode == GEAR_DISAPPEAR)
-            {
-                scale = 1.0f - EaseOutCubic((float)dt / (float)DISAPPEAR_MS);
-            }
+    // Same placement as BuildMiniIconRectsForButton (hit testing must agree).
+    if (iconCount == 1) {
+        const int size = std::clamp(baseSize, 8, std::min(iw, ih));
+        drawAt(entries[0], (area.left + area.right - size) / 2, (area.top + area.bottom - size) / 2, size);
+    } else if (iconCount == 2) {
+        const int cellW = std::max(8, (iw - gap) / 2);
+        const int size = std::clamp(baseSize, 8, std::min(cellW, ih));
+        const int y = area.top + (ih - size) / 2;
+        drawAt(entries[0], area.left + (cellW - size) / 2, y, size);
+        drawAt(entries[1], area.left + cellW + gap + (cellW - size) / 2, y, size);
+    } else if (iconCount == 3) {
+        const int rowH = std::max(8, (ih - gap) / 2), topCellW = std::max(8, (iw - gap) / 2);
+        const int size = std::clamp(baseSize, 8, std::min(topCellW, rowH));
+        const int topY = area.top + (rowH - size) / 2;
+        drawAt(entries[0], area.left + (topCellW - size) / 2, topY, size);
+        drawAt(entries[1], area.left + topCellW + gap + (topCellW - size) / 2, topY, size);
+        drawAt(entries[2], area.left + (iw - size) / 2, area.top + rowH + gap + (rowH - size) / 2, size);
+    } else {
+        const int cellW = std::max(8, (iw - gap) / 2), cellH = std::max(8, (ih - gap) / 2);
+        const int size = std::clamp(baseSize, 8, std::min(cellW, cellH));
+        for (int i = 0; i < 4 && i < iconCount; ++i) {
+            const int cellX = area.left + (i % 2) * (cellW + gap), cellY = area.top + (i / 2) * (cellH + gap);
+            drawAt(entries[i], cellX + (cellW - size) / 2, cellY + (cellH - size) / 2, size);
         }
     }
+}
 
-    // NEW: user-triggered "wow spin" (fast burst -> slow idle) while editing key
+// Green dot: Windows sees this key as pressed (Raw Input keyboard state).
+void DrawDigitalIndicatorAA(ID2D1RenderTarget* rt, UINT dpi, const RECT& inner)
+{
+    const int d = std::clamp(MulDiv(7, (int)dpi, 96), 5, 12);
+    const int pad = std::clamp(MulDiv(3, (int)dpi, 96), 1, 8);
+    const float x = (float)(inner.left + pad), y = (float)(inner.bottom - pad - d), r = d * 0.5f;
+    const auto dot = D2D1::Ellipse(D2D1::Point2F(x + r, y + r), r, r);
+    rt->FillEllipse(dot, Brush(rt, D2D1::ColorF(120 / 255.0f, 210 / 255.0f, 140 / 255.0f, 230 / 255.0f)));
+    rt->DrawEllipse(dot, Brush(rt, D2D1::ColorF(10 / 255.0f, 10 / 255.0f, 10 / 255.0f, 220 / 255.0f)), 1.2f);
+}
+
+void DrawGear(ID2D1RenderTarget* rt, UINT dpi, const RECT& inner, bool selected, uint16_t hid)
+{
+    constexpr int teeth = 6;
+    constexpr float toothWidth01 = 0.5f, innerRatio = 0.6f, holeRatio = 0.23f, outlineW = 1.2f;
+    constexpr DWORD APPEAR_MS = 180, SPIN_MS = 1000, DISAPPEAR_MS = 160;
+    const int d = std::clamp(MulDiv(11, (int)dpi, 96), 7, 24);
+    const DWORD now = GetTickCount();
+    float scale = 1.0f, ang = 0.0f;
+    if (halljoy::keycode::IsSupported(hid) && g_gearMode[hid] != GEAR_NONE) {
+        const DWORD dt = now - g_gearStartTick[hid];
+        if (g_gearMode[hid] == GEAR_APPEAR) {
+            scale = EaseOutCubic((float)dt / (float)APPEAR_MS);
+            ang = 4.0f * 3.14159265f * EaseOutCubic((float)dt / (float)SPIN_MS);
+        } else if (g_gearMode[hid] == GEAR_DISAPPEAR) {
+            scale = 1.0f - EaseOutCubic((float)dt / (float)DISAPPEAR_MS);
+        }
+    }
     ang += GearSpin_GetAngle(hid);
-
     if (scale <= 0.001f) return;
-
-    int x = innerKeyRect.right - pad - d;
-    int y = innerKeyRect.top + pad;
-
-    if (x < innerKeyRect.left + 1) x = innerKeyRect.left + 1;
-    if (y < innerKeyRect.top + 1) y = innerKeyRect.top + 1;
-
-    RectF r((float)x, (float)y, (float)d, (float)d);
-
-    Graphics g(hdc);
-    g.SetSmoothingMode(SmoothingModeHighQuality);
-    g.SetPixelOffsetMode(PixelOffsetModeHighQuality);
-    g.SetCompositingQuality(CompositingQualityHighQuality);
-
-    COLORREF fillC = selected ? RGB(255, 190, 40) : RGB(255, 170, 0);
-    COLORREF outlineC = RGB(15, 15, 15);
-
-    Color fill = GpColorFromColorRef(fillC, 255);
-    Color outline = GpColorFromColorRef(outlineC, 220);
-
-    const float cx = r.X + r.Width * 0.5f;
-    const float cy = r.Y + r.Height * 0.5f;
-
-    const float tw01 = std::clamp(toothWidth01, 0.10f, 0.90f);
-    const float period = 3.14159265f * 2.0f / (float)teeth;
-    const float toothW = period * tw01;
-    const float gapW = (period - toothW) * 0.5f;
-
-    const float inR = std::clamp(innerRatio, 0.25f, 0.95f);
-
-    const float R_tooth = r.Width * 0.50f * scale;
-    const float R_root = R_tooth * inR;
-    const float R_hole = R_tooth * std::clamp(holeRatio, 0.10f, 0.45f);
-
-    std::array<PointF, teeth * 3> pts{};
-    int n = 0;
-
-    auto add = [&](float a, float rr)
-        {
-            pts[(size_t)n++] = PointF(cx + rr * cosf(a + ang), cy + rr * sinf(a + ang));
-        };
-
-    for (int i = 0; i < teeth; ++i)
-    {
-        float a0 = (float)i * period;
-        add(a0, R_root);
-        add(a0 + gapW, R_tooth);
-        add(a0 + gapW + toothW, R_tooth);
+    const int x = std::max<int>(inner.right - d, inner.left + 1), y = inner.top + 1;
+    const float cx = x + d * 0.5f, cy = y + d * 0.5f;
+    const float period = 3.14159265f * 2.0f / teeth, toothW = period * toothWidth01, gapW = (period - toothW) * 0.5f;
+    const float rTooth = d * 0.5f * scale, rRoot = rTooth * innerRatio, rHole = rTooth * holeRatio;
+    ID2D1PathGeometry* gear = nullptr;
+    if (FAILED(halljoy::keyboard_canvas::Factory()->CreatePathGeometry(&gear))) return;
+    ID2D1GeometrySink* sink = nullptr;
+    if (SUCCEEDED(gear->Open(&sink))) {
+        auto at = [&](float a, float r) { return D2D1::Point2F(cx + r * cosf(a + ang), cy + r * sinf(a + ang)); };
+        sink->BeginFigure(at(0, rRoot), D2D1_FIGURE_BEGIN_FILLED);
+        for (int i = 0; i < teeth; ++i) {
+            const float a0 = i * period;
+            if (i) sink->AddLine(at(a0, rRoot));
+            sink->AddLine(at(a0 + gapW, rTooth));
+            sink->AddLine(at(a0 + gapW + toothW, rTooth));
+        }
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        sink->Close();
+        sink->Release();
     }
-
-    GraphicsPath gear;
-    if (n >= 3)
-        gear.AddPolygon(pts.data(), n);
-
-    SolidBrush br(fill);
-    Pen pen(outline, outlineW);
-    pen.SetLineJoin(LineJoinRound);
-
-    g.FillPath(&br, &gear);
-    g.DrawPath(&pen, &gear);
-
-    SolidBrush hole(GpColorFromColorRef(KEY_INNER_BG, 255));
-    g.FillEllipse(&hole, cx - R_hole, cy - R_hole, R_hole * 2.0f, R_hole * 2.0f);
-    g.DrawEllipse(&pen, cx - R_hole, cy - R_hole, R_hole * 2.0f, R_hole * 2.0f);
+    const auto outline = D2D1::ColorF(15 / 255.0f, 15 / 255.0f, 15 / 255.0f, 220 / 255.0f);
+    rt->FillGeometry(gear, Brush(rt, Rgb(selected ? RGB(255, 190, 40) : RGB(255, 170, 0))));
+    rt->DrawGeometry(gear, Brush(rt, outline), outlineW, RoundJoin());
+    const auto hole = D2D1::Ellipse(D2D1::Point2F(cx, cy), rHole, rHole);
+    rt->FillEllipse(hole, Brush(rt, Rgb(KEY_INNER_BG)));
+    rt->DrawEllipse(hole, Brush(rt, outline), outlineW);
+    gear->Release();
 }
 
-static void CompoundPath(GraphicsPath& path, const RECT& rc, POINT notch)
+} // namespace
+
+void KeyboardRender_ReleaseTargetResources(ID2D1RenderTarget* rt)
 {
-    const auto contour = KeyShape_Points(rc,notch);
-    Point points[6];
-    for (int i=0;i<6;++i) points[i]=Point(contour[i].x,contour[i].y);
-    path.AddPolygon(points,6);
+    auto found = g_targets.find(rt);
+    if (found == g_targets.end()) return;
+    for (auto& entry : found->second.solid) SafeRelease(entry.second);
+    for (auto& brush : found->second.flash) SafeRelease(brush);
+    for (auto& entry : found->second.glyphs) SafeRelease(entry.second);
+    g_targets.erase(found);
 }
 
-static void DrawSelectionGlowAA(HDC hdc, const RECT& rc, POINT notch, float t)
+void KeyboardRender_DrawTextD2D(ID2D1RenderTarget* rt, const wchar_t* text, const RECT& area, COLORREF color,
+    float sizePx)
 {
-    t = Clamp01(t);
-    if (t <= 0.001f) return;
+    if (!rt || !text || !*text) return;
+    const float w = (float)(area.right - area.left), h = (float)(area.bottom - area.top);
+    if (w <= 0 || h <= 0) return;
+    if (IDWriteTextLayout* layout = LabelLayout(text, sizePx, w, h))
+        rt->DrawTextLayout(D2D1::Point2F((float)area.left, (float)area.top), layout, Brush(rt, Rgb(color)),
+            D2D1_DRAW_TEXT_OPTIONS_CLIP);
+}
 
-    Graphics g(hdc);
-    g.SetSmoothingMode(SmoothingModeAntiAlias);
-    g.SetPixelOffsetMode(PixelOffsetModeHighQuality);
-    g.SetCompositingQuality(CompositingQualityHighQuality);
-
-    const BYTE a0 = (BYTE)std::clamp((int)lroundf(38.0f * t), 0, 255);
-    const BYTE a1 = (BYTE)std::clamp((int)lroundf(70.0f * t), 0, 255);
-    const BYTE a2 = (BYTE)std::clamp((int)lroundf(120.0f * t), 0, 255);
-
-    Color c0(a0, 255, 170, 90);
-    Color c1(a1, 255, 170, 90);
-    Color c2(a2, 255, 170, 90);
-
-    RectF r((float)rc.left + 0.5f, (float)rc.top + 0.5f,
-        (float)(rc.right - rc.left - 1),
-        (float)(rc.bottom - rc.top - 1));
-
-    Pen p0(c0, 7.0f); p0.SetLineJoin(LineJoinRound);
-    Pen p1(c1, 4.0f); p1.SetLineJoin(LineJoinRound);
-    Pen p2(c2, 2.0f); p2.SetLineJoin(LineJoinRound);
-
-    if (notch.x) {
-        RECT border=rc; --border.right; --border.bottom;
-        GraphicsPath contour; CompoundPath(contour,border,notch);
-        g.DrawPath(&p0,&contour);
-        g.DrawPath(&p1,&contour);
-        g.DrawPath(&p2,&contour);
-    } else {
-        g.DrawRectangle(&p0, r);
-        g.DrawRectangle(&p1, r);
-        g.DrawRectangle(&p2, r);
+bool KeyboardRender_AnyAnimationActive()
+{
+    if (g_gspin.phase != GSPIN_NONE) return true;
+    const DWORD now = GetTickCount();
+    for (uint16_t hid = 1; hid < halljoy::keycode::kCount; ++hid) {
+        if (g_gearMode[hid] != GEAR_NONE || g_selMode[hid] != SEL_NONE) return true;
+        if (g_impactActive[hid] && ImpactAnim_GetAlpha(hid, now) > 0.001f) return true;
     }
+    return false;
 }
 
-static void DrawDigitalIndicatorAA(HWND hwndForDpi, HDC hdc, const RECT& innerKeyRect)
+void KeyboardRender_DrawKeyD2D(ID2D1RenderTarget* rt, const KeyboardRenderKey& key)
 {
-    int d = WinUtil_ScalePx(hwndForDpi, 7);
-    d = std::clamp(d, 5, 12);
-
-    int pad = WinUtil_ScalePx(hwndForDpi, 3);
-    pad = std::clamp(pad, 1, 8);
-
-    int x = innerKeyRect.left + pad;
-    int y = innerKeyRect.bottom - pad - d;
-
-    Graphics g(hdc);
-    g.SetSmoothingMode(SmoothingModeHighQuality);
-    g.SetPixelOffsetMode(PixelOffsetModeHighQuality);
-    g.SetCompositingQuality(CompositingQualityHighQuality);
-
-    Color fill(230, 120, 210, 140);
-    Color outline(220, 10, 10, 10);
-
-    SolidBrush br(fill);
-    Pen pen(outline, 1.2f);
-
-    g.FillEllipse(&br, (REAL)x, (REAL)y, (REAL)d, (REAL)d);
-    g.DrawEllipse(&pen, (REAL)x, (REAL)y, (REAL)d, (REAL)d);
-}
-
-static void DrawKey_Impl(const DRAWITEMSTRUCT* dis, uint16_t hid, bool selected, float v01)
-{
-    HWND hBtn = dis->hwndItem;
-    HDC hdc = dis->hDC;
-    RECT rc = dis->rcItem;
-
-    const POINT notch = KeyShape_Get(hBtn);
-
-    const bool disabled = (dis->itemState & ODS_DISABLED) != 0;
-
-    uint16_t actualHid = (uint16_t)GetWindowLongPtrW(hBtn, GWLP_USERDATA);
-
-    const bool isRealKeyForAnalogAndIcon = (hid != 0);
-    const bool isRealKeyActual = (actualHid != 0);
-
-    if (v01 < 0.0f)
-        v01 = KeyboardRender_ReadAnalog01(hid);
-
+    if (!rt) return;
+    RECT rc = key.rc;
+    if (rc.right - rc.left <= 1 || rc.bottom - rc.top <= 1) return;
+    const POINT notch = key.notch;
+    const uint16_t hid = key.hid, actualHid = key.actualHid;
+    const bool realKey = hid != 0, realActual = actualHid != 0;
+    float v01 = key.v01 < 0.0f ? KeyboardRender_ReadAnalog01(hid) : key.v01;
     v01 = std::clamp(v01, 0.0f, 1.0f);
+    const DWORD now = GetTickCount();
+    // One DPI query per key (or none when the caller supplies it per frame).
+    const UINT dpi = key.dpi ? key.dpi : WinUtil_GetDpiForWindowCompat(key.dpiWindow);
 
-    DWORD now = GetTickCount();
-
-    // 1. Selection anim
-    float selT = 0.0f;
-    if (isRealKeyActual && halljoy::keycode::IsSupported(actualHid))
-    {
-        SelAnim_Notify(actualHid, selected, now);
-        selT = SelAnim_GetT(actualHid, selected, now);
+    float selT = 0.0f, flashAlpha = 0.0f;
+    if (realActual && halljoy::keycode::IsSupported(actualHid)) {
+        SelAnim_Notify(actualHid, key.selected, now);
+        selT = SelAnim_GetT(actualHid, key.selected, now);
     }
-
-    // 2. Impact flash anim
-    float flashAlpha = 0.0f;
-    if (isRealKeyForAnalogAndIcon && halljoy::keycode::IsSupported(actualHid))
-    {
+    if (realKey && halljoy::keycode::IsSupported(actualHid)) {
         ImpactAnim_NotifyValue(actualHid, v01, now);
         flashAlpha = ImpactAnim_GetAlpha(actualHid, now);
     }
 
-    FillRect(hdc, &rc, UiTheme::Brush_ControlBg());
-
-    if (selT > 0.0f)
-        DrawSelectionGlowAA(hdc, rc, notch, selT);
-
-    {
-        COLORREF base = UiTheme::Color_Border();
-        COLORREF selC = RGB(255, 170, 90);
-        COLORREF c = (selT > 0.0f) ? LerpColor(base, selC, selT) : base;
-
-        HGDIOBJ oldPen = SelectObject(hdc, GetStockObject(DC_PEN));
-        HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
-        SetDCPenColor(hdc, c);
-        if (!notch.x) Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
-        SelectObject(hdc, oldBrush);
-        SelectObject(hdc, oldPen);
+    // Everything for this key stays inside its own contour. Only the selection
+    // glow (strokes up to 7 px wide) and compound shapes reach outside the
+    // rectangle; every other element is drawn inside it, so a plain key needs
+    // no clip push/pop.
+    ID2D1PathGeometry* outer = nullptr;
+    ID2D1Layer* outerLayer = nullptr;
+    const bool clipToKey = notch.x != 0 || selT > 0.001f;
+    if (clipToKey) rt->PushAxisAlignedClip(RectF(rc), D2D1_ANTIALIAS_MODE_ALIASED);
+    if (notch.x) {
+        const auto points = KeyShape_Points(rc, notch);
+        outer = Polygon(points.data(), (int)points.size(), 0.0f);
+        if (outer && SUCCEEDED(rt->CreateLayer(&outerLayer)))
+            rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), outer, D2D1_ANTIALIAS_MODE_ALIASED), outerLayer);
     }
+    // One anti-aliasing mode for the whole key (mode switches split batches).
+    // Pixel-aligned rectangles and half-pixel 1 px lines render exactly the
+    // same per-primitive as aliased; only the fractional fill edge blends.
+    if (rt->GetAntialiasMode() != D2D1_ANTIALIAS_MODE_PER_PRIMITIVE)
+        rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    rt->FillRectangle(RectF(rc), Brush(rt, Rgb(UiTheme::Color_ControlBg())));
+
+    if (selT > 0.001f) {
+        const D2D1_RECT_F r = D2D1::RectF(rc.left + 0.5f, rc.top + 0.5f, rc.right - 0.5f, rc.bottom - 0.5f);
+        const float alphas[3] = { 38.0f, 70.0f, 120.0f }, widths[3] = { 7.0f, 4.0f, 2.0f };
+        ID2D1PathGeometry* contour = nullptr;
+        if (notch.x) {
+            RECT border = rc;
+            --border.right; --border.bottom;
+            const auto points = KeyShape_Points(border, notch);
+            contour = Polygon(points.data(), (int)points.size(), 0.5f);
+        }
+        for (int i = 0; i < 3; ++i) {
+            auto* brush = Brush(rt, Rgb(RGB(255, 170, 90), alphas[i] * selT / 255.0f));
+            if (contour) rt->DrawGeometry(contour, brush, widths[i], RoundJoin());
+            else rt->DrawRectangle(r, brush, widths[i], RoundJoin());
+        }
+        SafeRelease(contour);
+    }
+    const COLORREF borderC = selT > 0.0f ? LerpColor(UiTheme::Color_Border(), RGB(255, 170, 90), selT)
+                                         : UiTheme::Color_Border();
+    if (!notch.x) Outline(rt, rc, Rgb(borderC));
 
     RECT inner = rc;
     InflateRect(&inner, -3, -3);
-
-    // Inset the entire contour, including the concave corner. Window clipping
-    // alone removes the hole but leaves the analogue fill flush with its edge.
-    int shapeDC = 0;
+    ID2D1PathGeometry* innerShape = nullptr;
+    ID2D1Layer* innerLayer = nullptr;
     if (notch.x) {
-        const int inset = KeyShape_InnerInset(rc,notch);
-        inner = rc; InflateRect(&inner,-inset,-inset);
-        const auto contour = KeyShape_Points(inner,POINT{notch.x,notch.y-2*inset});
-        shapeDC = SaveDC(hdc);
-        if (shapeDC && BeginPath(hdc)) {
-            Polygon(hdc,contour.data(),(int)contour.size());
-            EndPath(hdc); SelectClipPath(hdc,RGN_AND);
-        }
+        const int inset = KeyShape_InnerInset(rc, notch);
+        inner = rc;
+        InflateRect(&inner, -inset, -inset);
+        const auto contour = KeyShape_Points(inner, POINT{ notch.x, notch.y - 2 * inset });
+        innerShape = Polygon(contour.data(), (int)contour.size(), 0.0f);
+        if (innerShape && SUCCEEDED(rt->CreateLayer(&innerLayer)))
+            rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), innerShape, D2D1_ANTIALIAS_MODE_ALIASED), innerLayer);
     }
-
-    {
-        static HBRUSH b = CreateSolidBrush(KEY_INNER_BG);
-        FillRect(hdc, &inner, b);
-    }
-
-    if (isRealKeyForAnalogAndIcon && v01 > 0.0f)
-    {
-        static HBRUSH bFill = CreateSolidBrush(UiTheme::Color_Accent());
-
-        int hh = inner.bottom - inner.top;
-        int fh = (int)std::lround(hh * v01);
-        if (fh > 0)
-        {
-            RECT fill = inner;
-            fill.bottom = inner.top + fh;
-            FillRect(hdc, &fill, bFill);
-
-            // IMPACT FLASH overlay (white gradient at the top of the fill)
-            if (flashAlpha > 0.01f)
-            {
-                Graphics g(hdc);
-                g.SetCompositingQuality(CompositingQualityHighQuality);
-
-                // GDI+ does not inherit the GDI SelectClipPath on this memory
-                // DC. Every effect must explicitly use the same inner contour.
-                if (notch.x) {
-                    const int inset=KeyShape_InnerInset(rc,notch);
-                    GraphicsPath contour;
-                    CompoundPath(contour,inner,POINT{notch.x,notch.y-2*inset});
-                    g.SetClip(&contour,CombineModeIntersect);
-                }
-
-                const int alpha = std::clamp(static_cast<int>(flashAlpha * 200.0f), 0, 255);
-                Color cTop(static_cast<BYTE>(alpha), 255, 255, 255);
-                Color cBot(0, 255, 255, 255);
-
-                RectF rFill((REAL)fill.left, (REAL)fill.top, (REAL)(fill.right - fill.left), (REAL)(fill.bottom - fill.top));
-                LinearGradientBrush br(rFill, cTop, cBot, LinearGradientModeVertical);
-                g.FillRectangle(&br, rFill);
+    rt->FillRectangle(RectF(inner), Brush(rt, Rgb(KEY_INNER_BG)));
+    if (realKey && v01 > 0.0f) {
+        // Fractional depth: the bottom edge is anti-aliased instead of jumping
+        // a whole pixel, so slow presses move smoothly.
+        const float top = (float)inner.top, bottom = top + (inner.bottom - inner.top) * v01;
+        const D2D1_RECT_F fill = D2D1::RectF((float)inner.left, top, (float)inner.right, bottom);
+        // Same pixels as an anti-aliased fractional rectangle, but only
+        // pixel-aligned primitives (the anti-aliased one was the slowest
+        // operation of a whole frame): whole rows solid, then the partial row
+        // at alpha = its coverage, which is exactly what anti-aliasing produces.
+        const float rows = bottom - top;
+        const float whole = std::floor(rows);
+        const float partial = rows - whole;
+        if (whole > 0.0f)
+            rt->FillRectangle(D2D1::RectF(fill.left, top, fill.right, top + whole), Brush(rt, Rgb(UiTheme::Color_Accent())));
+        if (partial > 0.002f)
+            rt->FillRectangle(D2D1::RectF(fill.left, top + whole, fill.right, top + whole + 1.0f),
+                Brush(rt, Rgb(UiTheme::Color_Accent(), partial)));
+        const float flashRows = whole + (partial > 0.002f ? 1.0f : 0.0f); // pixel-aligned height
+        if (flashAlpha > 0.01f && flashRows > 0.0f) {
+            if (auto* flash = FlashBrush(rt, flashAlpha * 200.0f / 255.0f)) {
+                // Map the unit-square gradient onto the fill rectangle.
+                D2D1_MATRIX_3X2_F saved{};
+                rt->GetTransform(&saved);
+                rt->SetTransform(D2D1::Matrix3x2F::Scale(fill.right - fill.left, flashRows) *
+                    D2D1::Matrix3x2F::Translation(fill.left, top) * saved);
+                rt->FillRectangle(D2D1::RectF(0, 0, 1, 1), flash);
+                rt->SetTransform(saved);
             }
         }
     }
+    if (innerLayer) { rt->PopLayer(); innerLayer->Release(); }
+    SafeRelease(innerShape);
 
-    if (shapeDC) RestoreDC(hdc,shapeDC);
     RECT iconArea = rc;
     if (notch.x) {
-        RECT border = rc; --border.right; --border.bottom;
+        RECT border = rc;
+        --border.right; --border.bottom;
         const auto points = KeyShape_Points(border, notch);
-        HGDIOBJ pen = SelectObject(hdc, GetStockObject(DC_PEN));
-        HGDIOBJ brush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
-        SetDCPenColor(hdc, selected ? RGB(255,170,90) : UiTheme::Color_Border());
-        Polygon(hdc, points.data(), (int)points.size());
-        SelectObject(hdc, brush); SelectObject(hdc, pen);
+        if (ID2D1PathGeometry* path = Polygon(points.data(), (int)points.size(), 0.5f)) {
+            rt->DrawGeometry(path, Brush(rt, Rgb(key.selected ? RGB(255, 170, 90) : UiTheme::Color_Border())), 1.0f);
+            path->Release();
+        }
         inner.left += notch.x;
         iconArea.left += notch.x;
     }
     InflateRect(&iconArea, -1, -1);
 
-    bool bound = false;
-    if (isRealKeyForAnalogAndIcon)
-        bound = DrawBoundIconOnKey_Cached(hBtn, hdc, iconArea, hid);
-
-    if (!bound)
-    {
-        wchar_t text[64]{};
-        GetWindowTextW(hBtn, text, 63);
-
-        COLORREF c = disabled ? UiTheme::Color_TextMuted() : UiTheme::Color_Text();
-        DrawKeyLabelTextAA(hdc, inner, text, c);
+    BoundIconEntry entries[4]{};
+    const int iconCount = realKey ? CollectDisplayedIconsByHid(hid, entries) : 0;
+    if (iconCount > 0) {
+        DrawBoundIcons(rt, dpi, iconArea, hid, iconCount, entries);
+    } else if (key.label && *key.label) {
+        const float size = (float)std::clamp(MulDiv(12, (int)dpi, 96), 8, 40);
+        const float w = (float)(inner.right - inner.left), h = (float)(inner.bottom - inner.top);
+        if (IDWriteTextLayout* layout = LabelLayout(key.label, size, w, h)) {
+            rt->DrawTextLayout(D2D1::Point2F((float)inner.left, (float)inner.top), layout,
+                Brush(rt, Rgb(key.disabled ? UiTheme::Color_TextMuted() : UiTheme::Color_Text())),
+                D2D1_DRAW_TEXT_OPTIONS_CLIP);
+        }
     }
 
-    if (isRealKeyForAnalogAndIcon && isRealKeyActual &&
-        halljoy::keycode::IsStandardHid(actualHid))
-    {
-        if (IsDigitalDownByHid(actualHid))
-            DrawDigitalIndicatorAA(hBtn, hdc, inner);
+    if (realKey && realActual && halljoy::keycode::IsStandardHid(actualHid) && IsDigitalDownByHid(actualHid)) {
+        DrawDigitalIndicatorAA(rt, dpi, inner);
     }
 
-    if (isRealKeyActual && halljoy::keycode::IsSupported(actualHid))
-    {
-        bool overrideOn = KeySettings_GetUseUnique(actualHid);
+    if (realActual && halljoy::keycode::IsSupported(actualHid)) {
+        const bool overrideOn = KeySettings_GetUseUnique(actualHid);
         GearAnim_NotifyOverrideState(actualHid, overrideOn, now);
-
         if (overrideOn || g_gearMode[actualHid] == GEAR_DISAPPEAR || g_gearMode[actualHid] == GEAR_APPEAR)
-            DrawOverrideGearMarkerAA(hBtn, hdc, inner, selected, actualHid);
+            DrawGear(rt, dpi, inner, key.selected, actualHid);
     }
+
+    if (key.dropHover) {
+        RECT r = rc;
+        const int inset = notch.x ? std::min(2, KeyShape_InnerInset(rc, notch)) : 2;
+        InflateRect(&r, -inset, -inset);
+        rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+        if (notch.x) {
+            const auto points = KeyShape_Points(r, POINT{ notch.x, notch.y - 2 * inset });
+            if (ID2D1PathGeometry* path = Polygon(points.data(), (int)points.size(), 0.0f)) {
+                rt->DrawGeometry(path, Brush(rt, Rgb(RGB(60, 200, 120))), 3.0f);
+                path->Release();
+            }
+        } else {
+            rt->DrawRectangle(RectF(r), Brush(rt, Rgb(RGB(60, 200, 120))), 3.0f);
+        }
+        rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE); // crisp 3 px outline only
+    }
+
+    if (outerLayer) { rt->PopLayer(); outerLayer->Release(); }
+    SafeRelease(outer);
+    if (clipToKey) rt->PopAxisAlignedClip();
 }
 
+// Owner-draw entry point (layout editor and any classic WM_DRAWITEM user):
+// the same Direct2D drawing bound to the item's DC.
 void KeyboardRender_DrawKey(const DRAWITEMSTRUCT* dis, uint16_t hid, bool selected, float v01)
 {
     if (!dis) return;
-
-    RECT rc = dis->rcItem;
-    int w = rc.right - rc.left;
-    int h = rc.bottom - rc.top;
-    if (w <= 1 || h <= 1)
-        return;
-
-    HDC outDC = dis->hDC;
-    // Owner-draw DCs (including retained/offscreen targets) need not carry the
-    // HWND region. Exclude the missing corner at the final destination, not
-    // only from the analogue interior. This also protects direct-draw fallback.
+    const RECT rc = dis->rcItem;
+    const int w = rc.right - rc.left, h = rc.bottom - rc.top;
+    if (w <= 1 || h <= 1) return;
+    // Premultiplied target: pixels the key does not cover (the notch of a
+    // compound key) stay transparent and keep the neighbour's pixels. The GDI
+    // clip on the destination guards the same area a second time.
+    static ID2D1DCRenderTarget* target = nullptr;
+    if (!target) {
+        ID2D1Factory* factory = halljoy::keyboard_canvas::Factory();
+        const auto props = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f);
+        if (!factory || FAILED(factory->CreateDCRenderTarget(&props, &target))) { target = nullptr; return; }
+    }
     const POINT notch = KeyShape_Get(dis->hwndItem);
     struct RestoreOutputClip {
         HDC dc; int saved;
-        ~RestoreOutputClip() { if (saved) RestoreDC(dc,saved); }
-    } clip{outDC,notch.x ? SaveDC(outDC) : 0};
-    if (notch.x && (!clip.saved || ExcludeClipRect(outDC,rc.left,rc.top+notch.y,
-        rc.left+notch.x,rc.bottom) == ERROR)) return;
-    HDC memDC = CreateCompatibleDC(outDC);
-    if (!memDC)
-    {
-        DrawKey_Impl(dis, hid, selected, v01);
-        return;
+        ~RestoreOutputClip() { if (saved) RestoreDC(dc, saved); }
+    } clip{ dis->hDC, notch.x ? SaveDC(dis->hDC) : 0 };
+    if (notch.x && (!clip.saved || ExcludeClipRect(dis->hDC, rc.left, rc.top + notch.y,
+        rc.left + notch.x, rc.bottom) == ERROR)) return;
+    if (FAILED(target->BindDC(dis->hDC, &rc))) return;
+    KeyboardRenderKey key{};
+    key.dpiWindow = dis->hwndItem;
+    key.rc = RECT{ 0, 0, w, h };
+    key.notch = notch;
+    key.hid = hid;
+    key.actualHid = (uint16_t)GetWindowLongPtrW(dis->hwndItem, GWLP_USERDATA);
+    key.selected = selected;
+    key.disabled = (dis->itemState & ODS_DISABLED) != 0;
+    key.v01 = v01;
+    wchar_t text[64]{};
+    GetWindowTextW(dis->hwndItem, text, 63);
+    key.label = text;
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(0, 0, 0, 0));
+    KeyboardRender_DrawKeyD2D(target, key);
+    if (target->EndDraw() == D2DERR_RECREATE_TARGET) {
+        KeyboardRender_ReleaseTargetResources(target);
+        target->Release();
+        target = nullptr;
     }
-
-    HBITMAP bmp = CreateCompatibleBitmap(outDC, w, h);
-    if (!bmp)
-    {
-        DeleteDC(memDC);
-        DrawKey_Impl(dis, hid, selected, v01);
-        return;
-    }
-
-    HGDIOBJ oldBmp = SelectObject(memDC, bmp);
-
-    DRAWITEMSTRUCT di = *dis;
-    di.hDC = memDC;
-    di.rcItem = RECT{ 0,0,w,h };
-
-    DrawKey_Impl(&di, hid, selected, v01);
-
-    BitBlt(outDC, rc.left, rc.top, w, h, memDC, 0, 0, SRCCOPY);
-
-    SelectObject(memDC, oldBmp);
-    DeleteObject(bmp);
-    DeleteDC(memDC);
 }
+
 
 void KeyboardRender_NotifySelectedHid(uint16_t hid)
 {

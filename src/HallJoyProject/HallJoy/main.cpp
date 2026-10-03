@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
+#include "perf_trace.h"
+#include "keyboard_canvas.h"
 #include "support_log.h"
 #include "irok_na87_diagnostic.h"
 #include "aula_mini60_diagnostic.h"
@@ -165,6 +167,8 @@ int WINAPI wWinMain(
     _In_ PWSTR,
     _In_ int nCmdShow)
 {
+    halljoy::perf::ConfigureFromCommandLine(GetCommandLineW());
+    halljoy::perf::Mark("main.entry");
     // The output service and its exact-image test must branch before every
     // installer, logger, UI, GDI+, analogue-provider and backend action.
     int vigemOutputHostExit = 0;
@@ -218,7 +222,7 @@ int WINAPI wWinMain(
             NativeAnalogProtocol::TartarusPro, NativeAnalogProtocol::Neo65,
             NativeAnalogProtocol::SteelSeriesApex, NativeAnalogProtocol::Mad68DualTrial,
             NativeAnalogProtocol::MchoseMix87,
-            NativeAnalogProtocol::Alumix104Yotei};
+            NativeAnalogProtocol::Alumix104Yotei, NativeAnalogProtocol::MchoseJet75};
         for(const auto protocol:required){
             bool found=false;
             for(std::size_t i=0;i<NativeAnalogBackends_Count();++i){
@@ -289,13 +293,22 @@ int WINAPI wWinMain(
         return conflict ? 0 : 66;
     }
 
+    halljoy::perf::Mark("main.instance_ready");
+    // App_Run starts the canvas warm-up for real UI runs; every return joins
+    // it here, so process exit never races a driver load.
+    struct WarmUpJoin { ~WarmUpJoin() { halljoy::keyboard_canvas::JoinWarmUp(); } } warmUpJoin;
     StabilityTrace_Init();
     StabilityTrace_Write(L"INFO", L"main", L"build", L"stage=S02V1 target=HallJoy");
+    halljoy::perf::Mark("main.trace_ready");
     DebugLog_Init();
+    halljoy::perf::Mark("main.debug_log_ready");
     SupportLog_Start();
+    halljoy::perf::Mark("main.support_log_started");
     AnalogHostClient_ResetDiagnosticFiles();
+    halljoy::perf::Mark("main.host_diagnostics_reset");
     DebugLog_InstallCrashHandler();
     DebugLog_StartExitWatchdog();
+    halljoy::perf::Mark("main.crash_handlers_ready");
     if (!ProviderV2QualificationReport_Begin())
     {
         constexpr int qualificationStartFailure = 64;
@@ -334,7 +347,10 @@ int WINAPI wWinMain(
     }
 #endif
 
+    halljoy::perf::Mark("main.logs_ready");
+    const auto embeddedPrepareStart = halljoy::perf::Now();
     const bool embeddedAnalogReady = EmbeddedAnalogStack_Prepare(hInst);
+    halljoy::perf::Span("main.embedded_uap_prepare", 0, embeddedPrepareStart);
     StabilityTrace_Write(embeddedAnalogReady ? L"INFO" : L"WARN", L"main", L"embedded_stack.prepare",
         L"ready=%d location=%s error=%lu system_sdk_required=0",
         embeddedAnalogReady ? 1 : 0, EmbeddedAnalogStack_RuntimeLocationName(),
@@ -393,7 +409,9 @@ int WINAPI wWinMain(
     int result = 1;
     try
     {
+        halljoy::perf::Mark("main.app_run.begin");
         result = App_Run(hInst, nCmdShow);
+        halljoy::perf::Mark("main.app_run.end");
         StabilityTrace_Write(result == 0 ? L"INFO" : L"WARN", L"main", L"app.exit", L"result=%d", result);
         DebugLog_Write(L"[main] App_Run returned=%d", result);
     }
@@ -411,7 +429,10 @@ int WINAPI wWinMain(
     Mini60Diagnostic_Stop();
     Na87Diagnostic_Stop();
     StabilityTrace_Write(L"INFO", L"main", L"final_shutdown.begin");
-    App_ForceFinalShutdown();
+    {
+        halljoy::perf::Scope finalShutdown("main.final_shutdown");
+        App_ForceFinalShutdown();
+    }
     StabilityTrace_Write(L"INFO", L"main", L"final_shutdown.end");
     const bool relaunchRequested = App_TakeRelaunchRequest();
 
@@ -436,6 +457,9 @@ int WINAPI wWinMain(
     // Keep the watchdog armed through logger and stability-trace teardown. It
     // is safe to release only after every explicit shutdown stage completed.
     App_DisarmShutdownWatchdog();
+    halljoy::keyboard_canvas::JoinWarmUp();
+    halljoy::perf::Mark("main.exit");
+    halljoy::perf::Flush();
 
     // Every service is stopped. Release per-user ownership before starting the
     // successor, otherwise it can observe our mutex and exit as a duplicate.

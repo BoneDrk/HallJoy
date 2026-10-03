@@ -187,13 +187,17 @@ constexpr OwnedHids BuildOwnedAny()
     }
     return any;
 }
-constexpr auto kOwnedHex80 = BuildOwnedHids(hex80::kHex80Model);
-constexpr auto kOwnedMad68V2 = BuildOwnedHids(hex80::kMad68V2Model);
+// One owned-HID table per model, in hex80::kModels order.
+constexpr auto kOwnedByModel = [] {
+    std::array<OwnedHids, hex80::kModels.size()> tables{};
+    for (std::size_t i = 0; i < hex80::kModels.size(); ++i) tables[i] = BuildOwnedHids(*hex80::kModels[i]);
+    return tables;
+}();
 constexpr auto kOwnedHids = BuildOwnedAny(); // cleanup covers every model
 const OwnedHids* OwnedFor(const hex80::Model* model)
 {
-    if (model == &hex80::kHex80Model) return &kOwnedHex80;
-    if (model == &hex80::kMad68V2Model) return &kOwnedMad68V2;
+    for (std::size_t i = 0; i < hex80::kModels.size(); ++i)
+        if (model == hex80::kModels[i]) return &kOwnedByModel[i];
     return nullptr;
 }
 

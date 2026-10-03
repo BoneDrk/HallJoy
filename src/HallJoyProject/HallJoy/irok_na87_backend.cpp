@@ -12,6 +12,7 @@
 #include "native_layout_state.h"
 #include "physical_analog_state.h"
 #include "irok_na87_identity.h"
+#include "generated/layout_pipeline/identities.h"
 #include "native_analog_backend_registry.h"
 #include <memory>
 #include <shellapi.h>
@@ -1064,6 +1065,9 @@ void Telemetry(NativeAnalogBackendTelemetry* out)
     out->present = Present();
     out->connected = Connected();
     if (out->connected && !g_ajazzPlaying.load()) out->verifiedLayoutToken=irok_na87::kAnsiLayoutToken;
+    // AJAZZ plays only after the exact SG8994HERGB identity proof: official illumipc layout.
+    if (out->connected && g_ajazzPlaying.load())
+        out->verifiedLayoutToken=halljoy::layout_identity::Token("ajazz-m484","SG8994HERGB");
     out->vendorId = kVendorId;
     out->productId = kProductId;
     out->usagePage = kUsagePage;
@@ -1235,7 +1239,8 @@ bool IrokNa87_TryRunSelfTest(int& result) noexcept
     const auto rawRouted=NativeAnalogBackends_ReadMilli(22);
     Telemetry(&telemetry);
     pass=pass && rawRouted.owned && rawRouted.milli==1000 &&
-        telemetry.verifiedLayoutToken==0 && wcscmp(telemetry.deviceName,L"AJAZZ AK820 MAX HE (wired, RGB)")==0;
+        telemetry.verifiedLayoutToken==halljoy::layout_identity::Token("ajazz-m484","SG8994HERGB") &&
+        wcscmp(telemetry.deviceName,L"AJAZZ AK820 MAX HE (wired, RGB)")==0;
     EndAjazzPlay();pass=pass && Get(22)==0 && !Connected();
     const auto pipeName=L"\\\\.\\pipe\\HallJoyNa87SelfTest-"+std::to_wstring(GetCurrentProcessId());
     {

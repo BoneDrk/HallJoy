@@ -54,13 +54,26 @@ foreach ($process in $running) {
     $remaining = [Math]::Max(0, [int]($deadline - [DateTime]::UtcNow).TotalMilliseconds)
     if (-not $process.HasExited -and $remaining -gt 0) { $null = $process.WaitForExit($remaining) }
 }
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
 foreach ($process in @(Get-TargetProcesses)) {
     if ($process.HasExited) { continue }
     $verifiedStart = $process.StartTime
     $fresh = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
     if ($fresh -and $fresh.StartTime -eq $verifiedStart -and
         [HallJoyBuild.ProcessIdentity]::ImagePath($fresh.Id).Equals($target, [StringComparison]::OrdinalIgnoreCase)) {
-        Stop-Process -InputObject $fresh -Force -ErrorAction Stop
+        try { Stop-Process -InputObject $fresh -Force -ErrorAction Stop }
+        catch {
+            # HallJoy running as administrator ignores an unelevated build (older
+            # builds also drop the exit message). Repeat the same verified close
+            # elevated once; Windows shows a UAC prompt.
+            if ($isAdmin) { throw }
+            Write-Host 'HallJoy runs as administrator; requesting elevation to close it (UAC prompt)...' -ForegroundColor Yellow
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -TargetPath `"$target`" -GraceMs $GraceMs"
+            $elevated = Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -ArgumentList $arguments -PassThru -Wait
+            if ($elevated.ExitCode -ne 0) { throw "Elevated close failed ($($elevated.ExitCode))." }
+            break
+        }
         if (-not $fresh.WaitForExit(5000)) { throw "Target process $($fresh.Id) did not exit." }
     }
 }

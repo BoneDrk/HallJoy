@@ -1,0 +1,499 @@
+{
+ "source": "https://drive.nuphy.io/static/js/main.23dc78ef.js",
+ "sourceSha256": "8b8fe5fdb1c13092bd3f38476688e4435b2ffdfcca552ba4b36d5fe149f27fba",
+ "note": "Module 97075 export As (local _) is Field75HE keys; module 69731 excludes indexes 30,46,61,76,87,88,89,90 from HE settings.",
+ "excludedIndexes": [
+  30,
+  46,
+  61,
+  76,
+  87,
+  88,
+  89,
+  90
+ ],
+ "keys": [
+  {
+   "keyCode": "KC_ESC",
+   "x": 0,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F1",
+   "x": 1.53,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F2",
+   "x": 2.53,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F3",
+   "x": 3.53,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F4",
+   "x": 4.53,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F5",
+   "x": 6.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F6",
+   "x": 7.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F7",
+   "x": 8.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F8",
+   "x": 9.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F9",
+   "x": 10.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F10",
+   "x": 11.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F11",
+   "x": 12.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_F12",
+   "x": 13.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_FN_WIN_AREA_SCREENSHOT",
+   "x": 14.06,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_DELETE",
+   "x": 15.51,
+   "y": 0
+  },
+  {
+   "keyCode": "KC_GRAVE",
+   "x": 0,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_1",
+   "x": 1,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_2",
+   "x": 2,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_3",
+   "x": 3,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_4",
+   "x": 4,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_5",
+   "x": 5,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_6",
+   "x": 6,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_7",
+   "x": 7,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_8",
+   "x": 8,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_9",
+   "x": 9,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_0",
+   "x": 10,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_MINUS",
+   "x": 11,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_EQUAL",
+   "x": 12,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_BACKSPACE",
+   "x": 13,
+   "y": 1.29,
+   "w": 2.06
+  },
+  {
+   "keyCode": "KC_HOME",
+   "x": 15.51,
+   "y": 1.29
+  },
+  {
+   "keyCode": "KC_G1",
+   "x": -1.94,
+   "y": 2.53,
+   "w": 1.02,
+   "h": 0.72
+  },
+  {
+   "keyCode": "KC_TAB",
+   "x": 0,
+   "y": 2.33,
+   "w": 1.52
+  },
+  {
+   "keyCode": "KC_Q",
+   "x": 1.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_W",
+   "x": 2.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_E",
+   "x": 3.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_R",
+   "x": 4.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_T",
+   "x": 5.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_Y",
+   "x": 6.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_U",
+   "x": 7.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_I",
+   "x": 8.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_O",
+   "x": 9.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_P",
+   "x": 10.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_LEFT_BRACKET",
+   "x": 11.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_RIGHT_BRACKET",
+   "x": 12.52,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_BACKSLASH",
+   "x": 13.52,
+   "y": 2.33,
+   "w": 1.54
+  },
+  {
+   "keyCode": "KC_END",
+   "x": 15.51,
+   "y": 2.33
+  },
+  {
+   "keyCode": "KC_G2",
+   "x": -1.94,
+   "y": 3.575,
+   "w": 1.02,
+   "h": 0.72
+  },
+  {
+   "keyCode": "KC_CAPS_LOCK",
+   "x": 0,
+   "y": 3.36,
+   "w": 1.79
+  },
+  {
+   "keyCode": "KC_A",
+   "x": 1.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_S",
+   "x": 2.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_D",
+   "x": 3.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_F",
+   "x": 4.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_G",
+   "x": 5.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_H",
+   "x": 6.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_J",
+   "x": 7.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_K",
+   "x": 8.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_L",
+   "x": 9.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_SEMICOLON",
+   "x": 10.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_QUOTE",
+   "x": 11.79,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_ENTER",
+   "x": 12.79,
+   "y": 3.36,
+   "w": 2.32
+  },
+  {
+   "keyCode": "KC_PAGE_UP",
+   "x": 15.55,
+   "y": 3.36
+  },
+  {
+   "keyCode": "KC_G3",
+   "x": -1.9,
+   "y": 4.62,
+   "w": 1.02,
+   "h": 0.72
+  },
+  {
+   "keyCode": "KC_LSFT",
+   "x": 0,
+   "y": 4.4,
+   "w": 2.28
+  },
+  {
+   "keyCode": "KC_Z",
+   "x": 2.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_X",
+   "x": 3.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_C",
+   "x": 4.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_V",
+   "x": 5.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_B",
+   "x": 6.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_N",
+   "x": 7.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_M",
+   "x": 8.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_COMMA",
+   "x": 9.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_DOT",
+   "x": 10.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_SLASH",
+   "x": 11.28,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_RSFT",
+   "x": 12.28,
+   "y": 4.4,
+   "w": 1.82
+  },
+  {
+   "keyCode": "KC_UP",
+   "x": 14.34,
+   "y": 4.59
+  },
+  {
+   "keyCode": "KC_PAGE_DOWN",
+   "x": 15.55,
+   "y": 4.4
+  },
+  {
+   "keyCode": "KC_G4",
+   "x": -1.9,
+   "y": 5.66,
+   "w": 1.02,
+   "h": 0.72
+  },
+  {
+   "keyCode": "KC_LCTL",
+   "x": 0,
+   "y": 5.44,
+   "w": 1.26
+  },
+  {
+   "keyCode": "KC_LGUI",
+   "x": 1.26,
+   "y": 5.44,
+   "w": 1.26
+  },
+  {
+   "keyCode": "KC_LALT",
+   "x": 2.52,
+   "y": 5.44,
+   "w": 1.26
+  },
+  {
+   "keyCode": "KC_SPACE",
+   "x": 3.78,
+   "y": 5.44,
+   "w": 6.46
+  },
+  {
+   "keyCode": "KC_RALT",
+   "x": 10.24,
+   "y": 5.44
+  },
+  {
+   "keyCode": "KC_FN1",
+   "x": 11.24,
+   "y": 5.44
+  },
+  {
+   "keyCode": "KC_RCTL",
+   "x": 12.24,
+   "y": 5.44
+  },
+  {
+   "keyCode": "KC_LEFT",
+   "x": 13.51,
+   "y": 5.64
+  },
+  {
+   "keyCode": "KC_DOWN",
+   "x": 14.51,
+   "y": 5.64
+  },
+  {
+   "keyCode": "KC_RIGHT",
+   "x": 15.51,
+   "y": 5.64
+  },
+  {
+   "keyCode": "KC_G5",
+   "x": 4.55,
+   "y": 6.7,
+   "w": 1.08,
+   "h": 0.5
+  },
+  {
+   "keyCode": "KC_G6",
+   "x": 5.62,
+   "y": 6.7,
+   "w": 1.08,
+   "h": 0.5
+  },
+  {
+   "keyCode": "KC_G7",
+   "x": 6.68,
+   "y": 6.7,
+   "w": 1.08,
+   "h": 0.5
+  },
+  {
+   "keyCode": "KC_G8",
+   "x": 7.74,
+   "y": 6.7,
+   "w": 1.08,
+   "h": 0.5
+  }
+ ]
+}

@@ -181,6 +181,12 @@ std::mutex g_activeSessionMutex;
 HANDLE g_threadHandle = nullptr;
 HANDLE g_wakeEvent = nullptr;
 HANDLE g_initialAttemptEvent = nullptr;
+// Tick of a pre-UAP discovery that found no candidate and no known identity
+// path. The worker's first pass reuses that fresh result instead of repeating
+// the same SetupAPI enumeration (~20 ms on every start and resume). Any device
+// change clears it, and it is used once, within kEmptyDiscoveryReuseMs.
+std::atomic<std::uint64_t> g_emptyDiscoveryMs{0};
+constexpr std::uint64_t kEmptyDiscoveryReuseMs = 2000;
 HANDLE g_activeSessionHandle = INVALID_HANDLE_VALUE;
 std::atomic<halljoy::worker::WorkerExceptionKind> g_workerFaultKind{
     halljoy::worker::WorkerExceptionKind::None };
@@ -1894,10 +1900,17 @@ std::uint32_t WorkerMain()
     std::uint64_t lastDisconnectUs = 0;
 #endif
 
+    bool firstPass = true;
     while (!g_stop.load(std::memory_order_acquire))
     {
         Session session{};
-        if (!OpenSelectedSession(&session))
+        const std::uint64_t emptyAt = firstPass
+            ? g_emptyDiscoveryMs.exchange(0, std::memory_order_acq_rel) : 0;
+        const bool reuseEmptyDiscovery = emptyAt != 0 &&
+            GetTickCount64() - emptyAt < kEmptyDiscoveryReuseMs &&
+            !g_deviceChanged.load(std::memory_order_acquire);
+        firstPass = false;
+        if (reuseEmptyDiscovery || !OpenSelectedSession(&session))
         {
             g_protocolPresent.store(false, std::memory_order_release);
             g_connected.store(false, std::memory_order_release);
@@ -2453,7 +2466,11 @@ bool AulaWin60He_PrepareProtocolRouting()
     // publish only that path to the UAP pre-open exclusion registry.
     Session session{};
     bool proven = false;
-    if (OpenSelectedSession(&session))
+    g_emptyDiscoveryMs.store(0, std::memory_order_release);
+    const bool opened = OpenSelectedSession(&session);
+    if (!opened && !g_candidatePresent.load(std::memory_order_acquire))
+        g_emptyDiscoveryMs.store(GetTickCount64(), std::memory_order_release);
+    if (opened)
     {
         WindowsReportTransport transport(session);
         ClientTraceContext traceContext{};
@@ -2726,6 +2743,7 @@ halljoy::lifecycle::StopResult AulaWin60He_Stop(
 
 void AulaWin60He_NotifyDeviceChange()
 {
+    g_emptyDiscoveryMs.store(0, std::memory_order_release);
     g_deviceChanged.store(true, std::memory_order_release);
     std::unique_lock<std::mutex> signalLock(g_signalMutex, std::try_to_lock);
     if (signalLock.owns_lock() && g_wakeEvent)

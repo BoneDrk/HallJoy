@@ -1,3 +1,6 @@
+> 2026-10-03 PUBLISHED stable/latest 1.6.7: https://github.com/PashOK7/HallJoy/releases/tag/v1.6.7 .
+> Owner checked layouts visually and authorized publication. Commit 35d879f, EXE SHA256 5b49adb2...;
+> 60 assets, prior 56 unchanged; CI success. See RELEASE_1.6.7_PUBLICATION_2026-10-03.md.
 > 2026-10-02 OWNER RULE: when all Supported criteria are met (working path, built-in layout,
 > supported_layouts.json, check_supported_layouts PASS), the agent sets Supported itself; trust the
 > tester's model name, do not ask for more logs. Applied: Everglide SU75 Pro (tester log 13: 126 keys,

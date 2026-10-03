@@ -17,6 +17,7 @@
 > Build: [closing an elevated HallJoy before EXE replacement](current/BUILD_CLOSE_ELEVATED_HALLJOY_2026-10-01.md).
 > Layouts: [Supported model layout coverage (4 gaps)](current/SUPPORTED_LAYOUT_COVERAGE_2026-09-30.md).
 > IO: [catalog and firmware check, frameVersion-1 addressed getter 0x68](current/IO_CATALOG_FIRMWARE_2026-09-30.md).
+> Published: [HallJoy 1.6.7 publication record](current/RELEASE_1.6.7_PUBLICATION_2026-10-03.md).
 > Published: [HallJoy 1.6.6 publication record](current/RELEASE_1.6.6_PUBLICATION_2026-09-30.md).
 > Fix: [keyboards lost after Pause/Resume (Hex80, Addressed, W669 re-claim)](current/RESUME_RECLAIM_FIX_2026-09-30.md).
 

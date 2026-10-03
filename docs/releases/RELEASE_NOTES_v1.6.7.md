@@ -15,5 +15,15 @@
   change.
 - The support log now records each keyboard's USB product name, so the exact
   model is visible in the log.
+- The keyboard view is now drawn with Direct2D in one pass, paced to the
+  display's refresh rate. Pressing many keys at once no longer drops frames,
+  and editing a curve no longer slows the keyboard animation.
+- Faster startup: the gamepad is ready about twice as fast, and the window
+  appears with the keyboard already drawn.
+- Fixed the Keychron RGB key and the Wooting Profile/Mode keys updating
+  unevenly or looking stuck in the keyboard view. They can now be bound by
+  pressing them.
+- Fixed a delay of up to 5 seconds in writing HallJoy.log while the log file
+  was open in another program.
 
 [Full keyboard list and support statuses](https://docs.google.com/spreadsheets/d/1ueQ4labXpuBOmGjCkUcJllNJ68Jzx4py2MuQm-p-R7c/edit#gid=0).

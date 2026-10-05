@@ -2,6 +2,9 @@ name: Build FUN60 Windows EXE
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/fun60-windows.yml"]
 
 permissions:
   contents: read
@@ -33,6 +36,33 @@ jobs:
           for name, sha in expected.items():
               assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == sha, name
           print("FUN60 patch applied; all 11 resulting file hashes verified")
+      - name: Add FUN60 assignment diagnostics
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path("src/HallJoyProject/HallJoy/rongyuan_stream_backend.cpp")
+          data = p.read_bytes()
+          needle = b'    SupportLog_Event("rongyuan.fun60_default_map_rejected",s.model->board,'
+          assert data.count(needle) == 1
+          diagnostic = """    // Static assignment structure only: no key codes, macros or input data.
+              static std::atomic<bool> reported{false};
+              if (!reported.exchange(true)) {
+                unsigned mismatches = 0;
+                for (unsigned slot = 0; slot < 128; ++slot) {
+                  const auto expected = mg::Decode(s.model->matrix.data() + slot * 4);
+                  const auto actual = mg::Decode(assigned.data() + slot * 4);
+                  const bool mismatch = expected == 0x409 ? (actual && actual != 0x409) : actual != expected;
+                  if (!mismatch) continue;
+                  ++mismatches;
+                  const unsigned expectedKind = !expected ? 0 : expected == 0x409 ? 2 : 1;
+                  const unsigned actualKind = !actual ? 0 : actual == 0x409 ? 2 : 1;
+                  SupportLog_Event("rongyuan.fun60_map_mismatch_slot", slot,
+                                   SupportLog_Data(expectedKind * 4 + actualKind));
+                }
+                SupportLog_Event("rongyuan.fun60_map_mismatch_count", mismatches);
+              }
+          """.replace("\n", "\r\n").encode()
+          p.write_bytes(data.replace(needle, diagnostic + needle))
       - name: Full Windows build and release checks
         shell: cmd
         run: |
